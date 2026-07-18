@@ -3,5 +3,5 @@ WFLAGS = -Wconversion -Wsign-conversion -Wall -Wextra -Wpedantic -Wshadow -Wpeda
 CC = clang++ -std=c++20
 
 all:
-	$(CC) $(CFLAGS) $(WFLAGS) -c main.cc
-	objdump -dr -C main.o > out.asm
+	$(CC) $(CFLAGS) $(WFLAGS) main.cc
+	objdump -dr -C a.out > out.asm
