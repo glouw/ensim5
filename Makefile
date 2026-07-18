@@ -3,5 +3,7 @@ WFLAGS = -Wconversion -Wsign-conversion -Wall -Wextra -Wpedantic -Wshadow -Wpeda
 CC = clang++ -std=c++20
 
 all:
-	$(CC) $(CFLAGS) $(WFLAGS) main.cc
-	objdump -dr -C a.out > out.asm
+	$(CC) $(CFLAGS) $(WFLAGS) ensim5.cc -c
+	$(CC) $(CFLAGS) $(WFLAGS) main.cc ensim5.o
+	objdump -dr -C ensim5.o > out.asm
+	perf stat -d -d -d ./a.out 44800
