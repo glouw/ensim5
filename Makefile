@@ -7,3 +7,8 @@ all:
 	$(CC) $(CFLAGS) $(WFLAGS) main.cc ensim5.o
 	objdump -dr -C ensim5.o > out.asm
 	perf stat -d -d -d ./a.out 44800
+
+clean:
+	rm out.asm
+	rm a.out
+	rm ensim5.o
