@@ -3,9 +3,9 @@
 #include <cmath>
 #include <array>
 
-using std::sin, std::cos, std::sqrt, std::fmax, std::fmin;
-
 #define fn __attribute__((used))
+
+using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::fmod, std::pow;
 
 template<std::floating_point T>
 class real_c
@@ -18,21 +18,22 @@ public:
     constexpr operator T() const { return value; }
 };
 
-using val_t = real_c<float>;
+using val_t = real_c<double>;
 
-static constexpr size_t g_sample_rate_hz = 48000;
+static constexpr int g_sample_rate_hz = 48000;
 static constexpr val_t g_dt_s = val_t(1.0) / g_sample_rate_hz;
 static constexpr val_t g_ambient_static_temperature_k = 293.0;
 static constexpr val_t g_ambient_static_pressure_pa = 101325.0;
+static constexpr val_t g_otto_cycle_r = 4.0 * M_PI;
 
-consteval bool is_odd(const size_t value) { return value % 2 == 1; }
-consteval bool is_evn(const size_t value) { return value % 2 == 0; }
+consteval bool is_odd(const int value) { return value % 2 == 1; }
+consteval bool is_evn(const int value) { return value % 2 == 0; }
 
-template<size_t H>
+template<int H>
 requires(is_odd(H))
 struct flow_s
 {
-    static constexpr size_t N = H - 1;
+    static constexpr int N = H - 1;
     static_assert(is_evn(N));
 
     /* Assume chamber static pressure == chamber total pressure. */
@@ -63,11 +64,13 @@ struct flow_s
     using lane_t = std::array<val_t, H>;
     using mask_t = std::array<bool, H>;
 
+    lane_t chamber_prev_volume_m3;
     lane_t chamber_volume_m3;
     lane_t chamber_nozzle_flow_area_m2;
     lane_t chamber_molar_mass_kg_per_mol;
     lane_t chamber_cv_j_per_mol_k;
     lane_t chamber_specific_gas_constant_j_per_kg_k;
+    lane_t chamber_gamma;
     lane_t chamber_static_pressure_pa;
     lane_t chamber_moles;
     lane_t chamber_total_cv_j_per_k;
@@ -109,20 +112,34 @@ struct flow_s
         return (v1 * w1 + v2 * w2) / (w1 + w2);
     }
 
+    fn void calc_chamber_ambient_temperature_pressure()
+    {
+        for(int i = 0; i < N; i++)
+        {
+            chamber_static_temperature_k[i] = g_ambient_static_temperature_k;
+            chamber_static_pressure_pa[i] = g_ambient_static_pressure_pa;
+        }
+    }
+
+    fn void calc_chamber_ambient_mol_ratios()
+    {
+        for(int i = 0; i < N; i++)
+        {
+            chamber_mol_ratio_n2[i] = val_t(0.78);
+            chamber_mol_ratio_o2[i] = val_t(0.21);
+            chamber_mol_ratio_ar[i] = val_t(0.01);
+        }
+    }
+
     /*
      *     Ps * V
      * m = -------
      *     Rs * Ts
      */
 
-    fn void calc_chamber_ambients()
+    fn void calc_chamber_ambient_masses()
     {
-        for(size_t i = 0; i < N; i++)
-        {
-            chamber_static_temperature_k[i] = g_ambient_static_temperature_k;
-            chamber_static_pressure_pa[i] = g_ambient_static_pressure_pa;
-        }
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             const val_t Ps = chamber_static_pressure_pa[i];
             const val_t V = chamber_volume_m3[i];
@@ -141,7 +158,7 @@ struct flow_s
 
     fn void calc_chamber_molar_masses()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             chamber_molar_mass_kg_per_mol[i] =
                 chamber_mol_ratio_n2[i] * chamber_molar_mass_kg_per_mol_n2 +
@@ -162,15 +179,15 @@ struct flow_s
 
     fn void calc_chamber_molar_cvs()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             chamber_cv_j_per_mol_k[i] =
-                  chamber_mol_ratio_n2[i] * chamber_cv_n2_j_per_mol_k +
-                  chamber_mol_ratio_o2[i] * chamber_cv_o2_j_per_mol_k +
-                  chamber_mol_ratio_ar[i] * chamber_cv_ar_j_per_mol_k +
-                  chamber_mol_ratio_c8h18[i] * chamber_cv_c8h18_j_per_mol_k +
-                  chamber_mol_ratio_co2[i] * chamber_cv_co2_j_per_mol_k +
-                  chamber_mol_ratio_h2o[i] * chamber_cv_h2o_j_per_mol_k;
+                chamber_mol_ratio_n2[i] * chamber_cv_n2_j_per_mol_k +
+                chamber_mol_ratio_o2[i] * chamber_cv_o2_j_per_mol_k +
+                chamber_mol_ratio_ar[i] * chamber_cv_ar_j_per_mol_k +
+                chamber_mol_ratio_c8h18[i] * chamber_cv_c8h18_j_per_mol_k +
+                chamber_mol_ratio_co2[i] * chamber_cv_co2_j_per_mol_k +
+                chamber_mol_ratio_h2o[i] * chamber_cv_h2o_j_per_mol_k;
         }
     }
 
@@ -182,7 +199,7 @@ struct flow_s
 
     fn void calc_chamber_specific_gas_constants()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             const val_t R = chamber_universal_gas_constant_j_per_mol_k;
             const val_t M = chamber_molar_mass_kg_per_mol[i];
@@ -191,20 +208,18 @@ struct flow_s
     }
 
     /*
-     *      m * Rs * Ts
-     * Ps = -----------
-     *           V
+     *          R
+     * y = 1 + -----
+     *          cv
      */
 
-    fn void calc_chamber_static_pressures()
+    fn void calc_chamber_gamma()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
-            const val_t m = chamber_mass_kg[i];
-            const val_t Rs = chamber_specific_gas_constant_j_per_kg_k[i];
-            const val_t Ts = chamber_static_temperature_k[i];
-            const val_t V = chamber_volume_m3[i];
-            chamber_static_pressure_pa[i] = m * Rs * Ts / V;
+            const val_t R = chamber_universal_gas_constant_j_per_mol_k;
+            const val_t cv = chamber_cv_j_per_mol_k[i];
+            chamber_gamma[i] = val_t(1.0) + R / cv;
         }
     }
 
@@ -216,7 +231,7 @@ struct flow_s
 
     fn void calc_chamber_moles()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             const val_t m = chamber_mass_kg[i];
             const val_t M = chamber_molar_mass_kg_per_mol[i];
@@ -230,7 +245,7 @@ struct flow_s
 
     fn void calc_chamber_total_cvs()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             chamber_total_cv_j_per_k[i] = chamber_moles[i] * chamber_cv_j_per_mol_k[i];
         }
@@ -249,9 +264,9 @@ struct flow_s
 
     fn void calc_nozzle_machs()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
-            const size_t j = i + 1;
+            const int j = i + 1;
             const val_t X = (val_t(2.0) / (nozzle_gamma - val_t(1.0)));
             const val_t Px = chamber_static_pressure_pa[i];
             const val_t Py = chamber_static_pressure_pa[j];
@@ -292,7 +307,7 @@ struct flow_s
 
     fn void calc_nozzle_velocities()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             const val_t Rs = chamber_specific_gas_constant_j_per_kg_k[i];
             const val_t Tt = chamber_static_temperature_k[i];
@@ -317,7 +332,7 @@ struct flow_s
 
     fn void calc_nozzle_static_densities()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             const val_t Pt = chamber_static_pressure_pa[i];
             const val_t Rs = chamber_specific_gas_constant_j_per_kg_k[i];
@@ -340,13 +355,13 @@ struct flow_s
 
     fn void calc_parcel_property(lane_t& __restrict nozzle, const lane_t& __restrict chamber)
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             nozzle[i] = parcel_flow_right[i] ? chamber[i] : val_t(0.0);
         }
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
-            const size_t j = i + 1;
+            const int j = i + 1;
             nozzle[i] += parcel_flow_right[i] ? val_t(0.0) : chamber[j];
         }
     }
@@ -371,7 +386,7 @@ struct flow_s
 
     fn void calc_nozzle_mass_flow_rates()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             const val_t ps = nozzle_static_density_kg_per_m3[i];
             const val_t A = chamber_nozzle_flow_area_m2[i];
@@ -392,7 +407,7 @@ struct flow_s
 
     fn void calc_chamber_mol_ratios()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             chamber_mol_ratio_n2[i] = calc_mix(chamber_mol_ratio_n2[i], chamber_moles[i], parcel_mol_ratio_n2[i], parcel_moles[i]);
             chamber_mol_ratio_o2[i] = calc_mix(chamber_mol_ratio_o2[i], chamber_moles[i], parcel_mol_ratio_o2[i], parcel_moles[i]);
@@ -409,9 +424,38 @@ struct flow_s
 
     fn void calc_parcel_total_cvs()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             parcel_total_cv_j_per_k[i] = parcel_moles[i] * parcel_cv_j_per_mol_k[i];
+        }
+    }
+
+    /*                   y
+     *               V1
+     * Ps2 = Ps1 * (----)
+     *               V2
+     */
+
+    /*                     y - 1
+     *                   (-------)
+     *                       y
+     *               Ps2
+     * Ts2 = Ts1 * (-----)
+     *               Ps1
+     */
+
+    fn void calc_new_chamber_static_states_from_compression_or_expansion()
+    {
+        for(int i = 0; i < N; i++)
+        {
+            const val_t V1 = chamber_volume_m3[i];
+            const val_t V2 = chamber_prev_volume_m3[i];
+            const val_t Ps1 = chamber_static_pressure_pa[i];
+            const val_t Ts1 = chamber_static_temperature_k[i];
+            const val_t y = chamber_gamma[i];
+            const val_t Ps2 = Ps1 * pow(V1 / V2, y);
+            chamber_static_pressure_pa[i] = Ps2;
+            chamber_static_temperature_k[i] = Ts1 * pow(Ps2 / Ps1, (y - val_t(1.0)) / y);
         }
     }
 
@@ -421,9 +465,9 @@ struct flow_s
      *            n1 cv1 + n2 cv2
      */
 
-    fn void calc_chamber_static_temperatures()
+    fn void calc_chamber_static_temperatures_from_gas_mixing()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             chamber_static_temperature_k[i] = calc_mix(
                 chamber_static_temperature_k[i],
@@ -434,42 +478,42 @@ struct flow_s
         }
     }
 
-    fn void calc_chamber_masses()
+    fn void calc_new_chamber_masses()
     {
-        for(size_t i = 0; i < N; i++)
+        for(int i = 0; i < N; i++)
         {
             chamber_mass_kg[i] += parcel_mass_kg[i];
         }
     }
 
-    fn void calc_chamber_setup()
+    fn void calc_ambient_reset()
     {
+        calc_chamber_ambient_temperature_pressure();
+        calc_chamber_ambient_mol_ratios();
         calc_chamber_molar_masses();
         calc_chamber_molar_cvs();
+        calc_chamber_gamma();
         calc_chamber_specific_gas_constants();
-    }
-
-    fn void calc_chamber_ambient_reset()
-    {
-        calc_chamber_setup();
-        calc_chamber_ambients();
+        calc_chamber_ambient_masses();
+        calc_chamber_moles();
     }
 
     fn void calc_flow()
     {
-        calc_chamber_setup();
-        calc_chamber_static_pressures();
+        calc_chamber_molar_masses();
+        calc_chamber_molar_cvs();
+        calc_chamber_gamma();
+        calc_chamber_specific_gas_constants();
         calc_chamber_moles();
-        calc_chamber_total_cvs();
+        calc_new_chamber_static_states_from_compression_or_expansion();
         calc_nozzle_machs();
         calc_nozzle_velocities();
         calc_nozzle_static_densities();
         calc_parcel_properties();
         calc_nozzle_mass_flow_rates();
-        calc_chamber_mol_ratios();
-        calc_parcel_total_cvs();
-        calc_chamber_static_temperatures();
-        calc_chamber_masses();
+        //calc_parcel_total_cvs();
+        //calc_chamber_static_temperatures_from_gas_mixing();
+        //calc_new_chamber_masses();
     }
 };
 
@@ -478,6 +522,7 @@ struct crankshaft_s
     val_t mass_kg;
     val_t radius_m;
     val_t theta_r;
+    val_t last_theta_r;
     val_t angular_velocity_r_per_s;
     val_t moment_of_inertia_kg_m2;
 
@@ -498,7 +543,15 @@ struct crankshaft_s
 
     fn void turn()
     {
+        last_theta_r = theta_r;
         theta_r += angular_velocity_r_per_s * g_dt_s;
+    }
+
+    fn bool otto_cycled()
+    {
+        const val_t t0 = fmod(last_theta_r, g_otto_cycle_r);
+        const val_t t1 = fmod(theta_r, g_otto_cycle_r);
+        return t0 > t1;
     }
 
     /*
@@ -513,13 +566,17 @@ struct crankshaft_s
         moment_of_inertia_kg_m2 = val_t(0.5) * mass_kg * radius_m * radius_m;
     }
 
-    fn void calc_crankshaft()
+    fn bool calc_crankshaft(const val_t angular_acceleration_r_per_s2)
     {
+        accelerate(angular_acceleration_r_per_s2);
+        turn();
+        const bool cycled = otto_cycled();
         calc_moment_of_inertia();
+        return cycled;
     }
 };
 
-template<size_t W, size_t PY>
+template<int W, int PY>
 struct pistons_s
 {
     /* ------- + block_deck_surface_m
@@ -570,7 +627,7 @@ struct pistons_s
 
     fn void calc_thetas(const crankshaft_s& __restrict crankshaft)
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             theta_r[i] = theta0_r[i] + crankshaft.theta_r;
         }
@@ -578,7 +635,7 @@ struct pistons_s
 
     fn void calc_sin_cos()
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t t = theta_r[i];
             sint[i] = sin(t);
@@ -599,7 +656,7 @@ struct pistons_s
 
     fn void calc_positions()
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t r = crank_throw_length_m[i];
             const val_t l = connecting_rod_length_m[i];
@@ -609,7 +666,7 @@ struct pistons_s
             bearing_x_m[i] = x;
             bearing_y_m[i] = y;
             pin_x_m[i] = val_t(0.0);
-            pin_y_m[i] = y + sqrt(l * l - x * x);
+            pin_y_m[i] = y + sqrt(l * l + x * x);
         }
     }
 
@@ -621,7 +678,7 @@ struct pistons_s
 
     fn void calc_volumes()
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t r = crank_throw_length_m[i];
             const val_t l = connecting_rod_length_m[i];
@@ -642,7 +699,7 @@ struct pistons_s
 
     fn void calc_masses()
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t r = val_t(0.5) * diameter_m[i];
             const val_t h = val_t(2.0) * head_compression_height_m[i];
@@ -658,7 +715,7 @@ struct pistons_s
 
     fn void calc_moments_of_inertia()
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t r = crank_throw_length_m[i];
             const val_t mp = head_mass_kg[i];
@@ -678,7 +735,7 @@ struct pistons_s
 
     fn void calc_gas_torques(const auto& __restrict flow)
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t Pg = flow.chamber_static_pressure_pa[PY];
             const val_t A = val_t(M_PI) * diameter_m[i] * diameter_m[i];
@@ -710,7 +767,7 @@ struct pistons_s
 
     fn void calc_inertia_torques(const crankshaft_s& __restrict crankshaft)
     {
-        for(size_t i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
             const val_t r = crank_throw_length_m[i];
             const val_t l = connecting_rod_length_m[i];
@@ -748,9 +805,9 @@ struct pistons_s
 template<typename... T>
 concept aggregate_of = (std::is_aggregate_v<T> && ...);
 
-template<size_t W, size_t H, size_t PY>
+template<int W, int H, int PY>
 requires(aggregate_of<crankshaft_s, pistons_s<W, PY>, flow_s<H>>)
-struct engine_s : public ensim5_c
+struct engine_s : public ensim5_s
 {
     /*
      * Engines are modelled by W (Width) indepdent SIMD flow lanes
@@ -776,100 +833,116 @@ struct engine_s : public ensim5_c
     crankshaft_s crankshaft = {};
     pistons_s<W, PY> pistons = {};
     std::array<flow_s<H>, W> flow = {};
+    ensim5_diag_s back, front;
 
-    fn void rig_pistons()
+    fn void log_engine(const int x, const int y)
     {
-        pistons.calc_volumetrics(crankshaft);
+        back[ensim5_diag_e::chamber_volume_m3              ].push_back(flow[x].chamber_volume_m3              [y]);
+        back[ensim5_diag_e::chamber_static_pressure_pa     ].push_back(flow[x].chamber_static_pressure_pa     [y]);
+        back[ensim5_diag_e::chamber_static_temperature_k   ].push_back(flow[x].chamber_static_temperature_k   [y]);
+        back[ensim5_diag_e::chamber_molar_mass_kg_per_mol  ].push_back(flow[x].chamber_molar_mass_kg_per_mol  [y]);
+        back[ensim5_diag_e::chamber_cv_j_per_mol_k         ].push_back(flow[x].chamber_cv_j_per_mol_k         [y]);
+        back[ensim5_diag_e::chamber_moles                  ].push_back(flow[x].chamber_moles                  [y]);
+        back[ensim5_diag_e::chamber_nozzle_flow_area_m2    ].push_back(flow[x].chamber_nozzle_flow_area_m2    [y]);
+        back[ensim5_diag_e::nozzle_velocity_m_per_s        ].push_back(flow[x].nozzle_velocity_m_per_s        [y]);
+        back[ensim5_diag_e::nozzle_static_density_kg_per_m3].push_back(flow[x].nozzle_static_density_kg_per_m3[y]);
     }
 
-    fn void rig_flow_chambers()
+    fn void relay_volume()
     {
-        for(size_t x = 0; x < W; x++)
+        for(int x = 0; x < W; x++)
         {
             flow[x].chamber_volume_m3[PY] = pistons.volumes_m3[x];
         }
     }
 
-    fn void reset_flow_chambers()
+    fn void remember_volume()
     {
-        for(size_t x = 0; x < W; x++)
+        for(int x = 0; x < W; x++)
         {
-            flow[x].calc_chamber_ambient_reset();
+            flow[x].chamber_prev_volume_m3 = flow[x].chamber_volume_m3;
         }
-    }
-
-    fn void step_crankshaft()
-    {
-        crankshaft.calc_crankshaft();
-    }
-
-    fn void step_pistons()
-    {
-        for(size_t i = 0; i < W; i++)
-        {
-            pistons.calc_pistons(flow[i], crankshaft);
-        }
-    }
-
-    fn void step_flow()
-    {
-        for(size_t i = 0; i < W; i++)
-        {
-            flow[i].calc_flow();
-        }
-    }
-
-    fn void step_engine()
-    {
-        step_crankshaft();
-        step_pistons();
-        step_flow();
     }
 
     fn void reset_engine() override
     {
-        rig_pistons();
-        rig_flow_chambers();
-        reset_flow_chambers();
-    }
-
-    fn void run_engine(const size_t steps) override
-    {
-        for(size_t i = 0; i < steps; i++)
+        pistons.calc_volumetrics(crankshaft);
+        relay_volume();
+        remember_volume();
+        for(int x = 0; x < W; x++)
         {
-            step_engine();
+            flow[x].calc_ambient_reset();
         }
     }
+
+    fn bool in_bounds(const int x, const int y)
+    {
+        return x >= 0 && y >= 0 && x < W && y < H;
+    }
+
+    fn void run_engine(const int steps, const int x, const int y) override
+    {
+        for(int i = 0; i < steps; i++)
+        {
+            crankshaft.angular_velocity_r_per_s = 500.0;
+            const bool otto_cycled = crankshaft.calc_crankshaft(0.0);
+            if(otto_cycled)
+            {
+                std::swap(front, back);
+                back.clear();
+            }
+            for(int j = 0; j < W; j++)
+            {
+                pistons.calc_pistons(flow[j], crankshaft);
+            }
+            remember_volume();
+            relay_volume();
+            for(int j = 0; j < W; j++)
+            {
+                flow[j].calc_flow();
+            }
+            if(in_bounds(x, y))
+            {
+                log_engine(x, y);
+            }
+        }
+    }
+
+    fn int get_w() override { return W;  }
+    fn int get_h() override { return H;  }
+    fn int get_y() override { return PY; }
+    fn ensim5_diag_s& get_diags() override { return front; }
 };
 
-std::unique_ptr<ensim5_c> new_engine_8_9_5()
+std::unique_ptr<ensim5_s> new_ensim5_inline_8()
 {
-    auto engine = std::make_unique<engine_s<8, 9, 5>>();
+    auto engine = std::make_unique<engine_s<8, 9, 4>>();
     engine->crankshaft.mass_kg  = 0.1;
     engine->crankshaft.radius_m = 0.25;
-    engine->pistons.diameter_m                  = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.crank_throw_length_m        = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.connecting_rod_length_m     = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.connecting_rod_mass_kg      = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.head_mass_density_kg_per_m3 = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.head_compression_height_m   = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.head_clearance_height_m     = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->pistons.theta0_r                    = { 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 };
-    engine->flow[0].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[0].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[1].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[1].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[2].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[2].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[3].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[3].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[4].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[4].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[5].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[5].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[6].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[6].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[7].chamber_volume_m3           = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-    engine->flow[7].chamber_nozzle_flow_area_m2 = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
+    engine->pistons.diameter_m                  = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.crank_throw_length_m        = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.connecting_rod_length_m     = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.connecting_rod_mass_kg      = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.head_mass_density_kg_per_m3 = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.head_compression_height_m   = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.head_clearance_height_m     = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->pistons.theta0_r                    = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
+    engine->flow[0].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[0].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[1].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[1].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[2].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[2].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[3].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[3].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[4].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[4].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[5].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[5].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[6].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[6].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->flow[7].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->flow[7].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
+    engine->reset_engine();
     return engine;
 }
