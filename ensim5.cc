@@ -5,7 +5,7 @@
 
 #define fn __attribute__((used))
 
-using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::fmod, std::pow;
+using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::fmod, std::cbrt;
 
 template<std::floating_point T>
 class real_c
@@ -14,11 +14,13 @@ class real_c
 public:
     constexpr real_c() = default;
     constexpr real_c(const double value): value(static_cast<T>(value)) {}
+    constexpr real_c& operator-=(const real_c other) { value -= other.value; return *this; }
     constexpr real_c& operator+=(const real_c other) { value += other.value; return *this; }
+    constexpr real_c& operator*=(const real_c other) { value *= other.value; return *this; }
     constexpr operator T() const { return value; }
 };
 
-using val_t = real_c<double>;
+using val_t = real_c<float>;
 
 static constexpr int g_sample_rate_hz = 48000;
 static constexpr val_t g_dt_s = val_t(1.0) / g_sample_rate_hz;
@@ -36,100 +38,26 @@ struct flow_s
     static constexpr int N = H - 1;
     static_assert(is_evn(N));
 
-    /* Assume chamber static pressure == chamber total pressure. */
-    /* Assume chamber static temperature == chamber total temperature. */
-    /* Assume chamber static density == chamber total density. */
-    /* Assume nozzle flow fixes gamma at 1.333 to generate SIMD friendly instructions. */
-    /* Assume nozzle static density is calculated from nozzle mach, nozzle gamma, and upstream static chamber conditions. */
-    /* Assume chambers do not fix gamma and track gas mixture at constant volume (cv) to mix static temperature. */
-    /* Assume chamber static pressure mechanics are derived from PV=nRT. */
-    /* Assume chamber constant volume (cv) constants are averaged across Otto Cycle static temperatures and their specific cycle lifetimes,
-     * and align roughly with the nozzle gamma value of 1.333. */
-
     static constexpr val_t nozzle_gamma = 1.333;
-    static constexpr val_t chamber_cv_n2_j_per_mol_k = 23.0;
-    static constexpr val_t chamber_cv_o2_j_per_mol_k = 22.5;
-    static constexpr val_t chamber_cv_ar_j_per_mol_k = 12.5;
-    static constexpr val_t chamber_cv_c8h18_j_per_mol_k = 250.0;
-    static constexpr val_t chamber_cv_co2_j_per_mol_k = 33.0;
-    static constexpr val_t chamber_cv_h2o_j_per_mol_k = 30.0;
-    static constexpr val_t chamber_molar_mass_kg_per_mol_c8h18 = 0.1142285200;
-    static constexpr val_t chamber_molar_mass_kg_per_mol_o2 = 0.0319988000;
-    static constexpr val_t chamber_molar_mass_kg_per_mol_n2 = 0.0280134000;
-    static constexpr val_t chamber_molar_mass_kg_per_mol_ar = 0.0399480000;
-    static constexpr val_t chamber_molar_mass_kg_per_mol_co2 = 0.0440095000;
-    static constexpr val_t chamber_molar_mass_kg_per_mol_h2o = 0.0180152800;
-    static constexpr val_t chamber_universal_gas_constant_j_per_mol_k = 8.3144598;
+    static constexpr val_t universal_gas_constant_j_per_mol_k = 8.3144598;
+    static constexpr val_t cv_j_per_mol_k = universal_gas_constant_j_per_mol_k / (nozzle_gamma - 1.0);
+    static constexpr val_t molar_mass_kg_per_mol = 0.023;
+    static constexpr val_t specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
 
     using lane_t = std::array<val_t, H>;
-    using mask_t = std::array<bool, H>;
 
     lane_t chamber_prev_volume_m3;
     lane_t chamber_volume_m3;
     lane_t chamber_nozzle_flow_area_m2;
-    lane_t chamber_molar_mass_kg_per_mol;
-    lane_t chamber_cv_j_per_mol_k;
-    lane_t chamber_specific_gas_constant_j_per_kg_k;
-    lane_t chamber_gamma;
     lane_t chamber_static_pressure_pa;
-    lane_t chamber_moles;
-    lane_t chamber_total_cv_j_per_k;
-    lane_t chamber_mol_ratio_n2;
-    lane_t chamber_mol_ratio_o2;
-    lane_t chamber_mol_ratio_ar;
-    lane_t chamber_mol_ratio_c8h18;
-    lane_t chamber_mol_ratio_co2;
-    lane_t chamber_mol_ratio_h2o;
     lane_t chamber_static_temperature_k;
     lane_t chamber_mass_kg;
-
     lane_t nozzle_mach;
     lane_t nozzle_velocity_m_per_s;
     lane_t nozzle_static_density_kg_per_m3;
     lane_t nozzle_mass_flow_rate_kg_per_s;
-
-    lane_t parcel_molar_mass_kg_per_mol;
-    lane_t parcel_cv_j_per_mol_k;
-    lane_t parcel_moles;
-    lane_t parcel_total_cv_j_per_k;
-    lane_t parcel_mol_ratio_n2;
-    lane_t parcel_mol_ratio_o2;
-    lane_t parcel_mol_ratio_ar;
-    lane_t parcel_mol_ratio_c8h18;
-    lane_t parcel_mol_ratio_co2;
-    lane_t parcel_mol_ratio_h2o;
-    lane_t parcel_static_temperature_k;
     lane_t parcel_mass_kg;
-    mask_t parcel_flow_right;
-
-    fn val_t clamp(const val_t val, const val_t lower, const val_t upper)
-    {
-        return fmax(fmin(val, val_t(upper)), val_t(lower));
-    }
-
-    fn val_t calc_mix(const val_t v1, const val_t w1, const val_t v2, const val_t w2)
-    {
-        return (v1 * w1 + v2 * w2) / (w1 + w2);
-    }
-
-    fn void calc_chamber_ambient_temperature_pressure()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            chamber_static_temperature_k[i] = g_ambient_static_temperature_k;
-            chamber_static_pressure_pa[i] = g_ambient_static_pressure_pa;
-        }
-    }
-
-    fn void calc_chamber_ambient_mol_ratios()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            chamber_mol_ratio_n2[i] = val_t(0.78);
-            chamber_mol_ratio_o2[i] = val_t(0.21);
-            chamber_mol_ratio_ar[i] = val_t(0.01);
-        }
-    }
+    lane_t parcel_static_temperature_k;
 
     /*
      *     Ps * V
@@ -137,121 +65,44 @@ struct flow_s
      *     Rs * Ts
      */
 
-    fn void calc_chamber_ambient_masses()
+    fn void calc_chamber_ambients()
     {
-        for(int i = 0; i < N; i++)
+        for(int i = 0; i < H; i++)
+        {
+            chamber_static_temperature_k[i] = g_ambient_static_temperature_k;
+            chamber_static_pressure_pa[i] = g_ambient_static_pressure_pa;
+        }
+        for(int i = 0; i < H; i++)
         {
             const val_t Ps = chamber_static_pressure_pa[i];
             const val_t V = chamber_volume_m3[i];
-            const val_t Rs = chamber_specific_gas_constant_j_per_kg_k[i];
+            const val_t Rs = specific_gas_constant_j_per_kg_k;
             const val_t Ts = chamber_static_temperature_k[i];
-            chamber_mass_kg[i] = Ps * V / (Rs * Ts);
+            chamber_mass_kg[i] = (Ps * V) / (Rs * Ts);
         }
     }
 
     /*
-     *      ____
-     *      \
-     * cv = /___ mr[i] * M
-     *         i
+     *       m * Rs * T
+     * Ps = ------------
+     *           V
      */
 
-    fn void calc_chamber_molar_masses()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            chamber_molar_mass_kg_per_mol[i] =
-                chamber_mol_ratio_n2[i] * chamber_molar_mass_kg_per_mol_n2 +
-                chamber_mol_ratio_o2[i] * chamber_molar_mass_kg_per_mol_o2 +
-                chamber_mol_ratio_ar[i] * chamber_molar_mass_kg_per_mol_ar +
-                chamber_mol_ratio_c8h18[i] * chamber_molar_mass_kg_per_mol_c8h18 +
-                chamber_mol_ratio_co2[i] * chamber_molar_mass_kg_per_mol_co2 +
-                chamber_mol_ratio_h2o[i] * chamber_molar_mass_kg_per_mol_h2o;
-        }
-    }
-
-    /*
-     *      ____
-     *      \
-     * cv = /___ mr[i] * cv
-     *         i
-     */
-
-    fn void calc_chamber_molar_cvs()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            chamber_cv_j_per_mol_k[i] =
-                chamber_mol_ratio_n2[i] * chamber_cv_n2_j_per_mol_k +
-                chamber_mol_ratio_o2[i] * chamber_cv_o2_j_per_mol_k +
-                chamber_mol_ratio_ar[i] * chamber_cv_ar_j_per_mol_k +
-                chamber_mol_ratio_c8h18[i] * chamber_cv_c8h18_j_per_mol_k +
-                chamber_mol_ratio_co2[i] * chamber_cv_co2_j_per_mol_k +
-                chamber_mol_ratio_h2o[i] * chamber_cv_h2o_j_per_mol_k;
-        }
-    }
-
-    /*
-     *       R
-     * Rs = ---
-     *       M
-     */
-
-    fn void calc_chamber_specific_gas_constants()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            const val_t R = chamber_universal_gas_constant_j_per_mol_k;
-            const val_t M = chamber_molar_mass_kg_per_mol[i];
-            chamber_specific_gas_constant_j_per_kg_k[i] = R / M;
-        }
-    }
-
-    /*
-     *          R
-     * y = 1 + -----
-     *          cv
-     */
-
-    fn void calc_chamber_gamma()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            const val_t R = chamber_universal_gas_constant_j_per_mol_k;
-            const val_t cv = chamber_cv_j_per_mol_k[i];
-            chamber_gamma[i] = val_t(1.0) + R / cv;
-        }
-    }
-
-    /*
-     *      m
-     * n = ---
-     *      M
-     */
-
-    fn void calc_chamber_moles()
+    fn void calc_chamber_pressures()
     {
         for(int i = 0; i < N; i++)
         {
             const val_t m = chamber_mass_kg[i];
-            const val_t M = chamber_molar_mass_kg_per_mol[i];
-            chamber_moles[i] = m / M;
+            const val_t Rs = specific_gas_constant_j_per_kg_k;
+            const val_t Ts = chamber_static_temperature_k[i];
+            const val_t V = chamber_volume_m3[i];
+            chamber_static_pressure_pa[i] = m * Rs * Ts / V;
         }
     }
 
     /*
-     * cv(total) = n * cv
-     */
-
-    fn void calc_chamber_total_cvs()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            chamber_total_cv_j_per_k[i] = chamber_moles[i] * chamber_cv_j_per_mol_k[i];
-        }
-    }
-
-    /*
+     * Ignore dynamic conditions and assume Pt is upstream chamber static
+     * pressure and Ps is downstream chamber static pressure.
      *              ____________________
      *             /
      *            /            y - 1
@@ -273,7 +124,6 @@ struct flow_s
             const val_t Pt = fmax(Px, Py);
             const val_t Ps = fmin(Px, Py);
             const val_t direction = Px > Py ? val_t(1.0) : val_t(-1.0);
-            parcel_flow_right[i] = direction > val_t(0.0);
 
             /*
              *      y - 1    1.333 - 1                        1     1          __________
@@ -285,8 +135,10 @@ struct flow_s
 
             static_assert(nozzle_gamma == val_t(1.333), "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
             const val_t Y = sqrt(sqrt(Pt / Ps));
-            const val_t M = direction * sqrt(X * (Y - val_t(1.0)));
-            nozzle_mach[i] = clamp(M, val_t(-1.0), val_t(1.0));
+            const val_t M0 = direction * sqrt(X * (Y - val_t(1.0)));
+            const val_t M1 = fmax(M0, val_t(-1.0));
+            const val_t M2 = fmin(M1, val_t(+1.0));
+            nozzle_mach[i] = M2;
         }
     }
 
@@ -309,7 +161,7 @@ struct flow_s
     {
         for(int i = 0; i < N; i++)
         {
-            const val_t Rs = chamber_specific_gas_constant_j_per_kg_k[i];
+            const val_t Rs = specific_gas_constant_j_per_kg_k;
             const val_t Tt = chamber_static_temperature_k[i];
             const val_t M = nozzle_mach[i];
             const val_t X = nozzle_gamma * Rs * Tt;
@@ -335,7 +187,7 @@ struct flow_s
         for(int i = 0; i < N; i++)
         {
             const val_t Pt = chamber_static_pressure_pa[i];
-            const val_t Rs = chamber_specific_gas_constant_j_per_kg_k[i];
+            const val_t Rs = specific_gas_constant_j_per_kg_k;
             const val_t Tt = chamber_static_temperature_k[i];
             const val_t M = nozzle_mach[i];
             const val_t X = Pt / (Rs * Tt);
@@ -353,32 +205,6 @@ struct flow_s
         }
     }
 
-    fn void calc_parcel_property(lane_t& __restrict nozzle, const lane_t& __restrict chamber)
-    {
-        for(int i = 0; i < N; i++)
-        {
-            nozzle[i] = parcel_flow_right[i] ? chamber[i] : val_t(0.0);
-        }
-        for(int i = 0; i < N; i++)
-        {
-            const int j = i + 1;
-            nozzle[i] += parcel_flow_right[i] ? val_t(0.0) : chamber[j];
-        }
-    }
-
-    fn void calc_parcel_properties()
-    {
-        calc_parcel_property(parcel_molar_mass_kg_per_mol, chamber_molar_mass_kg_per_mol);
-        calc_parcel_property(parcel_cv_j_per_mol_k, chamber_cv_j_per_mol_k);
-        calc_parcel_property(parcel_mol_ratio_n2, chamber_mol_ratio_n2);
-        calc_parcel_property(parcel_mol_ratio_o2, chamber_mol_ratio_o2);
-        calc_parcel_property(parcel_mol_ratio_ar, chamber_mol_ratio_ar);
-        calc_parcel_property(parcel_mol_ratio_c8h18, chamber_mol_ratio_c8h18);
-        calc_parcel_property(parcel_mol_ratio_co2, chamber_mol_ratio_co2);
-        calc_parcel_property(parcel_mol_ratio_h2o, chamber_mol_ratio_h2o);
-        calc_parcel_property(parcel_static_temperature_k, chamber_static_temperature_k);
-    }
-
     /* .
      * m = ps A u
      *
@@ -393,127 +219,108 @@ struct flow_s
             const val_t u = nozzle_velocity_m_per_s[i];
             const val_t mdot = ps * A * u;
             nozzle_mass_flow_rate_kg_per_s[i] = mdot;
-            const val_t dm = mdot * g_dt_s;
-            parcel_mass_kg[i] = dm;
-            parcel_moles[i] = dm / parcel_molar_mass_kg_per_mol[i];
         }
     }
 
-    /*
-     *        nr1 n1 + nr2 n2
-     * nr1 = --------------------
-     *            n1 + n2
-     */
-
-    fn void calc_chamber_mol_ratios()
+    fn void calc_nozzle_parcels()
     {
         for(int i = 0; i < N; i++)
         {
-            chamber_mol_ratio_n2[i] = calc_mix(chamber_mol_ratio_n2[i], chamber_moles[i], parcel_mol_ratio_n2[i], parcel_moles[i]);
-            chamber_mol_ratio_o2[i] = calc_mix(chamber_mol_ratio_o2[i], chamber_moles[i], parcel_mol_ratio_o2[i], parcel_moles[i]);
-            chamber_mol_ratio_ar[i] = calc_mix(chamber_mol_ratio_ar[i], chamber_moles[i], parcel_mol_ratio_ar[i], parcel_moles[i]);
-            chamber_mol_ratio_c8h18[i] = calc_mix(chamber_mol_ratio_c8h18[i], chamber_moles[i], parcel_mol_ratio_c8h18[i], parcel_moles[i]);
-            chamber_mol_ratio_co2[i] = calc_mix(chamber_mol_ratio_co2[i], chamber_moles[i], parcel_mol_ratio_co2[i], parcel_moles[i]);
-            chamber_mol_ratio_h2o[i] = calc_mix(chamber_mol_ratio_h2o[i], chamber_moles[i], parcel_mol_ratio_h2o[i], parcel_moles[i]);
+            parcel_mass_kg[i] = nozzle_mass_flow_rate_kg_per_s[i] * g_dt_s;
         }
-    }
-
-    /*
-     * cv(total) = n * cv
-     */
-
-    fn void calc_parcel_total_cvs()
-    {
         for(int i = 0; i < N; i++)
         {
-            parcel_total_cv_j_per_k[i] = parcel_moles[i] * parcel_cv_j_per_mol_k[i];
+            const int j = i + 1;
+            const val_t Px = chamber_static_pressure_pa[i];
+            const val_t Py = chamber_static_pressure_pa[j];
+            const val_t Tx = chamber_static_temperature_k[i];
+            const val_t Ty = chamber_static_temperature_k[j];
+            parcel_static_temperature_k[i] = Px > Py ? Tx : Ty;
         }
     }
 
-    /*                   y
-     *               V1
-     * Ps2 = Ps1 * (----)
-     *               V2
-     */
-
-    /*                     y - 1
-     *                   (-------)
-     *                       y
-     *               Ps2
-     * Ts2 = Ts1 * (-----)
-     *               Ps1
-     */
-
-    fn void calc_new_chamber_static_states_from_compression_or_expansion()
+    fn void calc_chamber_temperatures()
     {
+        /*
+         * 1. Adiabatic Compression.
+         *
+         *                   y - 1
+         *               V1
+         * Ts2 = Ts1 * (----)
+         *               V2
+         */
+
         for(int i = 0; i < N; i++)
         {
             const val_t V1 = chamber_volume_m3[i];
             const val_t V2 = chamber_prev_volume_m3[i];
-            const val_t Ps1 = chamber_static_pressure_pa[i];
-            const val_t Ts1 = chamber_static_temperature_k[i];
-            const val_t y = chamber_gamma[i];
-            const val_t Ps2 = Ps1 * pow(V1 / V2, y);
-            chamber_static_pressure_pa[i] = Ps2;
-            chamber_static_temperature_k[i] = Ts1 * pow(Ps2 / Ps1, (y - val_t(1.0)) / y);
+            const val_t dv = V1 / V2;
+
+            /*                                     _____
+             *                         1          /
+             *      y = 1.333 - 1.0 = --- = _ 3  / term
+             * term                    3     \  /
+             *                                \/
+             */
+
+            static_assert(nozzle_gamma == val_t(1.333), "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
+            chamber_static_temperature_k[i] *= cbrt(dv);
         }
-    }
 
-    /*
-     *        n1 cv1 Ts1 + n2 cv2 Ts2
-     * Ts1 = -------------------------
-     *            n1 cv1 + n2 cv2
-     */
+        /*
+         * 2. Gas temperature mix (Simplified energy term).
+         *
+         *        (m2 - m3) * Ts2 + m1 * Ts1
+         * Ts2 = ----------------------------
+         *              m2 + m1 - m3
+         */
 
-    fn void calc_chamber_static_temperatures_from_gas_mixing()
-    {
+        /*
+         * +----+       +-----+       +----+ +----+
+         * |    |  m1   | m2  |  m3   |    | |    |
+         * |    | <---> |     | <---> |    | |    |
+         * |    |  Ts1  | Ts2 |  Ts2  |    | |    |
+         * +----+       +-----+       +----+ +----+
+         *
+         */
+
+        for(int j = 1; j < N; j++)
+        {
+            const int i = j - 1;
+            const int k = j + 1;
+            const val_t m1 = parcel_mass_kg[i];
+            const val_t m2 = chamber_mass_kg[j];
+            const val_t m3 = parcel_mass_kg[k];
+            const val_t Ts1 = parcel_static_temperature_k[i];
+            const val_t Ts2 = chamber_static_temperature_k[j];
+            const val_t Ts3 = parcel_static_temperature_k[k];
+            chamber_static_temperature_k[j] = ((m2 - m3) * Ts2 + m1 * Ts1) / (m2 + m1 - m3);
+        }
+
+        /* 3. Gas mass transfer (Simplified conservation of mass). */
+
         for(int i = 0; i < N; i++)
         {
-            chamber_static_temperature_k[i] = calc_mix(
-                chamber_static_temperature_k[i],
-                chamber_total_cv_j_per_k[i],
-                parcel_static_temperature_k[i],
-                parcel_total_cv_j_per_k[i]
-            );
+            const float m = parcel_mass_kg[i];
+            const int j = i + 1;
+            chamber_mass_kg[i] -= m;
+            chamber_mass_kg[j] += m;
         }
-    }
 
-    fn void calc_new_chamber_masses()
-    {
-        for(int i = 0; i < N; i++)
-        {
-            chamber_mass_kg[i] += parcel_mass_kg[i];
-        }
-    }
-
-    fn void calc_ambient_reset()
-    {
-        calc_chamber_ambient_temperature_pressure();
-        calc_chamber_ambient_mol_ratios();
-        calc_chamber_molar_masses();
-        calc_chamber_molar_cvs();
-        calc_chamber_gamma();
-        calc_chamber_specific_gas_constants();
-        calc_chamber_ambient_masses();
-        calc_chamber_moles();
+        /* 4. Skip momentum since static conditions largely dominate dynamic conditions.
+         *
+         * */
     }
 
     fn void calc_flow()
     {
-        calc_chamber_molar_masses();
-        calc_chamber_molar_cvs();
-        calc_chamber_gamma();
-        calc_chamber_specific_gas_constants();
-        calc_chamber_moles();
-        calc_new_chamber_static_states_from_compression_or_expansion();
+        calc_chamber_pressures();
         calc_nozzle_machs();
         calc_nozzle_velocities();
         calc_nozzle_static_densities();
-        calc_parcel_properties();
         calc_nozzle_mass_flow_rates();
-        //calc_parcel_total_cvs();
-        //calc_chamber_static_temperatures_from_gas_mixing();
-        //calc_new_chamber_masses();
+        calc_nozzle_parcels();
+        calc_chamber_temperatures();
     }
 };
 
@@ -838,14 +645,14 @@ struct engine_s : public ensim5_s
     fn void log_engine(const int x, const int y)
     {
         back[ensim5_diag_e::chamber_volume_m3              ].push_back(flow[x].chamber_volume_m3              [y]);
+        back[ensim5_diag_e::chamber_nozzle_flow_area_m2    ].push_back(flow[x].chamber_nozzle_flow_area_m2    [y]);
         back[ensim5_diag_e::chamber_static_pressure_pa     ].push_back(flow[x].chamber_static_pressure_pa     [y]);
         back[ensim5_diag_e::chamber_static_temperature_k   ].push_back(flow[x].chamber_static_temperature_k   [y]);
-        back[ensim5_diag_e::chamber_molar_mass_kg_per_mol  ].push_back(flow[x].chamber_molar_mass_kg_per_mol  [y]);
-        back[ensim5_diag_e::chamber_cv_j_per_mol_k         ].push_back(flow[x].chamber_cv_j_per_mol_k         [y]);
-        back[ensim5_diag_e::chamber_moles                  ].push_back(flow[x].chamber_moles                  [y]);
-        back[ensim5_diag_e::chamber_nozzle_flow_area_m2    ].push_back(flow[x].chamber_nozzle_flow_area_m2    [y]);
+        back[ensim5_diag_e::chamber_mass_kg                ].push_back(flow[x].chamber_mass_kg                [y]);
+        back[ensim5_diag_e::nozzle_mach                    ].push_back(flow[x].nozzle_mach                    [y]);
         back[ensim5_diag_e::nozzle_velocity_m_per_s        ].push_back(flow[x].nozzle_velocity_m_per_s        [y]);
         back[ensim5_diag_e::nozzle_static_density_kg_per_m3].push_back(flow[x].nozzle_static_density_kg_per_m3[y]);
+        back[ensim5_diag_e::nozzle_mass_flow_rate_kg_per_s ].push_back(flow[x].nozzle_mass_flow_rate_kg_per_s [y]);
     }
 
     fn void relay_volume()
@@ -871,7 +678,7 @@ struct engine_s : public ensim5_s
         remember_volume();
         for(int x = 0; x < W; x++)
         {
-            flow[x].calc_ambient_reset();
+            flow[x].calc_chamber_ambients();
         }
     }
 
@@ -919,29 +726,30 @@ std::unique_ptr<ensim5_s> new_ensim5_inline_8()
     auto engine = std::make_unique<engine_s<8, 9, 4>>();
     engine->crankshaft.mass_kg  = 0.1;
     engine->crankshaft.radius_m = 0.25;
-    engine->pistons.diameter_m                  = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.crank_throw_length_m        = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.connecting_rod_length_m     = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.connecting_rod_mass_kg      = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.head_mass_density_kg_per_m3 = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.head_compression_height_m   = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.head_clearance_height_m     = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->pistons.theta0_r                    = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.01 };
-    engine->flow[0].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
+    engine->pistons.diameter_m                  = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.crank_throw_length_m        = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.connecting_rod_length_m     = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.connecting_rod_mass_kg      = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.head_mass_density_kg_per_m3 = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.head_compression_height_m   = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.head_clearance_height_m     = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->pistons.theta0_r                    = { 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10 };
+    engine->flow[0].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[1].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[2].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[3].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[4].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[5].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[6].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+    engine->flow[7].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
+
     engine->flow[0].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[1].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[1].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[2].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[2].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[3].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[3].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[4].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[4].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[5].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[5].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[6].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[6].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
-    engine->flow[7].chamber_volume_m3           = { 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00 };
     engine->flow[7].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
     engine->reset_engine();
     return engine;

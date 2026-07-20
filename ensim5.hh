@@ -8,15 +8,15 @@
 
 enum class ensim5_diag_e : int
 {
-    chamber_volume_m3               = 0,
-    chamber_static_pressure_pa      = 1,
-    chamber_static_temperature_k    = 2,
-    chamber_molar_mass_kg_per_mol   = 3,
-    chamber_cv_j_per_mol_k          = 4,
-    chamber_moles                   = 5,
-    chamber_nozzle_flow_area_m2     = 6,
-    nozzle_velocity_m_per_s         = 7,
-    nozzle_static_density_kg_per_m3 = 8,
+    chamber_volume_m3,
+    chamber_nozzle_flow_area_m2,
+    chamber_static_pressure_pa,
+    chamber_static_temperature_k,
+    chamber_mass_kg,
+    nozzle_mach,
+    nozzle_velocity_m_per_s,
+    nozzle_static_density_kg_per_m3,
+    nozzle_mass_flow_rate_kg_per_s,
 };
 
 struct ensim5_diag_s

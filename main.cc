@@ -24,15 +24,15 @@ struct sdl_s
     int chamber_select_y = 0;
 
     const std::vector<const char*> plot_names = {
-        "Chamber Volume (m3)",
-        "Chamber Static Pressure (Pa)",
-        "Chamber Static Temperature (K)",
-        "Chamber Molar Mass (kg / mol)",
-        "Chamber CV (j / mol K)",
-        "Chamber Moles",
-        "Nozzle Flow Area (m2)",
-        "Nozzle Velocity (m / s)",
-        "Nozzle Static Density (kg / m3)",
+        "chamber_volume_m3",
+        "chamber_nozzle_flow_area_m2",
+        "chamber_static_pressure_pa",
+        "chamber_static_temperature_k",
+        "chamber_mass_kg",
+        "nozzle_mach",
+        "nozzle_velocity_m_per_s",
+        "nozzle_static_density_kg_per_m3",
+        "nozzle_mass_flow_rate_kg_per_s",
     };
 
     bool quit = false;
@@ -121,7 +121,7 @@ struct sdl_s
         const float min_val = *std::min_element(data.begin(), data.end());
         const float max_val = *std::max_element(data.begin(), data.end());
         const float range = max_val - min_val;
-        SDL_SetRenderDrawColor(renderer, 0x00, 0xAA, 0x00, 0xFF);
+        SDL_SetRenderDrawColor(renderer, 0x00, 0xFF, 0x00, 0xFF);
         for(size_t i = 0; i < data.size(); i++)
         {
             float normalized = 0.0f;
