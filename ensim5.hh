@@ -50,6 +50,7 @@ struct ensim5_s
     virtual int get_h() = 0;
     virtual int get_y() = 0;
     virtual ensim5_diag_s& get_diags() = 0;
+    virtual size_t get_size() = 0;
     virtual ~ensim5_s() = default;
 };
 

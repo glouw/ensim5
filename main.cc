@@ -193,4 +193,5 @@ int main()
         sdl.render();
         engine->run_engine(512, sdl.chamber_select_x, sdl.chamber_select_y);
     }
+    std::cout << engine->get_size() << std::endl;
 }

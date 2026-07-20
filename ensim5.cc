@@ -691,6 +691,7 @@ struct engine_s : public ensim5_s
     {
         for(int i = 0; i < steps; i++)
         {
+            remember_volume();
             crankshaft.angular_velocity_r_per_s = 500.0;
             const bool otto_cycled = crankshaft.calc_crankshaft(0.0);
             if(otto_cycled)
@@ -702,7 +703,6 @@ struct engine_s : public ensim5_s
             {
                 pistons.calc_pistons(flow[j], crankshaft);
             }
-            remember_volume();
             relay_volume();
             for(int j = 0; j < W; j++)
             {
@@ -719,6 +719,7 @@ struct engine_s : public ensim5_s
     fn int get_h() override { return H;  }
     fn int get_y() override { return PY; }
     fn ensim5_diag_s& get_diags() override { return front; }
+    fn size_t get_size() override { return sizeof *this; }
 };
 
 std::unique_ptr<ensim5_s> new_ensim5_inline_8()
@@ -742,7 +743,6 @@ std::unique_ptr<ensim5_s> new_ensim5_inline_8()
     engine->flow[5].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
     engine->flow[6].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
     engine->flow[7].chamber_volume_m3           = { 1000, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1000 };
-
     engine->flow[0].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
     engine->flow[1].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
     engine->flow[2].chamber_nozzle_flow_area_m2 = { 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01 };
