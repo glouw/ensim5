@@ -3,7 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <chrono>
-#include "ensim5.hh"
+#include "ensim.hh"
 
 struct sdl_s
 {
@@ -23,19 +23,6 @@ struct sdl_s
     const float font_p = 16;
     int chamber_select_x = 0;
     int chamber_select_y = 0;
-
-    const std::vector<const char*> plot_names = {
-        "chamber_volume_m3",
-        "chamber_nozzle_flow_area_m2",
-        "chamber_static_pressure_pa",
-        "chamber_static_temperature_k",
-        "chamber_mass_kg",
-        "nozzle_mach",
-        "nozzle_velocity_m_per_s",
-        "nozzle_static_density_kg_per_m3",
-        "nozzle_mass_flow_rate_kg_per_s",
-    };
-
     bool quit = false;
     SDL_Window* window;
     SDL_Renderer* renderer;
@@ -52,7 +39,7 @@ struct sdl_s
             std::terminate();
         }
         SDL_Init(SDL_INIT_VIDEO);
-        window = SDL_CreateWindow("ensim5", xres_p, yres_p, SDL_WINDOW_FULLSCREEN);
+        window = SDL_CreateWindow("ensim", xres_p, yres_p, SDL_WINDOW_FULLSCREEN);
         renderer = SDL_CreateRenderer(window, nullptr);
         cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR);
         SDL_SetCursor(cursor);
@@ -116,54 +103,81 @@ struct sdl_s
         SDL_RenderFillRect(renderer, &rect);
     }
 
-    std::pair<float, float> draw_plot_points(const std::vector<float>& data, const SDL_FRect& rect)
-    {
-        if(data.empty())
-        {
-            return {};
-        }
-        const float min_val = *std::min_element(data.begin(), data.end());
-        const float max_val = *std::max_element(data.begin(), data.end());
-        const float range = max_val - min_val;
-        SDL_SetRenderDrawColor(renderer, 0x00, 0xFF, 0x00, 0xFF);
-        for(size_t i = 0; i < data.size(); i++)
-        {
-            float normalized = 0.0f;
-            if(range != 0.0f)
-            {
-                normalized = ((data[i] - min_val) / range) * 2.0f - 1.0f;
-            }
-            float x = rect.x;
-            if(data.size() > 1)
-            {
-                x += ((float) i / (data.size() - 1)) * rect.w;
-            }
-            const float y = rect.y + rect.h * 0.5f - normalized * rect.h * 0.5f;
-            SDL_RenderPoint(renderer, x, y);
-        }
-        return { min_val, max_val };
-    }
-
     void draw_plots(ensim::diags& diags)
     {
         for(int y = 0; y < plots; y++)
         {
             std::vector<float> data = diags[y];
+            if(data.empty())
+            {
+                continue;
+            }
             const SDL_FRect rect = {
                 .x = plot_x_p,
                 .y = plot_y_p + y * plot_h_p,
                 .w = plot_w_p,
                 .h = plot_h_p,
             };
-            std::pair<float, float> bounds = draw_plot_points(data, rect);
+            const float min_val = *std::min_element(data.begin(), data.end());
+            const float max_val = *std::max_element(data.begin(), data.end());
+
+            /*
+             * Draw zero line.
+             *
+             */
+
+            if(max_val > min_val)
+            {
+                const float t = std::clamp((0.0f - min_val) / (max_val - min_val), 0.0f, 1.0f);
+                const float zero_y = rect.y + rect.h * (1.0f - t);
+                SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0x00, 0xFF);
+                SDL_RenderLine(renderer, rect.x, zero_y, rect.x + rect.w, zero_y);
+            }
+
+            /*
+             * Draw points.
+             *
+             */
+
+            const float range = max_val - min_val;
+            const size_t points = data.size();
+            const size_t max_points = plot_w_p;
+            const size_t point_count = std::min(points, max_points);
+            SDL_SetRenderDrawColor(renderer, 0x00, 0xFF, 0x00, 0xFF);
+            for(size_t i = 0; i < point_count; i++)
+            {
+                size_t index = i;
+                if(points > max_points)
+                {
+                    index = (i * (points - 1)) / (point_count - 1);
+                }
+                float normalized = 0.0f;
+                if(range != 0.0f)
+                {
+                    normalized = ((data[index] - min_val) / range) * 2.0f - 1.0f;
+                }
+                float x0 = rect.x;
+                if(point_count > 1)
+                {
+                    x0 += ((float) i / (point_count - 1)) * rect.w;
+                }
+                const float y0 = rect.y + rect.h * 0.5f - normalized * rect.h * 0.5f;
+                SDL_RenderPoint(renderer, x0, y0);
+            }
+
+            /*
+             * Draw bounding box.
+             *
+             */
+
             SDL_SetRenderDrawColor(renderer, 0xAA, 0xAA, 0xAA, 0xFF);
             SDL_RenderRect(renderer, &rect);
             SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
             const float xx = rect.x + margin_p;
             const float yy = rect.y + margin_p;
-            const std::string max_string = "max: " + std::to_string(bounds.second);
-            const std::string min_string = "min: " + std::to_string(bounds.first);
-            SDL_RenderDebugText(renderer, xx, yy + 0 * font_p, plot_names[y]);
+            const std::string max_string = "max: " + std::to_string(max_val);
+            const std::string min_string = "min: " + std::to_string(min_val);
+            SDL_RenderDebugText(renderer, xx, yy + 0 * font_p, ensim::diags::name[y]);
             SDL_RenderDebugText(renderer, xx, yy + 1 * font_p, max_string.data());
             SDL_RenderDebugText(renderer, xx, yy + 2 * font_p, min_string.data());
         }
@@ -186,7 +200,7 @@ struct sdl_s
 int main()
 {
     std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::engine::type::inline8);
-#ifdef ENSIM5_PERF
+#ifdef ENSIM_PERF
     auto t0 = std::chrono::high_resolution_clock::now();
     engine->run(44800);
     auto t1 = std::chrono::high_resolution_clock::now();

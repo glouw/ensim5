@@ -1,4 +1,4 @@
-#include "ensim5.hh"
+#include "ensim.hh"
 
 #include <cmath>
 #include <array>
@@ -348,7 +348,7 @@ namespace ensim
 
             for(int i = 0; i < N; i++)
             {
-                chamber_mass_kg[i] = fmax(chamber_mass_kg[i], 1e-5);
+                chamber_mass_kg[i] = fmax(chamber_mass_kg[i], val(1e-5));
             }
         }
 
@@ -693,15 +693,9 @@ namespace ensim
 
         void log(const int x, const int y)
         {
-            back[diags::channel::chamber_volume_m3              ].push_back(flow[x].chamber_volume_m3              [y]);
-            back[diags::channel::chamber_nozzle_flow_area_m2    ].push_back(flow[x].chamber_nozzle_flow_area_m2    [y]);
-            back[diags::channel::chamber_static_pressure_pa     ].push_back(flow[x].chamber_static_pressure_pa     [y]);
-            back[diags::channel::chamber_static_temperature_k   ].push_back(flow[x].chamber_static_temperature_k   [y]);
-            back[diags::channel::chamber_mass_kg                ].push_back(flow[x].chamber_mass_kg                [y]);
-            back[diags::channel::nozzle_mach                    ].push_back(flow[x].nozzle_mach                    [y]);
-            back[diags::channel::nozzle_velocity_m_per_s        ].push_back(flow[x].nozzle_velocity_m_per_s        [y]);
-            back[diags::channel::nozzle_static_density_kg_per_m3].push_back(flow[x].nozzle_static_density_kg_per_m3[y]);
-            back[diags::channel::nozzle_mass_flow_rate_kg_per_s ].push_back(flow[x].nozzle_mass_flow_rate_kg_per_s [y]);
+            #define X(name) back[diags::channel::name].push_back(flow[x].name[y]);
+            ENSIM_DIAGS_LIST(X)
+            #undef X
         }
 
         void relay_volume()
@@ -741,7 +735,7 @@ namespace ensim
             for(int i = 0; i < steps; i++)
             {
                 remember_volume();
-                crankshaft.angular_velocity_r_per_s = 500.0;
+                crankshaft.angular_velocity_r_per_s = 100.0;
                 const bool otto_cycled = crankshaft.calc(0.0);
                 if(otto_cycled)
                 {
@@ -803,6 +797,19 @@ namespace ensim
             this->pistons.head_mass_density_kg_per_m3.fill(0.1);
             this->pistons.head_compression_height_m.fill(0.1);
             this->pistons.head_clearance_height_m.fill(0.01);
+
+            /*
+             * Piston thetas are evenly spaced.
+             *
+             */
+
+            val theta0_r = 0.0;
+            for(auto& theta : this->pistons.theta0_r)
+            {
+                theta = theta0_r;
+                theta0_r += otto_cycle_r / get_w();
+            }
+
             for(auto& flow : this->flow)
             {
                 flow.chamber_volume_m3 = {
