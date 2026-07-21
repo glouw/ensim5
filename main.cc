@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 #include "ensim5.hh"
 
 struct sdl_s
@@ -38,6 +39,7 @@ struct sdl_s
     bool quit = false;
     SDL_Window* window;
     SDL_Renderer* renderer;
+    SDL_Cursor* cursor;
 
     sdl_s(const int engine_w, const int engine_h, const int engine_y)
         : engine_w(engine_w)
@@ -52,6 +54,8 @@ struct sdl_s
         SDL_Init(SDL_INIT_VIDEO);
         window = SDL_CreateWindow("ensim5", xres_p, yres_p, SDL_WINDOW_FULLSCREEN);
         renderer = SDL_CreateRenderer(window, nullptr);
+        cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR);
+        SDL_SetCursor(cursor);
     }
 
     void poll_quit()
@@ -140,7 +144,7 @@ struct sdl_s
         return { min_val, max_val };
     }
 
-    void draw_plots(ensim5_diag_s& diags)
+    void draw_plots(ensim::diags& diags)
     {
         for(int y = 0; y < plots; y++)
         {
@@ -174,13 +178,21 @@ struct sdl_s
     {
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
+        SDL_DestroyCursor(cursor);
         SDL_Quit();
     }
 };
 
 int main()
 {
-    std::unique_ptr<ensim5_s> engine = new_ensim5_inline_8();
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::engine::type::inline8);
+#ifdef ENSIM5_PERF
+    auto t0 = std::chrono::high_resolution_clock::now();
+    engine->run(44800);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0);
+    std::cout << "Watermark Percent: " << dt.count() / 1000.0 << std::endl;
+#else
     sdl_s sdl(engine->get_w(), engine->get_h(), engine->get_y());
     while(!sdl.quit)
     {
@@ -191,7 +203,8 @@ int main()
         sdl.draw_chamber_selection();
         sdl.draw_plots(engine->get_diags());
         sdl.render();
-        engine->run_engine(512, sdl.chamber_select_x, sdl.chamber_select_y);
+        engine->run(512, sdl.chamber_select_x, sdl.chamber_select_y);
     }
     std::cout << engine->get_size() << std::endl;
+#endif
 }
