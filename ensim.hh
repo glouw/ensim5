@@ -1,5 +1,5 @@
-#ifndef __ENSIM5_HH__
-#define __ENSIM5_HH__
+#ifndef __ENSIM_HH__
+#define __ENSIM_HH__
 
 #include <cstddef>
 #include <memory>
@@ -10,16 +10,22 @@ namespace ensim
 {
     struct diags
     {
-        #define ENSIM_DIAGS_LIST(X)            \
-            X(chamber_volume_m3)               \
-            X(chamber_nozzle_flow_area_m2)     \
-            X(chamber_static_pressure_pa)      \
-            X(chamber_static_temperature_k)    \
-            X(chamber_mass_kg)                 \
-            X(nozzle_mach)                     \
-            X(nozzle_velocity_m_per_s)         \
-            X(nozzle_static_density_kg_per_m3) \
-            X(nozzle_mass_flow_rate_kg_per_s)
+        #define ENSIM_FLUIDS_LIST(X)          \
+            X(chamber_volume_m3)              \
+            X(chamber_nozzle_open_ratio)      \
+            X(chamber_mass_kg)                \
+            X(chamber_static_pressure_pa)     \
+            X(chamber_static_temperature_k)   \
+            X(nozzle_mach)                    \
+            X(nozzle_mass_flow_rate_kg_per_s) \
+
+        #define ENSIM_PISTONS_LIST(X) \
+            X(gas_torque_n_m)         \
+            X(inertia_torque_n_m)     \
+
+        #define ENSIM_DIAGS_LIST(X) \
+            ENSIM_FLUIDS_LIST(X)    \
+            ENSIM_PISTONS_LIST(X)   \
 
         enum class channel : int
         {
@@ -48,13 +54,14 @@ namespace ensim
     struct engine
     {
         enum class type : int { inline8 };
-        virtual void run(const int steps, const int x=-1, const int y=-1) = 0;
+        virtual void run(const int steps, const unsigned x=-1, const unsigned y=-1) = 0;
         virtual void reset() = 0;
-        virtual int get_w() = 0;
-        virtual int get_h() = 0;
-        virtual int get_y() = 0;
+        virtual int width() = 0;
+        virtual int height() = 0;
+        virtual int piston_y() = 0;
+        virtual size_t bytes() = 0;
         virtual diags& get_diags() = 0;
-        virtual size_t get_size() = 0;
+        virtual std::vector<std::vector<float>> get_port_open_ratios() = 0;
         virtual ~engine() = default;
     };
 

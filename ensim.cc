@@ -7,7 +7,7 @@
 
 namespace ensim
 {
-    using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::fmod, std::cbrt;
+    using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::cbrt;
 
     void diags::clear()
     {
@@ -52,6 +52,16 @@ namespace ensim
     consteval bool is_odd(const int value) { return value % 2 == 1; }
     consteval bool is_evn(const int value) { return value % 2 == 0; }
 
+    constexpr val clamp(const val value, const val lower, const val upper)
+    {
+        return fmax(fmin(value, upper), lower);
+    }
+
+    constexpr val modulos(const val value, const val by)
+    {
+        return value - trunc(value / by) * by;
+    }
+
     template<int H>
     requires(is_odd(H))
     struct flow
@@ -65,20 +75,21 @@ namespace ensim
         static constexpr val molar_mass_kg_per_mol = 0.023;
         static constexpr val specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
 
-        using lane_t = std::array<val, H>;
+        using lane = std::array<val, H>;
 
-        lane_t chamber_prev_volume_m3;
-        lane_t chamber_volume_m3;
-        lane_t chamber_nozzle_flow_area_m2;
-        lane_t chamber_static_pressure_pa;
-        lane_t chamber_static_temperature_k;
-        lane_t chamber_mass_kg;
-        lane_t nozzle_mach;
-        lane_t nozzle_velocity_m_per_s;
-        lane_t nozzle_static_density_kg_per_m3;
-        lane_t nozzle_mass_flow_rate_kg_per_s;
-        lane_t parcel_mass_kg;
-        lane_t parcel_static_temperature_k;
+        lane chamber_prev_volume_m3;
+        lane chamber_volume_m3;
+        lane chamber_nozzle_flow_area_m2;
+        lane chamber_nozzle_open_ratio;
+        lane chamber_static_pressure_pa;
+        lane chamber_static_temperature_k;
+        lane chamber_mass_kg;
+        lane nozzle_mach;
+        lane nozzle_velocity_m_per_s;
+        lane nozzle_static_density_kg_per_m3;
+        lane nozzle_mass_flow_rate_kg_per_s;
+        lane parcel_mass_kg;
+        lane parcel_static_temperature_k;
 
         /*
          *     Ps * V
@@ -156,10 +167,8 @@ namespace ensim
 
                 static_assert(nozzle_gamma == val(1.333), "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
                 const val Y = sqrt(sqrt(Pt / Ps));
-                const val M0 = direction * sqrt(X * (Y - val(1.0)));
-                const val M1 = fmax(M0, val(-1.0));
-                const val M2 = fmin(M1, val(+1.0));
-                nozzle_mach[i] = M2;
+                const val M = direction * sqrt(X * (Y - val(1.0)));
+                nozzle_mach[i] = clamp(M, -1.0, 1.0);
             }
         }
 
@@ -236,7 +245,7 @@ namespace ensim
             for(int i = 0; i < N; i++)
             {
                 const val ps = nozzle_static_density_kg_per_m3[i];
-                const val A = chamber_nozzle_flow_area_m2[i];
+                const val A = chamber_nozzle_open_ratio[i] * chamber_nozzle_flow_area_m2[i];
                 const val u = nozzle_velocity_m_per_s[i];
                 const val mdot = ps * A * u;
                 nozzle_mass_flow_rate_kg_per_s[i] = mdot;
@@ -281,6 +290,7 @@ namespace ensim
 
             for(int i = 0; i < N; i++)
             {
+                const val Ts1 = chamber_static_temperature_k[i];
                 const val V1 = chamber_volume_m3[i];
                 const val V2 = chamber_prev_volume_m3[i];
                 const val dv = V1 / V2;
@@ -293,7 +303,7 @@ namespace ensim
                  */
 
                 static_assert(nozzle_gamma == val(1.333), "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
-                chamber_static_temperature_k[i] *= cbrt(dv);
+                chamber_static_temperature_k[i] = Ts1 * cbrt(dv);
             }
         }
 
@@ -333,10 +343,10 @@ namespace ensim
         {
             for(int i = 0; i < N; i++)
             {
-                const float m = parcel_mass_kg[i];
+                const val dm = parcel_mass_kg[i];
                 const int j = i + 1;
-                chamber_mass_kg[i] -= m;
-                chamber_mass_kg[j] += m;
+                chamber_mass_kg[i] -= dm;
+                chamber_mass_kg[j] += dm;
             }
 
             /*
@@ -404,8 +414,8 @@ namespace ensim
 
         fn bool otto_cycled()
         {
-            const val t0 = fmod(last_theta_r, otto_cycle_r);
-            const val t1 = fmod(theta_r, otto_cycle_r);
+            const val t0 = modulos(last_theta_r, otto_cycle_r);
+            const val t1 = modulos(theta_r, otto_cycle_r);
             return t0 > t1;
         }
 
@@ -431,8 +441,44 @@ namespace ensim
         }
     };
 
+    template<int W>
+    struct simple_cam
+    {
+        using lane = std::array<val, W>;
+        lane engage_r;
+        lane ramp_r;
+        lane open_ratio;
+
+        fn void calc(const val crankshaft_theta_r)
+        {
+            for(int i = 0; i < W; i++)
+            {
+                val mod_engage_r = modulos(engage_r[i], otto_cycle_r);
+                mod_engage_r += (mod_engage_r < val(0.0))
+                    ? otto_cycle_r
+                    : val(0.0);
+                val mod_theta_r = modulos(crankshaft_theta_r, otto_cycle_r);
+                mod_theta_r += (mod_theta_r < mod_engage_r)
+                    ? otto_cycle_r
+                    : val(0.0);
+                const val open_r = mod_theta_r - mod_engage_r;
+                const val at_r = open_r / ramp_r[i];
+                const val a = at_r * at_r * at_r * at_r;
+                const val b = at_r * a;
+                const val c = at_r * b;
+                const val d = at_r * c;
+                const val A = val(35.0) * a;
+                const val B = val(84.0) * b;
+                const val C = val(70.0) * c;
+                const val D = val(20.0) * d;
+                const val R = clamp(A - B + C - D, val(0.0), val(1.0));
+                open_ratio[i] = mod_theta_r < mod_engage_r ? val(0.0) : R;
+            }
+        }
+    };
+
     template<int W, int PY>
-    struct pistons
+    struct inline_pistons
     {
         /* ------- + block_deck_surface_m
          *         | head_clearance_height_m
@@ -453,38 +499,38 @@ namespace ensim
          *    o    + origin
          */
 
-        using lane_t = std::array<val, W>;
+        using lane = std::array<val, W>;
 
-        lane_t diameter_m;
-        lane_t crank_throw_length_m;
-        lane_t connecting_rod_length_m;
-        lane_t connecting_rod_mass_kg;
-        lane_t head_mass_density_kg_per_m3;
-        lane_t head_compression_height_m;
-        lane_t head_clearance_height_m;
-        lane_t theta0_r;
-        lane_t theta_r;
-        lane_t sint;
-        lane_t cost;
-        lane_t pin_x_m;
-        lane_t pin_y_m;
-        lane_t bearing_x_m;
-        lane_t bearing_y_m;
-        lane_t volumes_m3;
-        lane_t head_mass_kg;
-        lane_t moment_of_inertia_kg_m2;
-        lane_t gas_torque_n_m;
-        lane_t inertia_torque_n_m;
+        lane diameter_m;
+        lane crank_throw_length_m;
+        lane connecting_rod_length_m;
+        lane connecting_rod_mass_kg;
+        lane head_mass_density_kg_per_m3;
+        lane head_compression_height_m;
+        lane head_clearance_height_m;
+        lane theta0_r;
+        lane theta_r;
+        lane sint;
+        lane cost;
+        lane pin_x_m;
+        lane pin_y_m;
+        lane bearing_x_m;
+        lane bearing_y_m;
+        lane volumes_m3;
+        lane head_mass_kg;
+        lane moment_of_inertia_kg_m2;
+        lane gas_torque_n_m;
+        lane inertia_torque_n_m;
 
         /*
          * t = t0 + t1
          */
 
-        fn void calc_thetas(const crankshaft& __restrict crankshaft)
+        fn void calc_thetas(const val crankshaft_theta_r)
         {
             for(int i = 0; i < W; i++)
             {
-                theta_r[i] = theta0_r[i] + crankshaft.theta_r;
+                theta_r[i] = crankshaft_theta_r - theta0_r[i];
             }
         }
 
@@ -588,11 +634,11 @@ namespace ensim
          *                           l
          */
 
-        fn void calc_gas_torques(const auto& __restrict flow)
+        fn void calc_gas_torques(const std::array<val, W>& static_pressures_pa)
         {
             for(int i = 0; i < W; i++)
             {
-                const val Pg = flow.chamber_static_pressure_pa[PY];
+                const val Pg = static_pressures_pa[i];
                 const val A = val(M_PI) * diameter_m[i] * diameter_m[i];
                 const val r = crank_throw_length_m[i];
                 const val l = connecting_rod_length_m[i];
@@ -620,14 +666,14 @@ namespace ensim
          *
          */
 
-        fn void calc_inertia_torques(const crankshaft& __restrict crankshaft)
+        fn void calc_inertia_torques(const val crankshaft_angular_velocity_r_per_s)
         {
             for(int i = 0; i < W; i++)
             {
                 const val r = crank_throw_length_m[i];
                 const val l = connecting_rod_length_m[i];
                 const val I = moment_of_inertia_kg_m2[i];
-                const val w = crankshaft.angular_velocity_r_per_s;
+                const val w = crankshaft_angular_velocity_r_per_s;
                 const val t = theta_r[i];
                 const val rl = r / l;
                 const val s = sint[i];
@@ -639,29 +685,32 @@ namespace ensim
             }
         }
 
-        fn void calc_volumetrics(const crankshaft& __restrict crankshaft)
+        fn void calc_volumetrics(const val crankshaft_theta_r)
         {
-            calc_thetas(crankshaft);
+            calc_thetas(crankshaft_theta_r);
             calc_sin_cos();
             calc_positions();
             calc_volumes();
         }
 
-        fn void calc(const auto& __restrict flow, const crankshaft& __restrict crankshaft)
+        fn void calc(
+            const std::array<val, W>& static_pressures_pa,
+            const val crankshaft_theta_r,
+            const val crankshaft_angular_velocity_r_per_s)
         {
-            calc_volumetrics(crankshaft);
+            calc_volumetrics(crankshaft_theta_r);
             calc_masses();
             calc_moments_of_inertia();
-            calc_gas_torques(flow);
-            calc_inertia_torques(crankshaft);
+            calc_gas_torques(static_pressures_pa);
+            calc_inertia_torques(crankshaft_angular_velocity_r_per_s);
         }
     };
 
     template<typename... T>
-    concept aggregate_of = (std::is_aggregate_v<T> && ...);
+    concept aggregate_of = (std::is_aggregate_v<T>&& ...);
 
-    template<int W, int H, int PY>
-    requires(aggregate_of<crankshaft, pistons<W, PY>, flow<H>>)
+    template<int W, int H, int PY, template<int, int> class P, template<int> class C>
+    requires(aggregate_of<crankshaft, P<W, PY>, flow<H>, C<W>>)
     struct as_engine : engine
     {
         /*
@@ -686,24 +735,52 @@ namespace ensim
          */
 
         crankshaft crankshaft = {};
-        pistons<W, PY> pistons = {};
+        P<W, PY> pistons = {};
+        C<W> inlet_cam = {};
+        C<W> outlet_cam = {};
         std::array<flow<H>, W> flow = {};
-        diags back;
-        diags front;
+        diags back, front;
 
-        void log(const int x, const int y)
+        void log_at(const unsigned x, const unsigned y)
         {
-            #define X(name) back[diags::channel::name].push_back(flow[x].name[y]);
-            ENSIM_DIAGS_LIST(X)
-            #undef X
+            if(x < W && y < H)
+            {
+                #define X(name) back[diags::channel::name].push_back(flow[x].name[y]);
+                ENSIM_FLUIDS_LIST(X)
+                #undef X
+                if(y == PY)
+                {
+                    #define X(name) back[diags::channel::name].push_back(pistons.name[x]);
+                    ENSIM_PISTONS_LIST(X)
+                    #undef X
+                }
+            }
         }
 
-        void relay_volume()
+        void relay_chamber_volumes()
         {
             for(int x = 0; x < W; x++)
             {
                 flow[x].chamber_volume_m3[PY] = pistons.volumes_m3[x];
             }
+        }
+
+        void relay_piston_flow_areas()
+        {
+            for(int x = 0; x < W; x++)
+            {
+                flow[x].chamber_nozzle_open_ratio[PY - 1] = inlet_cam.open_ratio[x];
+            }
+            for(int x = 0; x < W; x++)
+            {
+                flow[x].chamber_nozzle_open_ratio[PY + 0] = outlet_cam.open_ratio[x];
+            }
+        }
+
+        void relay_state()
+        {
+            relay_chamber_volumes();
+            relay_piston_flow_areas();
         }
 
         void remember_volume()
@@ -716,8 +793,8 @@ namespace ensim
 
         void reset() override
         {
-            pistons.calc_volumetrics(crankshaft);
-            relay_volume();
+            pistons.calc_volumetrics(crankshaft.theta_r);
+            relay_state();
             remember_volume();
             for(int x = 0; x < W; x++)
             {
@@ -725,115 +802,106 @@ namespace ensim
             }
         }
 
-        bool in_bounds(const int x, const int y)
+        void run_crankshaft()
         {
-            return x >= 0 && y >= 0 && x < W && y < H;
+            crankshaft.angular_velocity_r_per_s = 100.0;
+            const bool otto_cycled = crankshaft.calc(0.0);
+            if(otto_cycled)
+            {
+                std::swap(front, back);
+                back.clear();
+            }
         }
 
-        void run(const int steps, const int x, const int y) override
+        void run_cams(const val crankshaft_theta_r)
+        {
+            inlet_cam.calc(crankshaft_theta_r);
+            outlet_cam.calc(crankshaft_theta_r);
+        }
+
+        void run_pistons()
+        {
+            std::array<val, W> static_pressures_pa;
+            for(int x = 0; x < W; x++)
+            {
+                static_pressures_pa[x] = flow[x].chamber_static_pressure_pa[PY];
+            }
+            pistons.calc(static_pressures_pa, crankshaft.theta_r, crankshaft.angular_velocity_r_per_s);
+        }
+
+        void run_flow()
+        {
+            for(int x = 0; x < W; x++)
+            {
+                flow[x].calc();
+            }
+        }
+
+        void run(const int steps, const unsigned x, const unsigned y) override
         {
             for(int i = 0; i < steps; i++)
             {
                 remember_volume();
-                crankshaft.angular_velocity_r_per_s = 100.0;
-                const bool otto_cycled = crankshaft.calc(0.0);
-                if(otto_cycled)
-                {
-                    std::swap(front, back);
-                    back.clear();
-                }
-                for(int j = 0; j < W; j++)
-                {
-                    pistons.calc(flow[j], crankshaft);
-                }
-                relay_volume();
-                for(int j = 0; j < W; j++)
-                {
-                    flow[j].calc();
-                }
-                if(in_bounds(x, y))
-                {
-                    log(x, y);
-                }
+                run_crankshaft();
+                run_cams(crankshaft.theta_r);
+                run_pistons();
+                relay_state();
+                run_flow();
+                log_at(x, y);
             }
         }
 
-        int get_w() override
-        {
-            return W;
-        }
+        int width() override { return W; }
+        int height() override { return H; }
+        int piston_y() override { return PY; }
+        size_t bytes() override { return sizeof *this; }
+        diags& get_diags() override { return front; }
 
-        int get_h() override
+        std::vector<std::vector<float>> get_port_open_ratios() override
         {
-            return H;
-        }
-
-        int get_y() override
-        {
-            return PY;
-        }
-
-        diags& get_diags() override
-        {
-            return front;
-        }
-
-        size_t get_size() override
-        {
-            return sizeof *this;
+            std::vector<std::vector<float>> open_ratios;
+            open_ratios.resize(height());
+            for(auto& row : open_ratios)
+            {
+                row.resize(width());
+            }
+            for(int y = 0; y < H; y++)
+            for(int x = 0; x < W; x++)
+            {
+                open_ratios[y][x] = flow[x].chamber_nozzle_open_ratio[y];
+            }
+            return open_ratios;
         }
     };
 
-    struct inline8 : as_engine<8, 9, 4>
+    struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam>
     {
         inline8()
         {
-            this->crankshaft.mass_kg  = 0.1;
-            this->crankshaft.radius_m = 0.25;
-            this->pistons.diameter_m.fill(0.1);
-            this->pistons.crank_throw_length_m.fill(0.1);
+            this->crankshaft.mass_kg = 25.3;
+            this->crankshaft.radius_m = 0.031;
+            this->pistons.diameter_m.fill(0.065);
+            this->pistons.crank_throw_length_m.fill(0.038);
             this->pistons.connecting_rod_length_m.fill(0.1);
-            this->pistons.connecting_rod_mass_kg.fill(0.1);
-            this->pistons.head_mass_density_kg_per_m3.fill(0.1);
-            this->pistons.head_compression_height_m.fill(0.1);
-            this->pistons.head_clearance_height_m.fill(0.01);
-
-            /*
-             * Piston thetas are evenly spaced.
-             *
-             */
-
+            this->pistons.connecting_rod_mass_kg.fill(0.4);
+            this->pistons.head_mass_density_kg_per_m3.fill(7800);
+            this->pistons.head_compression_height_m.fill(0.018);
+            this->pistons.head_clearance_height_m.fill(0.007);
+            inlet_cam.ramp_r.fill(M_PI / 2.0);
+            outlet_cam.ramp_r.fill(M_PI / 2.0);
             val theta0_r = 0.0;
-            for(auto& theta : this->pistons.theta0_r)
+            for(int i = 0; i < width(); i++)
             {
-                theta = theta0_r;
-                theta0_r += otto_cycle_r / get_w();
+                this->pistons.theta0_r[i] = theta0_r;
+                this->inlet_cam.engage_r[i] = theta0_r;
+                this->outlet_cam.engage_r[i] = theta0_r + 3.0 * M_PI;
+                theta0_r += otto_cycle_r / width();
             }
-
             for(auto& flow : this->flow)
             {
-                flow.chamber_volume_m3 = {
-                    resevoir_volume_m3,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    resevoir_volume_m3,
-                };
-                flow.chamber_nozzle_flow_area_m2 = {
-                    0.01,
-                    0.01,
-                    0.01,
-                    0.01,
-                    0.01,
-                    0.01,
-                    0.01,
-                    0.01,
-                    0.01,
-                };
+                flow.chamber_nozzle_open_ratio.fill(1.0);
+                flow.chamber_volume_m3 = { resevoir_volume_m3, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, resevoir_volume_m3 };
+                flow.chamber_nozzle_flow_area_m2.fill(0.001);
             }
         }
     };

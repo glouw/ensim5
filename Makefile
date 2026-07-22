@@ -1,4 +1,4 @@
-CFLAGS = -O3 -ffast-math -march=native -g
+CFLAGS = -O3 -ffast-math -march=native -g -fsanitize=address,undefined
 WFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wpedantic
 CC = clang++ -std=c++20
 LDFLAGS = -lSDL3
