@@ -1,16 +1,30 @@
-CFLAGS = -O3 -ffast-math -march=native -g -fsanitize=address,undefined
+ASANFLAGS = #-fsanitize=address,undefined
+CFLAGS = -O2 -ffast-math -march=native -g
 WFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wpedantic
 CC = clang++ -std=c++20
 LDFLAGS = -lSDL3
-ENSIM_PERF = #-DENSIM_PERF
+OUT = ensim
+ASM = ensim.asm
+OBJS = ensim.o main.o
+DEPS = ensim.hh Makefile
+PERF = perf stat -d -d -d
+DUMP = objdump -dr -C
 
-all:
-	$(CC) $(CFLAGS) $(WFLAGS) ensim.cc -c
-	$(CC) $(CFLAGS) $(WFLAGS) $(ENSIM_PERF) $(LDFLAGS) main.cc ensim.o
-	objdump -dr -C ensim.o > out.asm
-	perf stat -d -d -d ./a.out 44800
+run: all
+	./$(OUT)
+
+perf: all
+	$(PERF) ./$(OUT) --perf
+
+all: $(OBJS)
+	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(LDFLAGS) $^ -o $(OUT)
+
+main.o: main.cc $(DEPS)
+	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(CPPFLAGS) $< -c
+
+ensim.o: ensim.cc $(DEPS)
+	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(CPPFLAGS) $< -c
+	$(DUMP) $@ > $(ASM)
 
 clean:
-	rm out.asm
-	rm a.out
-	rm ensim.o
+	rm -f $(ASM) $(OUT) $(OBJS)
