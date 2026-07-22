@@ -13,11 +13,13 @@ namespace ensim
     static constexpr double pi = std::numbers::pi_v<double>;
     static constexpr int sample_rate_hz = 48000;
     static constexpr double dt_s = 1.0 / sample_rate_hz;
-    static constexpr double ambient_static_temperature_k = 293.0;
-    static constexpr double ambient_static_pressure_pa = 101325.0;
     static constexpr double otto_cycle_r = 4.0 * pi;
-    static constexpr double otto_cam_cycle_r = 3.0 * pi;
+    static constexpr double otto_intake_cycle_r = 0.0 * pi;
+    static constexpr double otto_compression_cycle_r = 1.0 * pi;
+    static constexpr double otto_combustion_cycle_r = 2.0 * pi;
+    static constexpr double otto_exhaust_cycle_r = 3.0 * pi;
     static constexpr double resevoir_volume_m3 = 1e9;
+    static constexpr double perfect_afr_mol_ratio = 12.5;
 
     consteval bool is_odd(const int value) { return value % 2 == 1; }
     consteval bool is_evn(const int value) { return value % 2 == 0; }
@@ -44,6 +46,11 @@ namespace ensim
         static constexpr double cv_j_per_mol_k = universal_gas_constant_j_per_mol_k / (nozzle_gamma - 1.0);
         static constexpr double molar_mass_kg_per_mol = 0.023;
         static constexpr double specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
+        static constexpr double ambient_static_temperature_k = 293.0;
+        static constexpr double ambient_static_pressure_pa = 101325.0;
+        static constexpr double ambient_o2_ratio = 0.21;
+        static constexpr double ambient_inert_ratio = 0.79;
+        static constexpr double ambient_c8h18_ratio = 0.0;
 
         using lane = std::array<double, H>;
 
@@ -54,6 +61,9 @@ namespace ensim
         lane chamber_static_pressure_pa;
         lane chamber_static_temperature_k;
         lane chamber_mass_kg;
+        lane chamber_o2_ratio;
+        lane chamber_inert_ratio;
+        lane chamber_c8h18_ratio;
         lane nozzle_mach;
         lane nozzle_velocity_m_per_s;
         lane nozzle_static_density_kg_per_m3;
@@ -73,6 +83,9 @@ namespace ensim
             {
                 chamber_static_temperature_k[i] = ambient_static_temperature_k;
                 chamber_static_pressure_pa[i] = ambient_static_pressure_pa;
+                chamber_o2_ratio[i] = ambient_o2_ratio;
+                chamber_inert_ratio[i] = ambient_inert_ratio;
+                chamber_c8h18_ratio[i] = ambient_c8h18_ratio;
             }
             for(int i = 0; i < H; i++)
             {
@@ -280,15 +293,15 @@ namespace ensim
         /*
          * ---> is positive (+) convention
          *
-         * +----+      +-----+       +----+     +----+
-         * |    | m1   | m2  |  m3   |    |     |    |
-         * |    | ---> |     |  ---> |    | ... |    |
-         * |    | Ts1  | Ts2 |  Ts2  |    |     |    |
-         * +----+      +-----+       +----+     +----+
+         * +----+      +-----+      +----+     +----+
+         * |    | mi   | mj  | mk   |    |     |    |
+         * |    | ---> |     | ---> |    | ... |    |
+         * |    | Tsi  | Tsj | Tsk  |    |     |    |
+         * +----+      +-----+      +----+     +----+
          *
-         *        m2 Ts2 + m1 Ts1 - m3 Ts3
-         * Ts2 = --------------------------
-         *              m2 + m1 - m3
+         *        mj Tsj + mi Tsi - mk Tsk
+         * Tsj = --------------------------
+         *              mj + mi - mk
          *
          */
 
@@ -298,13 +311,51 @@ namespace ensim
             {
                 const int i = j - 1;
                 const int k = j + 1;
-                const double m1 = parcel_mass_kg[i];
-                const double m2 = chamber_mass_kg[j];
-                const double m3 = parcel_mass_kg[k];
-                const double Ts1 = parcel_static_temperature_k[i];
-                const double Ts2 = chamber_static_temperature_k[j];
-                const double Ts3 = parcel_static_temperature_k[k];
-                chamber_static_temperature_k[j] = (m2 * Ts2 + m1 * Ts1 - m3 * Ts3) / (m2 + m1 - m3);
+                const double mi = parcel_mass_kg[i];
+                const double mj = chamber_mass_kg[j];
+                const double mk = parcel_mass_kg[k];
+                const double Tsi = parcel_static_temperature_k[i];
+                const double Tsj = chamber_static_temperature_k[j];
+                const double Tsk = parcel_static_temperature_k[k];
+                chamber_static_temperature_k[j] = (mj * Tsj + mi * Tsi - mk * Tsk) / (mj + mi - mk);
+            }
+        }
+
+        /*
+         * ---> is positive (+) convention
+         *
+         * +-----+      +-----+      +----+     +----+
+         * | xi  | mi   | mj  | mk   | xk |     |    |
+         * | yi  | ---> |     | ---> | yk | ... |    |
+         * | zi  |      | xj  |      | zk |     |    |
+         * |     |      | yj  |      |    |     |    |
+         * |     |      | zj  |      |    |     |    |
+         * +-----+      +-----+      +----+     +----+
+         *
+         */
+
+        fn void calc_chamber_ratios_from_mixing()
+        {
+            for(int j = 1; j < N; j++)
+            {
+                const int i = j - 1;
+                const int k = j + 1;
+                const double mi = parcel_mass_kg[i];
+                const double mj = chamber_mass_kg[j];
+                const double mk = parcel_mass_kg[k];
+                const double mt = mi + mj + mk;
+                const double xi = chamber_o2_ratio[i];
+                const double xj = chamber_o2_ratio[j];
+                const double xk = chamber_o2_ratio[k];
+                const double ii = chamber_inert_ratio[i];
+                const double ij = chamber_inert_ratio[j];
+                const double ik = chamber_inert_ratio[k];
+                const double ci = chamber_c8h18_ratio[i];
+                const double cj = chamber_c8h18_ratio[j];
+                const double ck = chamber_c8h18_ratio[k];
+                chamber_o2_ratio[j] = (mi * xi + mj * xj + mk * xk) / mt;
+                chamber_inert_ratio[j] = (mi * ii + mj * ij + mk * ik) / mt;
+                chamber_c8h18_ratio[j] = (mi * ci + mj * cj + mk * ck) / mt;
             }
         }
 
@@ -317,18 +368,6 @@ namespace ensim
                 chamber_mass_kg[i] -= dm;
                 chamber_mass_kg[j] += dm;
             }
-
-            /*
-             * This safe guard effectively injects mass from outside the simulation
-             * control volume to prevent chamber mass from approaching 0.0 and
-             * introducing NaNs downstream.
-             *
-             */
-
-            //for(int i = 0; i < N; i++)
-            //{
-            //    chamber_mass_kg[i] = fmax(chamber_mass_kg[i], 1e-5);
-            //}
         }
 
         fn void calc()
@@ -342,6 +381,7 @@ namespace ensim
             calc_nozzle_parcels();
             calc_chamber_static_temperatures_from_mixing();
             calc_chamber_masses_from_transfer();
+            calc_chamber_ratios_from_mixing();
 
             /*
              * Nozzle equations assume upstream total conditions are equal to upstream static conditions.
@@ -412,12 +452,40 @@ namespace ensim
     };
 
     template<int W>
+    struct sparkplugs
+    {
+        using lane = std::array<double, W>;
+        using mask = std::array<bool, W>;
+
+        lane engage_theta_r;
+        mask prev_fired;
+        mask fired;
+
+        double crankshaft_theta_r;
+
+        fn void calc_fired()
+        {
+            for(int i = 0; i < W; i++)
+            {
+                prev_fired[i] = fired[i];
+                const double mod_theta_r = modulos(crankshaft_theta_r, otto_cycle_r);
+                fired[i] = mod_theta_r > engage_theta_r[i];
+            }
+        }
+
+        fn void calc()
+        {
+            calc_fired();
+        }
+    };
+
+    template<int W>
     struct simple_cam
     {
         using lane = std::array<double, W>;
 
-        lane engage_r;
-        lane ramp_r;
+        lane engage_theta_r;
+        lane ramp_theta_r;
         lane open_ratio;
 
         double crankshaft_theta_r;
@@ -436,18 +504,18 @@ namespace ensim
         {
             for(int i = 0; i < W; i++)
             {
-                double mod_engage_r = modulos(engage_r[i], otto_cycle_r);
-                if(mod_engage_r < 0.0)
+                double mod_engage_theta_r = modulos(engage_theta_r[i], otto_cycle_r);
+                if(mod_engage_theta_r < 0.0)
                 {
-                    mod_engage_r += otto_cycle_r;
+                    mod_engage_theta_r += otto_cycle_r;
                 }
                 double mod_theta_r = modulos(crankshaft_theta_r, otto_cycle_r);
-                if(mod_theta_r < mod_engage_r)
+                if(mod_theta_r < mod_engage_theta_r)
                 {
                     mod_theta_r += otto_cycle_r;
                 }
-                const double open_r = mod_theta_r - mod_engage_r;
-                const double t = open_r / ramp_r[i];
+                const double open_r = mod_theta_r - mod_engage_theta_r;
+                const double t = open_r / ramp_theta_r[i];
                 const double a = t * t * t * t;
                 const double b = t * a;
                 const double c = t * b;
@@ -457,7 +525,7 @@ namespace ensim
                 const double C = 70.0 * c;
                 const double D = 20.0 * d;
                 const double R = clamp(A - B + C - D, 0.0, 1.0);
-                open_ratio[i] = mod_theta_r < mod_engage_r ? 0.0 : R;
+                open_ratio[i] = mod_theta_r < mod_engage_theta_r ? 0.0 : R;
             }
         }
 
@@ -697,8 +765,14 @@ namespace ensim
     template<typename... T>
     concept aggregate_of = (std::is_aggregate_v<T>&& ...);
 
-    template<int W, int H, int PY, template<int, int> class P, template<int> class C>
-    requires(aggregate_of<crankshaft, P<W, PY>, flow<H>, C<W>>)
+    template<
+        int W,
+        int H,
+        int PY,
+        template<int, int> class P,
+        template<int> class C,
+        template<int> class S>
+    requires(aggregate_of<crankshaft, P<W, PY>, flow<H>, C<W>, S<W>>)
     struct as_engine : engine
     {
         /*
@@ -726,6 +800,7 @@ namespace ensim
         P<W, PY> pistons = {};
         C<W> inlet_cam = {};
         C<W> outlet_cam = {};
+        S<W> sparkplugs = {};
         std::array<flow<H>, W> flow = {};
         diags back, front;
 
@@ -755,6 +830,7 @@ namespace ensim
             inlet_cam.crankshaft_theta_r = crankshaft.theta_r;
             outlet_cam.crankshaft_theta_r = crankshaft.theta_r;
             pistons.crankshaft_theta_r = crankshaft.theta_r;
+            sparkplugs.crankshaft_theta_r = crankshaft.theta_r;
             pistons.crankshaft_angular_velocity_r_per_s = crankshaft.angular_velocity_r_per_s;
             for(int x = 0; x < W; x++)
             {
@@ -808,6 +884,11 @@ namespace ensim
             outlet_cam.calc();
         }
 
+        void run_sparkplugs()
+        {
+            sparkplugs.calc();
+        }
+
         void run_pistons()
         {
             pistons.calc();
@@ -821,13 +902,33 @@ namespace ensim
             }
         }
 
+        /*
+         * C8H18 + 12.5 O2 -> 8 CO2 + 9 H20
+         */
+
+        void run_injection()
+        {
+            for(int x = 0; x < W; x++)
+            {
+                const bool must_inject = sparkplugs.fired[x] && !sparkplugs.prev_fired[x];
+                if(must_inject)
+                {
+                    const double c8h18_ratio = flow[x].chamber_o2_ratio[PY] / perfect_afr_mol_ratio;
+                    flow[x].chamber_inert_ratio[PY] -= c8h18_ratio;
+                    flow[x].chamber_c8h18_ratio[PY] = c8h18_ratio;
+                }
+            }
+        }
+
         void run(const unsigned steps, const unsigned x, const unsigned y) override
         {
             for(unsigned i = 0; i < steps; i++)
             {
                 run_crankshaft();
                 run_cams();
+                run_sparkplugs();
                 run_pistons();
+                run_injection();
                 remember_volumes();
                 broadcast_states();
                 run_flows();
@@ -883,7 +984,7 @@ namespace ensim
         }
     };
 
-    struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam>
+    struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
     {
         inline8()
         {
@@ -896,14 +997,15 @@ namespace ensim
             this->pistons.head_mass_density_kg_per_m3.fill(7800);
             this->pistons.head_compression_height_m.fill(0.018);
             this->pistons.head_clearance_height_m.fill(0.007);
-            inlet_cam.ramp_r.fill(pi / 2.0);
-            outlet_cam.ramp_r.fill(pi / 2.0);
+            inlet_cam.ramp_theta_r.fill(pi / 2.0);
+            outlet_cam.ramp_theta_r.fill(pi / 2.0);
             double theta0_r = 0.0;
             for(int i = 0; i < width(); i++)
             {
                 this->pistons.theta0_r[i] = theta0_r;
-                this->inlet_cam.engage_r[i] = theta0_r;
-                this->outlet_cam.engage_r[i] = theta0_r + otto_cam_cycle_r;
+                this->inlet_cam.engage_theta_r[i] = theta0_r + otto_intake_cycle_r;
+                this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r;
+                this->outlet_cam.engage_theta_r[i] = theta0_r + otto_exhaust_cycle_r;
                 theta0_r += otto_cycle_r / width();
             }
             for(auto& flow : this->flow)

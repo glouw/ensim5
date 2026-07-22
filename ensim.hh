@@ -15,9 +15,9 @@ namespace ensim
             X(chamber_nozzle_open_ratio)      \
             X(chamber_mass_kg)                \
             X(chamber_static_pressure_pa)     \
-            X(chamber_static_temperature_k)   \
-            X(nozzle_mach)                    \
-            X(nozzle_mass_flow_rate_kg_per_s) \
+            X(chamber_c8h18_ratio)            \
+            X(chamber_o2_ratio)               \
+            X(chamber_inert_ratio)            \
 
         #define ENSIM_PISTONS_LIST(X) \
             X(gas_torque_n_m)         \

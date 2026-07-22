@@ -35,7 +35,7 @@ struct sdl_s
     float mouse_x_p;
     float mouse_y_p;
     int chamber_select_x = 0;
-    int chamber_select_y = 0;
+    int chamber_select_y = engine_y;
     bool quit = false;
     bool pressure_volume_window = false;
     SDL_Window* window;
@@ -300,7 +300,7 @@ struct sdl_s
                 SDL_RenderPoint(renderer, x, y);
             }
             set_color(white);
-            SDL_RenderDebugText(renderer, rect.x + font_p, rect.y + font_p, "pv-curve");
+            SDL_RenderDebugText(renderer, rect.x + font_p, rect.y + font_p, "pv-curve (Q to close)");
         }
     }
 
