@@ -5,73 +5,104 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include <string_view>
+
+#define ENSIM_FLUIDS_LIST(X)          \
+    X(chamber_volume_m3)              \
+    X(chamber_nozzle_open_ratio)      \
+    X(nozzle_mass_flow_rate_kg_per_s) \
+    X(chamber_mass_kg)                \
+    X(chamber_static_pressure_pa)     \
+    X(chamber_static_temperature_k)   \
+
+#define ENSIM_SPARKPLUG_LIST(X)       \
+    X(fired)
+
+#define ENSIM_PISTONS_LIST(X)         \
+    X(gas_torque_n_m)                 \
+    X(inertia_torque_n_m)             \
+
+#define ENSIM_DIAGS_LIST(X)           \
+    ENSIM_FLUIDS_LIST(X)              \
+    ENSIM_SPARKPLUG_LIST(X)           \
+    ENSIM_PISTONS_LIST(X)             \
 
 namespace ensim
 {
-    struct diags
-    {
-        #define ENSIM_FLUIDS_LIST(X)          \
-            X(chamber_volume_m3)              \
-            X(chamber_nozzle_open_ratio)      \
-            X(nozzle_mass_flow_rate_kg_per_s) \
-            X(chamber_mass_kg)                \
-            X(chamber_static_pressure_pa)     \
-            X(chamber_static_temperature_k)   \
 
-        #define ENSIM_SPARKPLUG_LIST(X)       \
-            X(fired)
+/*
+ * Configure SIMD scheme depending on your platform.
+ *
+ */
 
-        #define ENSIM_PISTONS_LIST(X)         \
-            X(gas_torque_n_m)                 \
-            X(inertia_torque_n_m)             \
+#if 1
+using real = float;
+#else
+using real = double;
+#endif
 
-        #define ENSIM_DIAGS_LIST(X)           \
-            ENSIM_FLUIDS_LIST(X)              \
-            ENSIM_SPARKPLUG_LIST(X)           \
-            ENSIM_PISTONS_LIST(X)             \
-
-        enum class channel : int
-        {
-            #define X(name) name,
-            ENSIM_DIAGS_LIST(X)
-            #undef X
-            count,
-        };
-
-        static constexpr int channels = static_cast<int>(channel::count);
-
-        static constexpr std::array<const char*, channels> name = {
-            #define X(name) #name,
-            ENSIM_DIAGS_LIST(X)
-            #undef X
-        };
-
-    void clear() { for(auto& plot : plots) plot.clear(); }
-    std::vector<double>& operator[](const int index) { return plots[index]; }
-    std::vector<double>& operator[](const channel channel) { return plots[static_cast<int>(channel)]; }
-    const std::vector<double>& operator[](const int index) const { return plots[index]; }
-    const std::vector<double>& operator[](const channel channel) const { return plots[static_cast<int>(channel)]; }
-
-    private:
-        std::array<std::vector<double>, channels> plots;
-    };
-
-    struct engine
-    {
-        enum class type : int { inline8 };
-        virtual void run(const unsigned steps, const unsigned x = -1, const unsigned y = -1) = 0;
-        virtual void reset() = 0;
-        virtual int width() = 0;
-        virtual int height() = 0;
-        virtual int piston_y() = 0;
-        virtual size_t bytes() = 0;
-        virtual const diags& get_diags() const = 0;
-        virtual std::vector<std::vector<double>> get_panics() = 0;
-        virtual std::vector<std::vector<double>> get_port_open_ratios() = 0;
-        virtual ~engine() = default;
-    };
-
-    std::unique_ptr<engine> new_engine(const engine::type type);
+consteval real operator""_r(const long double x)
+{
+    return static_cast<real>(x);
 }
+
+struct diags
+{
+    enum class channel : size_t
+    {
+        #define X(name) name,
+        ENSIM_DIAGS_LIST(X)
+        #undef X
+        count,
+    };
+
+    static constexpr size_t channels = static_cast<size_t>(channel::count);
+
+    static constexpr std::array<std::string_view, channels> name = {
+        #define X(name) #name,
+        ENSIM_DIAGS_LIST(X)
+        #undef X
+    };
+
+    std::vector<real>& operator[](const channel c)
+    {
+        return plots[static_cast<size_t>(c)];
+    }
+
+    const std::vector<real>& operator[](const channel c) const
+    {
+        return plots[static_cast<size_t>(c)];
+    }
+
+    void clear()
+    {
+        for(auto& plot : plots)
+        {
+            plot.clear();
+        }
+    }
+
+private:
+    std::array<std::vector<real>, channels> plots;
+};
+
+struct engine
+{
+    enum class type : size_t { inline8 };
+    virtual void run(const size_t steps, const size_t x = -1, const size_t y = -1) = 0;
+    virtual void reset() = 0;
+    virtual size_t get_width() = 0;
+    virtual size_t get_height() = 0;
+    virtual size_t get_piston_y() = 0;
+    virtual size_t get_bytes() = 0;
+    virtual const diags& get_diags() const = 0;
+    virtual std::vector<std::vector<real>> get_panics() = 0;
+    virtual std::vector<std::vector<real>> get_port_open_ratios() = 0;
+    virtual ~engine() = default;
+};
+
+std::unique_ptr<engine> new_engine(const engine::type type);
+
+} /* namespace ensim */
 
 #endif

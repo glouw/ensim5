@@ -7,7 +7,7 @@ OUT = ensim
 ASM = ensim.asm
 OBJS = ensim.o main.o
 DEPS = ensim.hh Makefile
-PERF = perf stat -d -d -d
+PERF = perf stat -d -d -d -r 50
 DUMP = objdump -dr -C
 
 run: all
@@ -23,7 +23,7 @@ main.o: main.cc $(DEPS)
 	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(CPPFLAGS) $< -c
 
 ensim.o: ensim.cc $(DEPS)
-	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(CPPFLAGS) $< -c
+	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(CPPFLAGS) -Wimplicit-float-conversion -Wdouble-promotion $< -c
 	$(DUMP) $@ > $(ASM)
 
 clean:
