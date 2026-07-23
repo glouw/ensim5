@@ -336,7 +336,7 @@ namespace ensim
             }
         }
 
-        fn void calc()
+        fn void update()
         {
             /*
              * Calculate conservation of momentum.
@@ -429,9 +429,9 @@ namespace ensim
             moment_of_inertia_kg_m2 = 0.5 * mass_kg * radius_m * radius_m;
         }
 
-        fn bool calc(const double angular_acceleration_r_per_s2)
+        fn bool update(const double angular_acceleration_r_per_s2)
         {
-            angular_velocity_r_per_s = 100.0;
+            angular_velocity_r_per_s = 400.0;
             accelerate(angular_acceleration_r_per_s2);
             turn();
             const bool cycled = otto_cycled();
@@ -476,7 +476,7 @@ namespace ensim
             }
         }
 
-        fn void calc()
+        fn void update()
         {
             calc_fired();
             calc_rising_edge();
@@ -533,7 +533,7 @@ namespace ensim
             }
         }
 
-        void calc()
+        void update()
         {
             calc_open_ratios();
         }
@@ -756,7 +756,7 @@ namespace ensim
             calc_volumes();
         }
 
-        fn void calc()
+        fn void update()
         {
             calc_volumetrics();
             calc_masses();
@@ -817,6 +817,9 @@ namespace ensim
                 #undef X
                 if(y == PY)
                 {
+                    #define X(name) back[diags::channel::name].push_back(sparkplugs.name[x]);
+                    ENSIM_SPARKPLUG_LIST(X)
+                    #undef X
                     #define X(name) back[diags::channel::name].push_back(pistons.name[x]);
                     ENSIM_PISTONS_LIST(X)
                     #undef X
@@ -872,9 +875,9 @@ namespace ensim
             reset_chambers();
         }
 
-        void run_crankshaft()
+        void update_crankshaft()
         {
-            const bool otto_cycled = crankshaft.calc(0.0);
+            const bool otto_cycled = crankshaft.update(0.0);
             if(otto_cycled)
             {
                 std::swap(front, back);
@@ -882,31 +885,31 @@ namespace ensim
             }
         }
 
-        void run_cams()
+        void update_cams()
         {
-            inlet_cam.calc();
-            outlet_cam.calc();
+            inlet_cam.update();
+            outlet_cam.update();
         }
 
-        void run_sparkplugs()
+        void update_sparkplugs()
         {
-            sparkplugs.calc();
+            sparkplugs.update();
         }
 
-        void run_pistons()
+        void update_pistons()
         {
-            pistons.calc();
+            pistons.update();
         }
 
-        void run_flows()
+        void update_flows()
         {
             for(int x = 0; x < W; x++)
             {
-                flow[x].calc();
+                flow[x].update();
             }
         }
 
-        fn void run_injection()
+        fn void update_injection()
         {
             for(int x = 0; x < W; x++)
             {
@@ -921,12 +924,12 @@ namespace ensim
         {
             for(unsigned i = 0; i < steps; i++)
             {
-                run_crankshaft();
-                run_cams();
-                run_sparkplugs();
-                run_pistons();
-                run_injection();
-                run_flows();
+                update_crankshaft();
+                update_cams();
+                update_sparkplugs();
+                update_pistons();
+                update_injection();
+                update_flows();
                 log_at(x, y);
                 remember_volumes();
                 broadcast_states();
@@ -1005,15 +1008,15 @@ namespace ensim
             this->pistons.head_mass_density_kg_per_m3.fill(7800);
             this->pistons.head_compression_height_m.fill(0.025);
             this->pistons.head_clearance_height_m.fill(0.007);
-            inlet_cam.ramp_theta_r.fill(pi);
+            inlet_cam.ramp_theta_r.fill(pi * 0.9);
             outlet_cam.ramp_theta_r.fill(pi);
             double theta0_r = 0.0;
             for(int i = 0; i < width(); i++)
             {
                 this->pistons.theta0_r[i] = theta0_r;
-                this->inlet_cam.engage_theta_r[i] = theta0_r + otto_intake_cycle_r;
-                this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r;
-                this->outlet_cam.engage_theta_r[i] = theta0_r + otto_exhaust_cycle_r;
+                this->inlet_cam.engage_theta_r[i] = theta0_r + otto_intake_cycle_r - pi / 8.0;
+                this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r + pi / 8.0;
+                this->outlet_cam.engage_theta_r[i] = theta0_r + otto_exhaust_cycle_r - pi / 12.0;
                 theta0_r += otto_cycle_r / width();
             }
             for(auto& flow : this->flow)
@@ -1021,13 +1024,13 @@ namespace ensim
                 flow.chamber_nozzle_open_ratio.fill(1.0);
                 flow.chamber_volume_m3 = {
                     resevoir_volume_m3,
-                    0.05,
-                    0.05,
-                    0.05,
-                    0.05,
-                    0.05,
-                    0.05,
-                    0.05,
+                    0.3,
+                    0.2,
+                    0.1,
+                    0.0,
+                    0.1,
+                    0.2,
+                    0.3,
                     resevoir_volume_m3,
                 };
                 flow.chamber_nozzle_flow_area_m2 = {
@@ -1035,7 +1038,7 @@ namespace ensim
                     5e-3,
                     4e-3,
                     3e-3,
-                    5e-3,
+                    5e-4,
                     2e-3,
                     3e-3,
                     4e-3,

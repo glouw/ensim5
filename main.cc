@@ -233,7 +233,8 @@ struct sdl_s
             const size_t points = data.size();
             const size_t max_points = plot_w_p;
             const size_t point_count = std::min(points, max_points);
-            set_color(green);
+            std::vector<SDL_FPoint> plot_points;
+            plot_points.reserve(point_count);
             for(size_t i = 0; i < point_count; i++)
             {
                 size_t index = i;
@@ -249,10 +250,19 @@ struct sdl_s
                 double x0 = rect.x;
                 if(point_count > 1)
                 {
-                    x0 += ((double) i / (point_count - 1)) * rect.w;
+                    x0 += ((double)i / (point_count - 1)) * rect.w;
                 }
                 const double y0 = rect.y + rect.h * 0.5 - normalized * rect.h * 0.5;
-                SDL_RenderPoint(renderer, x0, y0);
+                plot_points.push_back({
+                    (float) x0,
+                    (float) y0,
+                });
+            }
+            set_color(green);
+            for(size_t i = 1; i < plot_points.size(); i++)
+            {
+                const size_t j = i - 1;
+                SDL_RenderLine(renderer, plot_points[j].x, plot_points[j].y, plot_points[i].x, plot_points[i].y);
             }
 
             /*
@@ -269,11 +279,12 @@ struct sdl_s
             const std::string min_string = "min: " + std::to_string(min_val);
             const std::string sel_string = "sel: " + (mouse_x_p < plot_x_p ? "?" : std::to_string(data[index]));
             const std::string div_string = "div: " + std::to_string(div_val);
+            const std::string siz_string = "siz: " + std::to_string(point_count);
             SDL_RenderDebugText(renderer, xx, yy + 0 * font_p, ensim::diags::name[y]);
             SDL_RenderDebugText(renderer, xx, yy + 1 * font_p, max_string.data());
             SDL_RenderDebugText(renderer, xx, yy + 2 * font_p, min_string.data());
             SDL_RenderDebugText(renderer, xx, yy + 3 * font_p, sel_string.data());
-            SDL_RenderDebugText(renderer, xx, yy + 4 * font_p, div_string.data());
+            SDL_RenderDebugText(renderer, xx, yy + 4 * font_p, siz_string.data());
         }
         if(mouse_x_p > plot_x_p)
         {
@@ -328,13 +339,19 @@ struct sdl_s
             const double rect_y_p = rect.y + margin_y_p;
             const double rect_w_p = rect.w - 2.0 * margin_x_p;
             const double rect_h_p = rect.h - 2.0 * margin_y_p;
-            set_color(green);
+            std::vector<SDL_FPoint> points;
+            points.reserve(size);
             for(size_t i = 0; i < size; ++i)
             {
                 const double x = rect_x_p + ((volume_m3[i] - v_min) / v_range) * rect_w_p;
                 const double y = rect_y_p + rect_h_p - ((static_pressure_pa[i] - p_min) / p_range) * rect_h_p;
-                SDL_RenderPoint(renderer, x, y);
+                points.push_back({
+                    (float) x,
+                    (float) y,
+                });
             }
+            set_color(green);
+            SDL_RenderPoints(renderer, points.data(), points.size());
             set_color(white);
             SDL_RenderDebugText(renderer, rect.x + font_p, rect.y + font_p, "pv-curve (Q to close)");
         }

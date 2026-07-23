@@ -13,19 +13,22 @@ namespace ensim
         #define ENSIM_FLUIDS_LIST(X)          \
             X(chamber_volume_m3)              \
             X(chamber_nozzle_open_ratio)      \
-            X(nozzle_mach)                    \
             X(nozzle_mass_flow_rate_kg_per_s) \
             X(chamber_mass_kg)                \
             X(chamber_static_pressure_pa)     \
             X(chamber_static_temperature_k)   \
 
-        #define ENSIM_PISTONS_LIST(X) \
-            X(gas_torque_n_m)         \
-            X(inertia_torque_n_m)     \
+        #define ENSIM_SPARKPLUG_LIST(X)       \
+            X(fired)
 
-        #define ENSIM_DIAGS_LIST(X) \
-            ENSIM_FLUIDS_LIST(X)    \
-            ENSIM_PISTONS_LIST(X)   \
+        #define ENSIM_PISTONS_LIST(X)         \
+            X(gas_torque_n_m)                 \
+            X(inertia_torque_n_m)             \
+
+        #define ENSIM_DIAGS_LIST(X)           \
+            ENSIM_FLUIDS_LIST(X)              \
+            ENSIM_SPARKPLUG_LIST(X)           \
+            ENSIM_PISTONS_LIST(X)             \
 
         enum class channel : int
         {
