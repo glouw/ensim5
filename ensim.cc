@@ -8,7 +8,7 @@
 
 namespace ensim
 {
-    using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::cbrt;
+    using std::sin, std::cos, std::sqrt, std::fmax, std::fmin, std::exp, std::log;
 
     static constexpr double pi = std::numbers::pi_v<double>;
     static constexpr int sample_rate_hz = 48000;
@@ -23,14 +23,19 @@ namespace ensim
     consteval bool is_odd(const int value) { return value % 2 == 1; }
     consteval bool is_evn(const int value) { return value % 2 == 0; }
 
-    constexpr double clamp(const double value, const double lower, const double upper)
+    fn constexpr double clamp(const double value, const double lower, const double upper)
     {
         return fmax(fmin(value, upper), lower);
     }
 
-    constexpr double modulos(const double value, const double by)
+    fn constexpr double modulos(const double value, const double by)
     {
         return value - trunc(value / by) * by;
+    }
+
+    fn double cuberoot(const double x)
+    {
+        return exp(log(x) / 3.0);
     }
 
     template<int H>
@@ -271,7 +276,7 @@ namespace ensim
                  *                                \/
                  */
 
-                chamber_static_temperature_k[i] = Ts1 * cbrt(dv);
+                chamber_static_temperature_k[i] = Ts1 * cuberoot(dv);
             }
         }
 
@@ -319,8 +324,8 @@ namespace ensim
                  *                                \/
                  */
 
-                chamber_static_temperature_k[i] *= cbrt(m0 / mi);
-                chamber_static_temperature_k[j] *= cbrt(m1 / mj);
+                chamber_static_temperature_k[i] *= cuberoot(m0 / mi);
+                chamber_static_temperature_k[j] *= cuberoot(m1 / mj);
                 chamber_mass_kg[i] = m0;
                 chamber_mass_kg[j] = m1;
             }
@@ -494,12 +499,7 @@ namespace ensim
 
         double crankshaft_theta_r;
 
-        /*         4       5       6       7
-         * r = 35 t  - 84 t  + 70 t  - 20 t
-         *
-         * With friendly powers:
-         *
-         *      4            1      2      3
+        /*      4            1      2      3
          * r = t  [ 35 - 84 t + 70 t - 20 t ]
          *
          */

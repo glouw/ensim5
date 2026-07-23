@@ -1,5 +1,5 @@
 ASANFLAGS = #-fsanitize=address,undefined
-CFLAGS = -O2 -ffast-math -march=native -g
+CFLAGS = -O3 -ffast-math -march=native -g
 WFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wpedantic
 CC = clang++ -std=c++20
 LDFLAGS = -lSDL3
