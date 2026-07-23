@@ -19,7 +19,6 @@ namespace ensim
     static constexpr double otto_combustion_cycle_r = 2.0 * pi;
     static constexpr double otto_exhaust_cycle_r = 3.0 * pi;
     static constexpr double resevoir_volume_m3 = 1e9;
-    static constexpr double perfect_afr_mol_ratio = 12.5;
 
     consteval bool is_odd(const int value) { return value % 2 == 1; }
     consteval bool is_evn(const int value) { return value % 2 == 0; }
@@ -41,18 +40,18 @@ namespace ensim
         static constexpr int N = H - 1;
         static_assert(is_evn(N));
 
-        static constexpr double nozzle_gamma = 1.333;
+        static constexpr double nozzle_gamma = 1.33333;
         static constexpr double universal_gas_constant_j_per_mol_k = 8.3144598;
         static constexpr double cv_j_per_mol_k = universal_gas_constant_j_per_mol_k / (nozzle_gamma - 1.0);
         static constexpr double molar_mass_kg_per_mol = 0.023;
         static constexpr double specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
-        static constexpr double ambient_static_temperature_k = 293.0;
+        static constexpr double ambient_static_temperature_k = 300.0;
         static constexpr double ambient_static_pressure_pa = 101325.0;
-        static constexpr double ambient_o2_ratio = 0.21;
-        static constexpr double ambient_inert_ratio = 0.79;
-        static constexpr double ambient_c8h18_ratio = 0.0;
+
+        static_assert(nozzle_gamma == 1.33333, "nozzle_gamma (y) must be 1.33333 to use manual pow optimization");
 
         using lane = std::array<double, H>;
+        using mask = std::array<int, H>;
 
         lane chamber_prev_volume_m3;
         lane chamber_volume_m3;
@@ -61,15 +60,13 @@ namespace ensim
         lane chamber_static_pressure_pa;
         lane chamber_static_temperature_k;
         lane chamber_mass_kg;
-        lane chamber_o2_ratio;
-        lane chamber_inert_ratio;
-        lane chamber_c8h18_ratio;
         lane nozzle_mach;
         lane nozzle_velocity_m_per_s;
         lane nozzle_static_density_kg_per_m3;
         lane nozzle_mass_flow_rate_kg_per_s;
         lane parcel_mass_kg;
         lane parcel_static_temperature_k;
+        mask panic;
 
         /*
          *     Ps * V
@@ -83,9 +80,6 @@ namespace ensim
             {
                 chamber_static_temperature_k[i] = ambient_static_temperature_k;
                 chamber_static_pressure_pa[i] = ambient_static_pressure_pa;
-                chamber_o2_ratio[i] = ambient_o2_ratio;
-                chamber_inert_ratio[i] = ambient_inert_ratio;
-                chamber_c8h18_ratio[i] = ambient_c8h18_ratio;
             }
             for(int i = 0; i < H; i++)
             {
@@ -141,14 +135,13 @@ namespace ensim
                 const double direction = Pi > Pj ? 1.0 : -1.0;
 
                 /*
-                 *      y - 1    1.333 - 1                        1     1          __________
-                 *      ----- = ---------- = 0.25                --- * ---        /    ______
-                 *        y       1.333                0.25       2     2        /    /
-                 *  term                         = term    = term          = _  / _  /  term
-                 *                                                            \/   \/
+                 *     y - 1    1.333 - 1                        1     1          __________
+                 *     ----- = ---------- = 0.25                --- * ---        /    ______
+                 *       y       1.333                0.25       2     2        /    /
+                 * Term                         = Term    = Term          = _  / _  /  Term
+                 *                                                           \/   \/
                  */
 
-                static_assert(nozzle_gamma == 1.333, "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
                 const double Y = sqrt(sqrt(Pt / Ps));
                 const double M = direction * sqrt(X * (Y - 1.0));
                 nozzle_mach[i] = clamp(M, -1.0, 1.0);
@@ -207,13 +200,13 @@ namespace ensim
                 const double C = 1.0 + 0.5 * (nozzle_gamma - 1.0) * M * M;
 
                 /*
-                 *         1         1
-                 *       ----- = --------- = 3.00
-                 *       y - 1   1.333 - 1
-                 *  term                         = term * term * term
+                 *        1         1
+                 *      ----- = --------- = 3
+                 *      y - 1   1.333 - 1
+                 * Term                     = Term * Term * Term
+                 *
                  */
 
-                static_assert(nozzle_gamma == 1.333, "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
                 nozzle_static_density_kg_per_m3[i] = X / (C * C * C);
             }
         }
@@ -248,29 +241,22 @@ namespace ensim
             {
                 const int j = i + 1;
                 const double mdot = nozzle_mass_flow_rate_kg_per_s[i];
-                parcel_mass_kg[i] = mdot * dt_s;
-
-                /*
-                 * Since this is an internal combustion engine and not a rocket engine,
-                 * discard nozzle enthalpy and assume parcel temperature is equal to upstream
-                 * chamber static temperature.
-                 *
-                 */
-
+                const double dm = mdot * dt_s;
+                parcel_mass_kg[i] = dm;
                 const double Ti = chamber_static_temperature_k[i];
                 const double Tj = chamber_static_temperature_k[j];
                 parcel_static_temperature_k[i] = mdot > 0.0 ? Ti : Tj;
             }
         }
 
-        fn void calc_chamber_static_temperatures_from_compression()
-        {
-            /*                  y - 1
-             *               V1
-             * Ts2 = Ts1 * (----)
-             *               V2
-             */
+        /*                  y - 1
+         *               V1
+         * Ts2 = Ts1 * (----)
+         *               V2
+         */
 
+        fn void calc_compressions()
+        {
             for(int i = 0; i < N; i++)
             {
                 const double Ts1 = chamber_static_temperature_k[i];
@@ -280,114 +266,117 @@ namespace ensim
 
                 /*                                     _____
                  *                         1          /
-                 *      y = 1.333 - 1.0 = --- = _ 3  / term
-                 * term                    3     \  /
+                 *      y = 1.333 - 1.0 = --- = _ 3  / Term
+                 * Term                    3     \  /
                  *                                \/
                  */
 
-                static_assert(nozzle_gamma == 1.333, "nozzle_gamma (y) must be 1.333 to use manual pow optimization");
                 chamber_static_temperature_k[i] = Ts1 * cbrt(dv);
             }
         }
 
         /*
-         * ---> is positive (+) convention
-         *
-         * +----+      +-----+      +----+     +----+
-         * |    | mi   | mj  | mk   |    |     |    |
-         * |    | ---> |     | ---> |    | ... |    |
-         * |    | Tsi  | Tsj | Tsk  |    |     |    |
-         * +----+      +-----+      +----+     +----+
-         *
-         *        mj Tsj + mi Tsi - mk Tsk
-         * Tsj = --------------------------
-         *              mj + mi - mk
-         *
+         *       Ts m + Tp dm
+         * Ts = --------------
+         *          m + dm
          */
 
-        fn void calc_chamber_static_temperatures_from_mixing()
-        {
-            for(int j = 1; j < N; j++)
-            {
-                const int i = j - 1;
-                const int k = j + 1;
-                const double mi = parcel_mass_kg[i];
-                const double mj = chamber_mass_kg[j];
-                const double mk = parcel_mass_kg[k];
-                const double Tsi = parcel_static_temperature_k[i];
-                const double Tsj = chamber_static_temperature_k[j];
-                const double Tsk = parcel_static_temperature_k[k];
-                chamber_static_temperature_k[j] = (mj * Tsj + mi * Tsi - mk * Tsk) / (mj + mi - mk);
-            }
-        }
-
-        /*
-         * ---> is positive (+) convention
-         *
-         * +-----+      +-----+      +----+     +----+
-         * | xi  | mi   | mj  | mk   | xk |     |    |
-         * | yi  | ---> |     | ---> | yk | ... |    |
-         * | zi  |      | xj  |      | zk |     |    |
-         * |     |      | yj  |      |    |     |    |
-         * |     |      | zj  |      |    |     |    |
-         * +-----+      +-----+      +----+     +----+
-         *
-         */
-
-        fn void calc_chamber_ratios_from_mixing()
-        {
-            for(int j = 1; j < N; j++)
-            {
-                const int i = j - 1;
-                const int k = j + 1;
-                const double mi = parcel_mass_kg[i];
-                const double mj = chamber_mass_kg[j];
-                const double mk = parcel_mass_kg[k];
-                const double mt = mi + mj + mk;
-                const double xi = chamber_o2_ratio[i];
-                const double xj = chamber_o2_ratio[j];
-                const double xk = chamber_o2_ratio[k];
-                const double ii = chamber_inert_ratio[i];
-                const double ij = chamber_inert_ratio[j];
-                const double ik = chamber_inert_ratio[k];
-                const double ci = chamber_c8h18_ratio[i];
-                const double cj = chamber_c8h18_ratio[j];
-                const double ck = chamber_c8h18_ratio[k];
-                chamber_o2_ratio[j] = (mi * xi + mj * xj + mk * xk) / mt;
-                chamber_inert_ratio[j] = (mi * ii + mj * ij + mk * ik) / mt;
-                chamber_c8h18_ratio[j] = (mi * ci + mj * cj + mk * ck) / mt;
-            }
-        }
-
-        fn void calc_chamber_masses_from_transfer()
+        fn void calc_forward_energy_transfers()
         {
             for(int i = 0; i < N; i++)
             {
-                const double dm = parcel_mass_kg[i];
                 const int j = i + 1;
-                chamber_mass_kg[i] -= dm;
-                chamber_mass_kg[j] += dm;
+                const double dm = parcel_mass_kg[i];
+                const double m = chamber_mass_kg[j];
+                const double Tp = parcel_static_temperature_k[i];
+                const double Ts0 = chamber_static_temperature_k[j];
+                const double Ts1 = (Ts0 * m + Tp * dm) / (m + dm);
+                chamber_static_temperature_k[j] = dm > 0.0 ? Ts1 : Ts0;
+            }
+        }
+
+        /*                  y - 1
+         *               m1
+         * Ts2 = Ts1 * (----)
+         *               m2
+         */
+
+        fn void calc_mass_transfers()
+        {
+            for(int i = 0; i < N; i++)
+            {
+                const int j = i + 1;
+                const double mi = chamber_mass_kg[i];
+                const double mj = chamber_mass_kg[j];
+                const double dm = parcel_mass_kg[i];
+                const double m0 = mi - dm;
+                const double m1 = mj + dm;
+
+                /*                                     _____
+                 *                         1          /
+                 *      y = 1.333 - 1.0 = --- = _ 3  / Term
+                 * Term                    3     \  /
+                 *                                \/
+                 */
+
+                chamber_static_temperature_k[i] *= cbrt(m0 / mi);
+                chamber_static_temperature_k[j] *= cbrt(m1 / mj);
+                chamber_mass_kg[i] = m0;
+                chamber_mass_kg[j] = m1;
+            }
+        }
+
+        fn void calc_panics()
+        {
+            for(int i = 0; i < N; i++)
+            {
+                panic[i] |= chamber_mass_kg[i] <= 0.0;
+                panic[i] |= chamber_static_temperature_k[i] <= 0.0;
+                panic[i] |= chamber_static_pressure_pa[i] <= 0.0;
             }
         }
 
         fn void calc()
         {
-            calc_chamber_static_temperatures_from_compression();
+            /*
+             * Calculate conservation of momentum.
+             *
+             */
+
             calc_chamber_static_pressures();
             calc_nozzle_machs();
             calc_nozzle_velocities();
             calc_nozzle_static_densities();
             calc_nozzle_mass_flow_rates();
-            calc_nozzle_parcels();
-            calc_chamber_static_temperatures_from_mixing();
-            calc_chamber_masses_from_transfer();
-            calc_chamber_ratios_from_mixing();
 
             /*
-             * Nozzle equations assume upstream total conditions are equal to upstream static conditions.
-             * Chamber momentum calculations can therefor be skipped.
+             * Calculates transport.
              *
              */
+
+            calc_nozzle_parcels();
+
+            /*
+             * Calculate conservation of energy.
+             *
+             */
+
+            calc_compressions();
+            calc_forward_energy_transfers();
+
+            /*
+             * Calculate conservation of mass.
+             *
+             */
+
+            calc_mass_transfers();
+
+            /*
+             * Misc debug.
+             *
+             */
+
+            calc_panics();
         }
     };
 
@@ -442,7 +431,7 @@ namespace ensim
 
         fn bool calc(const double angular_acceleration_r_per_s2)
         {
-            angular_velocity_r_per_s = 100.0; /* temp */
+            angular_velocity_r_per_s = 100.0;
             accelerate(angular_acceleration_r_per_s2);
             turn();
             const bool cycled = otto_cycled();
@@ -455,11 +444,13 @@ namespace ensim
     struct sparkplugs
     {
         using lane = std::array<double, W>;
-        using mask = std::array<bool, W>;
+        using mask = std::array<int, W>;
 
+        static constexpr double fire_delay_theta_r = 1e-1;
         lane engage_theta_r;
         mask prev_fired;
         mask fired;
+        mask rising_edge;
 
         double crankshaft_theta_r;
 
@@ -469,13 +460,26 @@ namespace ensim
             {
                 prev_fired[i] = fired[i];
                 const double mod_theta_r = modulos(crankshaft_theta_r, otto_cycle_r);
-                fired[i] = mod_theta_r > engage_theta_r[i];
+                const double mod_engage_theta_r = engage_theta_r[i] >= otto_cycle_r
+                    ? (engage_theta_r[i] - otto_cycle_r)
+                    : (engage_theta_r[i]);
+                const double mod_engage_delayed_theta_r = mod_engage_theta_r + fire_delay_theta_r;
+                fired[i] = mod_theta_r > mod_engage_delayed_theta_r;
+            }
+        }
+
+        fn void calc_rising_edge()
+        {
+            for(int i = 0; i < W; i++)
+            {
+                rising_edge[i] = fired[i] & !prev_fired[i];
             }
         }
 
         fn void calc()
         {
             calc_fired();
+            calc_rising_edge();
         }
     };
 
@@ -535,7 +539,7 @@ namespace ensim
         }
     };
 
-    template<int W, int PY>
+    template<int W>
     struct inline_pistons
     {
         /* ------- + block_deck_surface_m
@@ -769,10 +773,10 @@ namespace ensim
         int W,
         int H,
         int PY,
-        template<int, int> class P,
+        template<int> class P,
         template<int> class C,
         template<int> class S>
-    requires(aggregate_of<crankshaft, P<W, PY>, flow<H>, C<W>, S<W>>)
+    requires(aggregate_of<crankshaft, P<W>, flow<H>, C<W>, S<W>>)
     struct as_engine : engine
     {
         /*
@@ -797,7 +801,7 @@ namespace ensim
          */
 
         crankshaft crankshaft = {};
-        P<W, PY> pistons = {};
+        P<W> pistons = {};
         C<W> inlet_cam = {};
         C<W> outlet_cam = {};
         S<W> sparkplugs = {};
@@ -902,20 +906,13 @@ namespace ensim
             }
         }
 
-        /*
-         * C8H18 + 12.5 O2 -> 8 CO2 + 9 H20
-         */
-
-        void run_injection()
+        fn void run_injection()
         {
             for(int x = 0; x < W; x++)
             {
-                const bool must_inject = sparkplugs.fired[x] && !sparkplugs.prev_fired[x];
-                if(must_inject)
+                if(sparkplugs.rising_edge[x])
                 {
-                    const double c8h18_ratio = flow[x].chamber_o2_ratio[PY] / perfect_afr_mol_ratio;
-                    flow[x].chamber_inert_ratio[PY] -= c8h18_ratio;
-                    flow[x].chamber_c8h18_ratio[PY] = c8h18_ratio;
+                    /* ignite */
                 }
             }
         }
@@ -929,10 +926,10 @@ namespace ensim
                 run_sparkplugs();
                 run_pistons();
                 run_injection();
-                remember_volumes();
-                broadcast_states();
                 run_flows();
                 log_at(x, y);
+                remember_volumes();
+                broadcast_states();
             }
         }
 
@@ -972,15 +969,26 @@ namespace ensim
             return matrix;
         }
 
-        std::vector<std::vector<double>> get_port_open_ratios() override
+        std::vector<std::vector<double>> get_panics() override
         {
-            std::vector<std::vector<double>> ratios = new_matrix(width(), height());
+            std::vector<std::vector<double>> matrix = new_matrix(width(), height());
             for(int y = 0; y < H; y++)
             for(int x = 0; x < W; x++)
             {
-                ratios[y][x] = flow[x].chamber_nozzle_open_ratio[y];
+                matrix[y][x] = flow[x].panic[y];
             }
-            return ratios;
+            return matrix;
+        }
+
+        std::vector<std::vector<double>> get_port_open_ratios() override
+        {
+            std::vector<std::vector<double>> matrix = new_matrix(width(), height());
+            for(int y = 0; y < H; y++)
+            for(int x = 0; x < W; x++)
+            {
+                matrix[y][x] = flow[x].chamber_nozzle_open_ratio[y];
+            }
+            return matrix;
         }
     };
 
@@ -990,15 +998,15 @@ namespace ensim
         {
             this->crankshaft.mass_kg = 25.3;
             this->crankshaft.radius_m = 0.031;
-            this->pistons.diameter_m.fill(0.065);
+            this->pistons.diameter_m.fill(0.085);
             this->pistons.crank_throw_length_m.fill(0.038);
             this->pistons.connecting_rod_length_m.fill(0.1);
             this->pistons.connecting_rod_mass_kg.fill(0.4);
             this->pistons.head_mass_density_kg_per_m3.fill(7800);
-            this->pistons.head_compression_height_m.fill(0.018);
+            this->pistons.head_compression_height_m.fill(0.025);
             this->pistons.head_clearance_height_m.fill(0.007);
-            inlet_cam.ramp_theta_r.fill(pi / 2.0);
-            outlet_cam.ramp_theta_r.fill(pi / 2.0);
+            inlet_cam.ramp_theta_r.fill(pi);
+            outlet_cam.ramp_theta_r.fill(pi);
             double theta0_r = 0.0;
             for(int i = 0; i < width(); i++)
             {
@@ -1013,16 +1021,25 @@ namespace ensim
                 flow.chamber_nozzle_open_ratio.fill(1.0);
                 flow.chamber_volume_m3 = {
                     resevoir_volume_m3,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
-                    0.10,
+                    0.05,
+                    0.05,
+                    0.05,
+                    0.05,
+                    0.05,
+                    0.05,
+                    0.05,
                     resevoir_volume_m3,
                 };
-                flow.chamber_nozzle_flow_area_m2.fill(1e-4);
+                flow.chamber_nozzle_flow_area_m2 = {
+                    6e-3,
+                    5e-3,
+                    4e-3,
+                    3e-3,
+                    5e-3,
+                    2e-3,
+                    3e-3,
+                    4e-3,
+                };
             }
         }
     };

@@ -13,11 +13,11 @@ namespace ensim
         #define ENSIM_FLUIDS_LIST(X)          \
             X(chamber_volume_m3)              \
             X(chamber_nozzle_open_ratio)      \
+            X(nozzle_mach)                    \
+            X(nozzle_mass_flow_rate_kg_per_s) \
             X(chamber_mass_kg)                \
             X(chamber_static_pressure_pa)     \
-            X(chamber_c8h18_ratio)            \
-            X(chamber_o2_ratio)               \
-            X(chamber_inert_ratio)            \
+            X(chamber_static_temperature_k)   \
 
         #define ENSIM_PISTONS_LIST(X) \
             X(gas_torque_n_m)         \
@@ -63,6 +63,7 @@ namespace ensim
         virtual int piston_y() = 0;
         virtual size_t bytes() = 0;
         virtual const diags& get_diags() const = 0;
+        virtual std::vector<std::vector<double>> get_panics() = 0;
         virtual std::vector<std::vector<double>> get_port_open_ratios() = 0;
         virtual ~engine() = default;
     };
