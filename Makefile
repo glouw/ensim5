@@ -1,13 +1,13 @@
 ASANFLAGS = #-fsanitize=address,undefined
 CFLAGS = -O3 -ffast-math -march=native -g
-WFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wpedantic
+WFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wpedantic -ferror-limit=1
 CC = clang++ -std=c++20
 LDFLAGS = -lSDL3
 OUT = ensim
 ASM = ensim.asm
 OBJS = ensim.o main.o
 DEPS = ensim.hh Makefile
-PERF = perf stat -d -d -d -r 50
+PERF = perf stat -d -d -d -r 10
 DUMP = objdump -dr -C
 
 run: all

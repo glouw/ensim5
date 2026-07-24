@@ -458,7 +458,7 @@ struct crankshaft
 
     fn bool update(const real angular_acceleration_r_per_s2)
     {
-        angular_velocity_r_per_s = 200.0_r;
+        angular_velocity_r_per_s = 500.0_r;
         accelerate(angular_acceleration_r_per_s2);
         turn();
         const bool cycled = otto_cycled();
@@ -496,7 +496,7 @@ struct sparkplugs
     {
         for(size_t i = 0; i < W; i++)
         {
-            rising_edge[i] = fired[i] && !prev_fired[i];
+            rising_edge[i] = fired[i] and not prev_fired[i];
         }
     }
 
@@ -781,8 +781,58 @@ struct inline_pistons
     }
 };
 
+#define FLUIDS(X)                     \
+    X(chamber_volume_m3)              \
+    X(chamber_nozzle_open_ratio)      \
+    X(nozzle_mass_flow_rate_kg_per_s) \
+    X(chamber_mass_kg)                \
+    X(chamber_static_pressure_pa)     \
+    X(chamber_static_temperature_k)
+#define SPARKPLUGS(X)                 \
+    X(fired)
+#define PISTONS(X)                    \
+    X(gas_torque_n_m)                 \
+    X(inertia_torque_n_m)
+
+#define DIAGS(X) FLUIDS(X) SPARKPLUGS(X) PISTONS(X)
+
+enum
+{
+    #define X(name) e_##name,
+    DIAGS(X)
+    #undef X
+    e_diags_size,
+};
+
+static constexpr std::array<std::string_view, e_diags_size> signal_names = {
+    #define X(name) #name,
+    DIAGS(X)
+    #undef X
+};
+
 template<typename... T>
 concept aggregate_of = (std::is_aggregate_v<T>&& ...);
+
+/*
+ * Engines are modelled by W (Width) indepdent SIMD flow lanes
+ * from source to sink of H (Height) volumes. The piston row
+ * is specified by PY (Piston Y).
+ *
+ * For example, an inline-3 configuration has
+ * W == 3, H == 9, and PY == 4.
+ *
+ * [ ]  [ ]  [ ] | <- Source
+ * [ ]  [ ]  [ | | <- Air Filter
+ * [ ]  [ ]  [ ] | <- Throttle Body
+ * [ ]  [ ]  [ ] | <- Intake Runner
+ * [ ]  [ ]  [ ] H <- Piston (PY)
+ * [ ]  [ ]  [ ] | <- Exhaust Runner
+ * [ ]  [ ]  [ ] | <- Collector
+ * [ ]  [ ]  [ ] | <- Exhaust
+ * [ ]  [ ]  [ ] | <- Sink
+ * +---- W ----+ +
+ *
+ */
 
 template<
     size_t W,
@@ -794,58 +844,33 @@ template<
 requires(aggregate_of<crankshaft, P<W>, flow<H, PY>, C<W>, S<W>>)
 struct as_engine : engine
 {
-    /*
-     * Engines are modelled by W (Width) indepdent SIMD flow lanes
-     * from source to sink of H (Height) volumes. The piston row
-     * is specified by PY (Piston Y).
-     *
-     * For example, an inline-3 configuration has
-     * W == 3, H == 9, and PY == 4.
-     *
-     * [ ]  [ ]  [ ] | <- Source
-     * [ ]  [ ]  [ | | <- Air Filter
-     * [ ]  [ ]  [ ] | <- Throttle Body
-     * [ ]  [ ]  [ ] | <- Intake Runner
-     * [ ]  [ ]  [ ] H <- Piston (PY)
-     * [ ]  [ ]  [ ] | <- Exhaust Runner
-     * [ ]  [ ]  [ ] | <- Collector
-     * [ ]  [ ]  [ ] | <- Exhaust
-     * [ ]  [ ]  [ ] | <- Sink
-     * +---- W ----+ +
-     *
-     */
-
     crankshaft crankshaft = {};
     P<W> pistons = {};
     C<W> inlet_cam = {};
     C<W> outlet_cam = {};
     S<W> sparkplugs = {};
     std::array<flow<H, PY>, W> flows = {};
-    diags back, front;
+    grid front = grid(e_diags_size);
+    grid back = grid(e_diags_size);
 
     void log_at(const size_t x, const size_t y)
     {
-        if(x < W && y < H)
+        if(x < W and y < H)
         {
-            #define X(name) back[channel::name].push_back(flows[x].name[y]);
-            ENSIM_FLUIDS_LIST(X)
+            #define X(name) back[e_##name].push_back(flows[x].name[y]);
+            FLUIDS(X)
             #undef X
             if(y == PY)
             {
-                #define X(name) back[channel::name].push_back(sparkplugs.name[x]);
-                ENSIM_SPARKPLUG_LIST(X)
+                #define X(name) back[e_##name].push_back(sparkplugs.name[x]);
+                SPARKPLUGS(X)
                 #undef X
-                #define X(name) back[channel::name].push_back(pistons.name[x]);
-                ENSIM_PISTONS_LIST(X)
+                #define X(name) back[e_##name].push_back(pistons.name[x]);
+                PISTONS(X)
                 #undef X
             }
         }
     }
-
-    /*
-     * State is broadcasted with a copy to prevent reference/pointer aliasing that
-     * could interfere with vectorization.
-     */
 
     fn void broadcast_states()
     {
@@ -896,7 +921,10 @@ struct as_engine : engine
         if(otto_cycled)
         {
             std::swap(front, back);
-            back.clear();
+            for(auto& line : back)
+            {
+                line.clear();
+            }
         }
     }
 
@@ -935,6 +963,16 @@ struct as_engine : engine
         }
     }
 
+    grid new_grid(const size_t width, const size_t height) const
+    {
+        grid grid(height);
+        for(auto& row : grid)
+        {
+            row.resize(width);
+        }
+        return grid;
+    }
+
     void run(const size_t steps, const size_t x, const size_t y) override
     {
         for(size_t i = 0; i < steps; i++)
@@ -951,62 +989,29 @@ struct as_engine : engine
         }
     }
 
-    size_t get_w() override
+    std::string_view get_signal_name(const size_t index) const override
     {
-        return W;
+        return signal_names[index];
     }
 
-    size_t get_h() override
+    const line& get_signal(const size_t index) const override
     {
-        return H;
+        return front[index];
     }
 
-    size_t get_piston_y() override
+    size_t get_w() const override { return W; }
+    size_t get_h() const override { return H; }
+    size_t get_y() const override { return PY; }
+    size_t bytes() const override { return sizeof *this; }
+
+    real get_port_open_ratio(const size_t x, const size_t y) const override
     {
-        return PY;
+        return flows[x].chamber_nozzle_open_ratio[y];
     }
 
-    size_t get_bytes() override
+    real get_panic_status(const size_t x, const size_t y) const override
     {
-        return sizeof *this;
-    }
-
-    const diags& get_diags() const override
-    {
-        return front;
-    }
-
-    grid new_grid(const size_t width, const size_t height)
-    {
-        grid out;
-        out.resize(height);
-        for(auto& x : out)
-        {
-            x.resize(width);
-        }
-        return out;
-    }
-
-    grid get_panics() override
-    {
-        grid out = new_grid(get_w(), get_h());
-        for(size_t y = 0; y < H; y++)
-        for(size_t x = 0; x < W; x++)
-        {
-            out[y][x] = flows[x].panic[y];
-        }
-        return out;
-    }
-
-    grid get_port_open_ratios() override
-    {
-        grid out = new_grid(get_w(), get_h());
-        for(size_t y = 0; y < H; y++)
-        for(size_t x = 0; x < W; x++)
-        {
-            out[y][x] = flows[x].chamber_nozzle_open_ratio[y];
-        }
-        return out;
+        return flows[x].panic[y];
     }
 };
 
@@ -1060,29 +1065,29 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
                 0.2_r,
                 0.1_r,
                 0.0_r,
-                0.1_r,
-                0.2_r,
-                0.3_r,
+                0.0000001_r,
+                0.0000002_r,
+                0.0000003_r,
                 resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
-                6e-3_r, // atmospere to plenum
-                5e-3_r, // plenum to throttle boddy
-                4e-3_r, // thottle body to intake runner
-                3e-3_r, // intake runner to piston
-                2e-3_r, // piston to exhaust rnuner
-                2e-3_r, // exhaust runner to collector
-                2e-3_r, // collector to exhaust pipe
-                2e-3_r, // exhaust pipe to exhaust
+                6e-3_r,
+                5e-3_r,
+                4e-3_r,
+                3e-3_r,
+                2e-3_r,
+                2e-3_r,
+                2e-3_r,
+                2e-3_r,
             };
         }
     }
 };
 
-std::unique_ptr<engine> new_engine(const engine::type type)
+std::unique_ptr<engine> new_engine(const type type)
 {
     std::unique_ptr<engine> engine;
-    if(type == engine::type::inline8)
+    if(type == type::inline8)
     {
         engine = std::make_unique<inline8>();
     }
