@@ -1,370 +1,32 @@
 #include <SDL3/SDL.h>
-#include <iostream>
-#include <string_view>
-#include <cmath>
-#include <algorithm>
+#include <list>
+#include <memory>
 #include "ensim.hh"
 
-struct sdl_s
+struct sdl
 {
-    static constexpr unsigned black  = 0x000000FF;
-    static constexpr unsigned white  = 0xFFFFFFFF;
-    static constexpr unsigned grey   = 0xAAAAAAFF;
-    static constexpr unsigned red    = 0xFF0000FF;
-    static constexpr unsigned yellow = 0xFFFF00FF;
-    static constexpr unsigned green  = 0x00FF00FF;
-    static constexpr unsigned blue   = 0x0000FFFF;
-    static constexpr size_t xres_p = 1920;
-    static constexpr size_t yres_p = 1080;
-    const size_t engine_w;
-    const size_t engine_h;
-    const size_t engine_y;
-    const float chamber_w_p = xres_p / 32.0;
-    const float chamber_h_p = yres_p / engine_h;
-    const float port_w_p = chamber_w_p / 5.0;
-    const float port_h_p = chamber_w_p / 5.0;
-    const float plot_x_p = chamber_w_p * engine_w;
-    const float plot_y_p = 0;
-    const float plot_w_p = xres_p - plot_x_p;
-    const float plot_h_p = chamber_h_p;
-    const float pv_window_w_p = 0.75 * yres_p;
-    const float pv_window_h_p = 0.75 * yres_p;
-    const float pv_window_x_p = xres_p / 2.0 - pv_window_w_p / 2.0;
-    const float pv_window_y_p = yres_p / 2.0 - pv_window_h_p / 2.0;
-    const float margin_p = 8;
-    const float font_p = 16;
-    const float border_p = 18;
-    float mouse_x_p;
-    float mouse_y_p;
-    size_t chamber_select_x = 0;
-    size_t chamber_select_y = engine_y;
-    bool quit = false;
-    bool pressure_volume_window = false;
+    static constexpr int w_p = 1920;
+    static constexpr int h_p = 1080;
+    static constexpr uint32_t white = 0xFFFFFFFF;
+    static constexpr uint32_t black = 0xFF000000;
+    static constexpr uint32_t green = 0xFF00FF00;
+    static constexpr uint32_t font_p = 8;
+
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_Cursor* cursor;
 
-    sdl_s(const size_t engine_w, const size_t engine_h, const size_t engine_y)
-        : engine_w(engine_w)
-        , engine_h(engine_h)
-        , engine_y(engine_y)
+    sdl()
     {
-        SDL_Init(SDL_INIT_VIDEO);
-        window = SDL_CreateWindow("ensim", xres_p, yres_p, SDL_WINDOW_FULLSCREEN);
-        renderer = SDL_CreateRenderer(window, nullptr);
-        cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR);
-        SDL_SetCursor(cursor);
+        SDL_CreateWindowAndRenderer(nullptr, w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
     }
 
-    void poll_quit()
+    void set_color(const uint32_t hex, float ratio = 1.0f)
     {
-        SDL_Event event;
-        while(SDL_PollEvent(&event))
-        {
-            if(event.type == SDL_EVENT_QUIT)
-            {
-                quit = true;
-            }
-            if(event.type == SDL_EVENT_KEY_UP)
-            {
-                if(event.key.key == SDLK_Q)
-                {
-                    pressure_volume_window ^= true;
-                }
-            }
-            if(event.type == SDL_EVENT_KEY_DOWN)
-            {
-                if(event.key.key == SDLK_W) { chamber_select_y -= 1; }
-                if(event.key.key == SDLK_S) { chamber_select_y += 1; }
-                if(event.key.key == SDLK_D) { chamber_select_x += 1; }
-                if(event.key.key == SDLK_A) { chamber_select_x -= 1; }
-                chamber_select_y %= engine_h;
-                chamber_select_x %= engine_w;
-            }
-        }
-    }
-
-    void set_color(const unsigned color, const float brightness = 1.0)
-    {
-        SDL_SetRenderDrawColor(
-            renderer,
-            brightness * (0xFF & (color >> 24)),
-            brightness * (0xFF & (color >> 16)),
-            brightness * (0xFF & (color >>  8)),
-            brightness * (0xFF & (color >>  0))
-        );
-    }
-
-    void clear_screen()
-    {
-        set_color(black);
-        SDL_RenderClear(renderer);
-    }
-
-    void draw_box(const SDL_FRect& rect, const unsigned color, const float brightness = 1.0)
-    {
-        SDL_FRect outline = rect;
-        outline.w += 1;
-        outline.h += 1;
-        set_color(color, brightness);
-        SDL_RenderFillRect(renderer, &rect);
-        set_color(white);
-        SDL_RenderRect(renderer, &outline);
-    }
-
-    void draw_chambers(const ensim::grid& open_ratios, const ensim::grid& panics)
-    {
-        /*
-         * Chamber boxes.
-         *
-         */
-
-        for(size_t y = 0; y < engine_h; y++)
-        for(size_t x = 0; x < engine_w; x++)
-        {
-            SDL_FRect chamber;
-            chamber.x = chamber_w_p * x;
-            chamber.y = chamber_h_p * y;
-            chamber.w = chamber_w_p;
-            chamber.h = chamber_h_p;
-            draw_box(chamber, black);
-            if(panics[y][x])
-            {
-                chamber.x += border_p;
-                chamber.y += border_p;
-                chamber.w -= 2.0 * border_p;
-                chamber.h -= 2.0 * border_p;
-                set_color(red);
-                SDL_RenderFillRect(renderer, &chamber);
-            }
-        }
-
-        /*
-         * Port boxes.
-         *
-         */
-
-        for(size_t y = 0; y < engine_h; y++)
-        for(size_t x = 0; x < engine_w; x++)
-        {
-            SDL_FRect chamber;
-            chamber.x = chamber_w_p * x;
-            chamber.y = chamber_h_p * y;
-            chamber.w = chamber_w_p;
-            chamber.h = chamber_h_p;
-            SDL_FRect port;
-            port.x = chamber.x + chamber.w / 2.0 - port_w_p / 2.0;
-            port.y = chamber.y + chamber.h - port_h_p;
-            port.w = port_w_p;
-            port.h = port_h_p;
-            draw_box(port, green, open_ratios[y][x]);
-        }
-    }
-
-    void select_chamber()
-    {
-        const unsigned buttons = SDL_GetMouseState(&mouse_x_p, &mouse_y_p);
-        if(buttons & SDL_BUTTON_LEFT)
-        {
-            chamber_select_x = std::floor(mouse_x_p / chamber_w_p);
-            chamber_select_y = std::floor(mouse_y_p / chamber_h_p);
-            chamber_select_x %= engine_w;
-            chamber_select_y %= engine_h;
-        }
-    }
-
-    void draw_chamber_selection()
-    {
-        const float select_x_p = chamber_w_p * chamber_select_x;
-        const float select_y_p = chamber_h_p * chamber_select_y;
-        SDL_FRect rect;
-        rect.x = select_x_p + border_p;
-        rect.y = select_y_p + border_p;
-        rect.w = chamber_w_p - 2.0 * border_p;
-        rect.h = chamber_h_p - 2.0 * border_p;
-        draw_box(rect, chamber_select_y == engine_y ? yellow : green);
-    }
-
-    void draw_plots(const ensim::diags& diags)
-    {
-        for(size_t y = 0; y < ensim::channels; y++)
-        {
-            const ensim::line& data = diags[static_cast<ensim::channel>(y)];
-            if(data.empty())
-            {
-                continue;
-            }
-            SDL_FRect rect;
-            rect.x = plot_x_p;
-            rect.y = plot_y_p + y * plot_h_p;
-            rect.w = plot_w_p;
-            rect.h = plot_h_p;
-            const float min_val = *std::min_element(data.begin(), data.end());
-            const float max_val = *std::max_element(data.begin(), data.end());
-
-            /*
-             * Draw bounding box.
-             *
-             */
-
-            draw_box(rect, black);
-
-            /*
-             * Draw zero line.
-             *
-             */
-
-            if(max_val > min_val)
-            {
-                const float t = std::clamp((0.0 - min_val) / (max_val - min_val), 0.0, 1.0);
-                const float zero_y = rect.y + rect.h * (1.0 - t);
-                set_color(red);
-                SDL_RenderLine(renderer, rect.x, zero_y, rect.x + rect.w, zero_y);
-            }
-
-            /*
-             * Draw points.
-             *
-             */
-
-            const float range = max_val - min_val;
-            const size_t points = data.size();
-            const size_t max_points = plot_w_p;
-            const size_t point_count = std::min(points, max_points);
-            std::vector<SDL_FPoint> plot_points;
-            plot_points.reserve(point_count);
-            for(size_t i = 0; i < point_count; i++)
-            {
-                size_t index = i;
-                if(points > max_points)
-                {
-                    index = (i * (points - 1)) / (point_count - 1);
-                }
-                float normalized = 0.0;
-                if(range != 0.0)
-                {
-                    normalized = ((data[index] - min_val) / range) * 2.0 - 1.0;
-                }
-                float x0 = rect.x;
-                if(point_count > 1)
-                {
-                    x0 += ((float)i / (point_count - 1)) * rect.w;
-                }
-                const float y0 = rect.y + rect.h * 0.5 - normalized * rect.h * 0.5;
-                plot_points.push_back({
-                    (float) x0,
-                    (float) y0,
-                });
-            }
-            set_color(green);
-            for(size_t i = 1; i < plot_points.size(); i++)
-            {
-                const size_t j = i - 1;
-                SDL_RenderLine(renderer, plot_points[j].x, plot_points[j].y, plot_points[i].x, plot_points[i].y);
-            }
-
-            /*
-             * Draw plot goodies.
-             *
-             */
-
-            const float div_val = max_val / min_val;
-            const float index = data.size() * (mouse_x_p - plot_x_p) / plot_w_p;
-            set_color(white);
-            const float xx = rect.x + margin_p;
-            const float yy = rect.y + margin_p;
-            const std::string max_string = "max: " + std::to_string(max_val);
-            const std::string min_string = "min: " + std::to_string(min_val);
-            const std::string sel_string = "sel: " + (mouse_x_p < plot_x_p ? "?" : std::to_string(data[index]));
-            const std::string div_string = "div: " + std::to_string(div_val);
-            const std::string siz_string = "siz: " + std::to_string(point_count);
-            SDL_RenderDebugText(renderer, xx, yy + 0 * font_p, ensim::diags::name[y].data());
-            SDL_RenderDebugText(renderer, xx, yy + 1 * font_p, max_string.data());
-            SDL_RenderDebugText(renderer, xx, yy + 2 * font_p, min_string.data());
-            SDL_RenderDebugText(renderer, xx, yy + 3 * font_p, sel_string.data());
-            SDL_RenderDebugText(renderer, xx, yy + 4 * font_p, siz_string.data());
-        }
-        if(mouse_x_p > plot_x_p)
-        {
-            set_color(white);
-            SDL_RenderLine(renderer, mouse_x_p, 0.0, mouse_x_p, yres_p);
-            const float ratio = (mouse_x_p - plot_x_p) / plot_w_p;
-            const float radians = 4.0 * M_PI * ratio;
-            const std::string unit = std::to_string(radians) + "rad";
-            set_color(white);
-            SDL_RenderDebugText(renderer, mouse_x_p + font_p, mouse_y_p, unit.data());
-        }
-    }
-
-    void draw_pressure_volume(const ensim::diags& diags)
-    {
-        if(pressure_volume_window)
-        {
-            /*
-             * Draw bounding box.
-             *
-             */
-
-            SDL_FRect rect;
-            rect.x = pv_window_x_p;
-            rect.y = pv_window_y_p;
-            rect.w = pv_window_w_p;
-            rect.h = pv_window_h_p;
-            draw_box(rect, black);
-
-            /*
-             * Draw points.
-             *
-             */
-
-            const ensim::line& static_pressure_pa = diags[ensim::channel::chamber_static_pressure_pa];
-            const ensim::line& volume_m3 = diags[ensim::channel::chamber_volume_m3];
-            const size_t size = static_pressure_pa.size();
-            if(size == 0)
-            {
-                return;
-            }
-            const float v_min = *std::min_element(volume_m3.begin(), volume_m3.end());
-            const float v_max = *std::max_element(volume_m3.begin(), volume_m3.end());
-            const float p_min = *std::min_element(static_pressure_pa.begin(), static_pressure_pa.end());
-            const float p_max = *std::max_element(static_pressure_pa.begin(), static_pressure_pa.end());
-            const float v_range = (v_max - v_min > 0.0) ? (v_max - v_min) : 1.0;
-            const float p_range = (p_max - p_min > 0.0) ? (p_max - p_min) : 1.0;
-            const float margin_ratio = 0.05;
-            const float margin_x_p = rect.w * margin_ratio;
-            const float margin_y_p = rect.h * margin_ratio;
-            const float rect_x_p = rect.x + margin_x_p;
-            const float rect_y_p = rect.y + margin_y_p;
-            const float rect_w_p = rect.w - 2.0 * margin_x_p;
-            const float rect_h_p = rect.h - 2.0 * margin_y_p;
-            std::vector<SDL_FPoint> points;
-            points.reserve(size);
-            for(size_t i = 0; i < size; ++i)
-            {
-                const float x = rect_x_p + ((volume_m3[i] - v_min) / v_range) * rect_w_p;
-                const float y = rect_y_p + rect_h_p - ((static_pressure_pa[i] - p_min) / p_range) * rect_h_p;
-                points.push_back({
-                    (float) x,
-                    (float) y,
-                });
-            }
-            set_color(green);
-            SDL_RenderPoints(renderer, points.data(), points.size());
-            set_color(white);
-            SDL_RenderDebugText(renderer, rect.x + font_p, rect.y + font_p, "pv-curve (Q to close)");
-        }
-    }
-
-    void draw_border()
-    {
-        const float x0 = 0.0;
-        const float y0 = 0.0;
-        const float x1 = xres_p - 1.0;
-        const float y1 = yres_p - 1.0;
-        SDL_RenderLine(renderer, x0, y0, x1, y0);
-        SDL_RenderLine(renderer, x0, y1, x1, y1);
-        SDL_RenderLine(renderer, x0, y0, x0, y1);
-        SDL_RenderLine(renderer, x1, y0, x1, y1);
+        const int a = ratio * (hex >> 24);
+        const int r = ratio * (hex >> 16);
+        const int g = ratio * (hex >>  8);
+        const int b = ratio * (hex >>  0);
+        SDL_SetRenderDrawColor(renderer, r, g, b, a);
     }
 
     void render()
@@ -372,40 +34,183 @@ struct sdl_s
         SDL_RenderPresent(renderer);
     }
 
-    ~sdl_s()
+    void clear()
     {
-        SDL_DestroyRenderer(renderer);
+        set_color(0x0);
+        SDL_RenderClear(renderer);
+    }
+
+    void delay(int ms)
+    {
+        SDL_Delay(ms);
+    }
+
+    void outline(const SDL_FRect& rect, const uint32_t color)
+    {
+        set_color(color);
+        SDL_RenderRect(renderer, &rect);
+    }
+
+    void fill(const SDL_FRect& rect, const uint32_t color, const float ratio = 1.0f)
+    {
+        set_color(color, ratio);
+        SDL_RenderFillRect(renderer, &rect);
+        outline(rect, white);
+    }
+
+    void write(const SDL_FPoint& point, const std::string_view& message)
+    {
+        SDL_RenderDebugText(renderer, point.x, point.y, message.data());
+    }
+
+    ~sdl()
+    {
         SDL_DestroyWindow(window);
-        SDL_DestroyCursor(cursor);
-        SDL_Quit();
+        SDL_DestroyRenderer(renderer);
     }
 };
 
-int main(int argc, char* argv[])
+struct cell
 {
-    std::vector<std::string_view> args(argv, argv + argc);
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::engine::type::inline8);
-    auto perf = std::find(args.begin(), args.end(), "--perf");
-    if(perf != args.end())
+    virtual void draw(sdl& sdl) = 0;
+    virtual ~cell() = default;
+};
+
+struct chamber : cell
+{
+    static constexpr int w_p = sdl::w_p / 32;
+    static constexpr int h_p = sdl::h_p / ensim::channels;
+
+    int x;
+    int y;
+
+    chamber(int x, int y): x(x), y(y) {}
+
+    void draw(sdl& sdl) override
     {
-        engine->run(44800);
+        SDL_FRect rect;
+        rect.x = w_p * x;
+        rect.y = h_p * y;
+        rect.w = w_p;
+        rect.h = h_p;
+        sdl.fill(rect, sdl::black);
     }
-    else
+};
+
+struct frame : cell
+{
+    void draw(sdl& sdl) override
     {
-        sdl_s sdl(engine->get_width(), engine->get_height(), engine->get_piston_y());
-        while(!sdl.quit)
+        SDL_FRect rect;
+        rect.x = 0;
+        rect.y = 0;
+        rect.w = sdl::w_p;
+        rect.h = sdl::h_p;
+        sdl.outline(rect, sdl::white);
+    }
+};
+
+struct plot : cell
+{
+    static constexpr int h_p = sdl::h_p / ensim::channels;
+
+    int y;
+    int x_p;
+    int w_p;
+    std::string_view name;
+
+    plot(int y, int engine_w, const std::string_view& name)
+        : y(y)
+        , x_p(engine_w * chamber::w_p)
+        , w_p(sdl::w_p - x_p)
+        , name(name)
         {
-            sdl.poll_quit();
-            sdl.clear_screen();
-            sdl.draw_chambers(engine->get_port_open_ratios(), engine->get_panics());
-            sdl.select_chamber();
-            sdl.draw_chamber_selection();
-            sdl.draw_plots(engine->get_diags());
-            sdl.draw_pressure_volume(engine->get_diags());
-            sdl.draw_border();
-            sdl.render();
-            engine->run(512, sdl.chamber_select_x, sdl.chamber_select_y);
         }
-        std::cout << engine->get_bytes() << std::endl;
+
+    void draw(sdl& sdl) override
+    {
+        SDL_FRect rect;
+        rect.x = x_p;
+        rect.y = h_p * y;
+        rect.w = w_p;
+        rect.h = h_p;
+        sdl.fill(rect, sdl::black);
+
+        SDL_FPoint point;
+        point.x = rect.x + sdl::font_p;
+        point.y = rect.y + sdl::font_p;
+        sdl.write(point, name.data());
     }
+};
+
+struct port : cell
+{
+    static constexpr int w_p = chamber::w_p / 4;
+    static constexpr int h_p = chamber::w_p / 4;
+
+    int x;
+    int y;
+    ensim::engine& engine;
+
+    port(int x, int y, ensim::engine& engine): x(x), y(y), engine(engine) {}
+
+    void draw(sdl& sdl) override
+    {
+        ensim::grid grid = engine.get_port_open_ratios();
+        SDL_FRect rect;
+        rect.x = chamber::w_p * x + chamber::w_p / 2 - w_p / 2;
+        rect.y = chamber::h_p * y + chamber::h_p / 1 - h_p / 2;
+        rect.w = w_p;
+        rect.h = h_p;
+        sdl.fill(rect, sdl::black, grid[y][x]);
+    }
+};
+
+struct ui
+{
+    std::list<std::unique_ptr<cell>> data;
+
+    ui(ensim::engine& engine)
+    {
+        for(size_t x = 0; x < engine.get_w(); x++)
+        for(size_t y = 0; y < engine.get_h(); y++)
+        {
+            append(std::make_unique<chamber>(x, y));
+        }
+        for(size_t y = 0; y < engine.get_h(); y++)
+        {
+            append(std::make_unique<plot>(y, engine.get_w(), ensim::diags::name[y]));
+        }
+        for(size_t x = 0; x < engine.get_w(); x++)
+        for(size_t y = 0; y < engine.get_h(); y++)
+        {
+            append(std::make_unique<port>(x, y, engine));
+        }
+        append(std::make_unique<frame>());
+    }
+
+    void append(std::unique_ptr<cell> cell)
+    {
+        data.push_back(std::move(cell));
+    }
+
+    void draw(sdl& sdl)
+    {
+        for(const auto& x : data)
+        {
+            x->draw(sdl);
+        }
+    }
+};
+
+
+int main()
+{
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::engine::type::inline8);
+    ui ui(*engine);
+    sdl sdl;
+    sdl.clear();
+    ui.draw(sdl);
+    sdl.render();
+    sdl.delay(5000);
 }

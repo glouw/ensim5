@@ -66,9 +66,24 @@ struct diags
         ENSIM_DIAGS_LIST(X)
         #undef X
     };
-    line& operator[](const channel c) { return plots[static_cast<size_t>(c)]; }
-    const line& operator[](const channel c) const { return plots[static_cast<size_t>(c)]; }
-    void clear() { for(auto& plot : plots) plot.clear(); }
+
+    line& operator[](const channel c)
+    {
+        return plots[static_cast<size_t>(c)];
+    }
+
+    const line& operator[](const channel c) const
+    {
+        return plots[static_cast<size_t>(c)];
+    }
+
+    void clear()
+    {
+        for(auto& plot : plots)
+        {
+            plot.clear();
+        }
+    }
 
 private:
     std::array<line, channels> plots;
@@ -76,11 +91,14 @@ private:
 
 struct engine
 {
-    enum class type : size_t { inline8 };
+    enum class type : size_t
+    {
+        inline8
+    };
     virtual void run(const size_t steps, const size_t x = -1, const size_t y = -1) = 0;
     virtual void reset() = 0;
-    virtual size_t get_width() = 0;
-    virtual size_t get_height() = 0;
+    virtual size_t get_w() = 0;
+    virtual size_t get_h() = 0;
     virtual size_t get_piston_y() = 0;
     virtual size_t get_bytes() = 0;
     virtual const diags& get_diags() const = 0;

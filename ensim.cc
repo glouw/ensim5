@@ -951,12 +951,12 @@ struct as_engine : engine
         }
     }
 
-    size_t get_width() override
+    size_t get_w() override
     {
         return W;
     }
 
-    size_t get_height() override
+    size_t get_h() override
     {
         return H;
     }
@@ -989,7 +989,7 @@ struct as_engine : engine
 
     grid get_panics() override
     {
-        grid out = new_grid(get_width(), get_height());
+        grid out = new_grid(get_w(), get_h());
         for(size_t y = 0; y < H; y++)
         for(size_t x = 0; x < W; x++)
         {
@@ -1000,7 +1000,7 @@ struct as_engine : engine
 
     grid get_port_open_ratios() override
     {
-        grid out = new_grid(get_width(), get_height());
+        grid out = new_grid(get_w(), get_h());
         for(size_t y = 0; y < H; y++)
         for(size_t x = 0; x < W; x++)
         {
@@ -1037,7 +1037,7 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
         this->inlet_cam.ramp_theta_r.fill(pi * 0.9_r);
         this->outlet_cam.ramp_theta_r.fill(pi);
         real theta0_r = 0.0_r;
-        const size_t width = get_width();
+        const size_t width = get_w();
         for(size_t i = 0; i < width; i++)
         {
             const real shift = pi / 8.0_r;
