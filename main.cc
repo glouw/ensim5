@@ -112,9 +112,7 @@ struct sdl_s
         SDL_RenderRect(renderer, &outline);
     }
 
-    void draw_chambers(
-        const std::vector<std::vector<ensim::real>>& open_ratios,
-        const std::vector<std::vector<ensim::real>>& panics)
+    void draw_chambers(const ensim::grid& open_ratios, const ensim::grid& panics)
     {
         /*
          * Chamber boxes.
@@ -189,9 +187,9 @@ struct sdl_s
 
     void draw_plots(const ensim::diags& diags)
     {
-        for(size_t y = 0; y < diags.channels; y++)
+        for(size_t y = 0; y < ensim::channels; y++)
         {
-            const std::vector<ensim::real>& data = diags[static_cast<ensim::diags::channel>(y)];
+            const ensim::line& data = diags[static_cast<ensim::channel>(y)];
             if(data.empty())
             {
                 continue;
@@ -319,8 +317,8 @@ struct sdl_s
              *
              */
 
-            const std::vector<ensim::real>& static_pressure_pa = diags[ensim::diags::channel::chamber_static_pressure_pa];
-            const std::vector<ensim::real>& volume_m3 = diags[ensim::diags::channel::chamber_volume_m3];
+            const ensim::line& static_pressure_pa = diags[ensim::channel::chamber_static_pressure_pa];
+            const ensim::line& volume_m3 = diags[ensim::channel::chamber_volume_m3];
             const size_t size = static_pressure_pa.size();
             if(size == 0)
             {

@@ -809,15 +809,15 @@ struct as_engine : engine
     {
         if(x < W && y < H)
         {
-            #define X(name) back[diags::channel::name].push_back(flows[x].name[y]);
+            #define X(name) back[channel::name].push_back(flows[x].name[y]);
             ENSIM_FLUIDS_LIST(X)
             #undef X
             if(y == PY)
             {
-                #define X(name) back[diags::channel::name].push_back(sparkplugs.name[x]);
+                #define X(name) back[channel::name].push_back(sparkplugs.name[x]);
                 ENSIM_SPARKPLUG_LIST(X)
                 #undef X
-                #define X(name) back[diags::channel::name].push_back(pistons.name[x]);
+                #define X(name) back[channel::name].push_back(pistons.name[x]);
                 ENSIM_PISTONS_LIST(X)
                 #undef X
             }
@@ -958,37 +958,37 @@ struct as_engine : engine
         return front;
     }
 
-    std::vector<std::vector<real>> new_matrix(const size_t width, const size_t height)
+    grid new_grid(const size_t width, const size_t height)
     {
-        std::vector<std::vector<real>> matrix;
-        matrix.resize(height);
-        for(auto& row : matrix)
+        grid out;
+        out.resize(height);
+        for(auto& x : out)
         {
-            row.resize(width);
+            x.resize(width);
         }
-        return matrix;
+        return out;
     }
 
-    std::vector<std::vector<real>> get_panics() override
+    grid get_panics() override
     {
-        std::vector<std::vector<real>> matrix = new_matrix(get_width(), get_height());
+        grid out = new_grid(get_width(), get_height());
         for(size_t y = 0; y < H; y++)
         for(size_t x = 0; x < W; x++)
         {
-            matrix[y][x] = flows[x].panic[y];
+            out[y][x] = flows[x].panic[y];
         }
-        return matrix;
+        return out;
     }
 
-    std::vector<std::vector<real>> get_port_open_ratios() override
+    grid get_port_open_ratios() override
     {
-        std::vector<std::vector<real>> matrix = new_matrix(get_width(), get_height());
+        grid out = new_grid(get_width(), get_height());
         for(size_t y = 0; y < H; y++)
         for(size_t x = 0; x < W; x++)
         {
-            matrix[y][x] = flows[x].chamber_nozzle_open_ratio[y];
+            out[y][x] = flows[x].chamber_nozzle_open_ratio[y];
         }
-        return matrix;
+        return out;
     }
 };
 

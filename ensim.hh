@@ -46,44 +46,32 @@ consteval real operator""_r(const long double x)
     return static_cast<real>(x);
 }
 
+using line = std::vector<real>;
+using grid = std::vector<line>;
+
+enum class channel : size_t
+{
+    #define X(name) name,
+    ENSIM_DIAGS_LIST(X)
+    #undef X
+    count,
+};
+
+static constexpr size_t channels = static_cast<size_t>(channel::count);
+
 struct diags
 {
-    enum class channel : size_t
-    {
-        #define X(name) name,
-        ENSIM_DIAGS_LIST(X)
-        #undef X
-        count,
-    };
-
-    static constexpr size_t channels = static_cast<size_t>(channel::count);
-
     static constexpr std::array<std::string_view, channels> name = {
         #define X(name) #name,
         ENSIM_DIAGS_LIST(X)
         #undef X
     };
-
-    std::vector<real>& operator[](const channel c)
-    {
-        return plots[static_cast<size_t>(c)];
-    }
-
-    const std::vector<real>& operator[](const channel c) const
-    {
-        return plots[static_cast<size_t>(c)];
-    }
-
-    void clear()
-    {
-        for(auto& plot : plots)
-        {
-            plot.clear();
-        }
-    }
+    line& operator[](const channel c) { return plots[static_cast<size_t>(c)]; }
+    const line& operator[](const channel c) const { return plots[static_cast<size_t>(c)]; }
+    void clear() { for(auto& plot : plots) plot.clear(); }
 
 private:
-    std::array<std::vector<real>, channels> plots;
+    std::array<line, channels> plots;
 };
 
 struct engine
@@ -96,8 +84,8 @@ struct engine
     virtual size_t get_piston_y() = 0;
     virtual size_t get_bytes() = 0;
     virtual const diags& get_diags() const = 0;
-    virtual std::vector<std::vector<real>> get_panics() = 0;
-    virtual std::vector<std::vector<real>> get_port_open_ratios() = 0;
+    virtual grid get_panics() = 0;
+    virtual grid get_port_open_ratios() = 0;
     virtual ~engine() = default;
 };
 
