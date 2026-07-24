@@ -6,6 +6,8 @@
 
 #define fn __attribute__((used))
 
+namespace ensim {
+
 using std::sin;
 using std::cos;
 using std::fmax;
@@ -14,8 +16,6 @@ using std::log;
 using std::sqrt;
 using std::trunc;
 using std::exp;
-
-namespace ensim {
 
 static constexpr size_t sample_rate_hz = 48000;
 static constexpr real pi = std::numbers::pi_v<real>;
@@ -45,7 +45,7 @@ fn real cuberoot(const real x)
 template<size_t N> using lane = std::array<real, N>;
 template<size_t N> using mask = std::array<bool, N>;
 
-template<size_t H>
+template<size_t H, size_t PY>
 requires(H % 2 == 1)
 struct flow
 {
@@ -56,9 +56,12 @@ struct flow
     static constexpr real universal_gas_constant_j_per_mol_k = 8.3144598_r;
     static constexpr real cv_j_per_mol_k = universal_gas_constant_j_per_mol_k / (nozzle_gamma - 1.0_r);
     static constexpr real molar_mass_kg_per_mol = 0.023_r;
+    static constexpr real cv_j_per_kg_k = cv_j_per_mol_k / molar_mass_kg_per_mol;
     static constexpr real specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
     static constexpr real ambient_static_temperature_k = 300.0_r;
     static constexpr real ambient_static_pressure_pa = 101325.0_r;
+    static constexpr real energy_octane_j_per_kg = 47.9e6_r;
+    static constexpr real stoich_air_fuel_ratio = 14.7_r;
 
     static_assert(nozzle_gamma == 4.0_r / 3.0_r, "manual gamma power optimizations unmet");
 
@@ -343,6 +346,21 @@ struct flow
             panic[i] |= chamber_static_temperature_k[i] <= 0.0_r;
             panic[i] |= chamber_static_pressure_pa[i] <= 0.0_r;
         }
+    }
+
+    /*
+     *             Q
+     * Ts = Ts + -------
+     *           AFR Cv
+     *
+     */
+
+    void calc_combustion()
+    {
+        const real Q = energy_octane_j_per_kg;
+        const real Cv = cv_j_per_kg_k;
+        const real dTs = Q / (stoich_air_fuel_ratio * Cv);
+        chamber_static_temperature_k[PY] += dTs;
     }
 
     fn void update()
@@ -773,7 +791,7 @@ template<
     template<size_t> class P,
     template<size_t> class C,
     template<size_t> class S>
-requires(aggregate_of<crankshaft, P<W>, flow<H>, C<W>, S<W>>)
+requires(aggregate_of<crankshaft, P<W>, flow<H, PY>, C<W>, S<W>>)
 struct as_engine : engine
 {
     /*
@@ -802,7 +820,7 @@ struct as_engine : engine
     C<W> inlet_cam = {};
     C<W> outlet_cam = {};
     S<W> sparkplugs = {};
-    std::array<flow<H>, W> flows = {};
+    std::array<flow<H, PY>, W> flows = {};
     diags back, front;
 
     void log_at(const size_t x, const size_t y)
@@ -912,7 +930,7 @@ struct as_engine : engine
         {
             if(sparkplugs.rising_edge[x])
             {
-                /* ignite */
+                flows[x].calc_combustion();
             }
         }
     }
@@ -1048,14 +1066,14 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
                 resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
-                6e-3_r,
-                5e-3_r,
-                4e-3_r,
-                3e-3_r,
-                5e-4_r,
-                2e-3_r,
-                3e-3_r,
-                4e-3_r,
+                6e-3_r, // atmospere to plenum
+                5e-3_r, // plenum to throttle boddy
+                4e-3_r, // thottle body to intake runner
+                3e-3_r, // intake runner to piston
+                2e-3_r, // piston to exhaust rnuner
+                2e-3_r, // exhaust runner to collector
+                2e-3_r, // collector to exhaust pipe
+                2e-3_r, // exhaust pipe to exhaust
             };
         }
     }
@@ -1064,10 +1082,9 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
 std::unique_ptr<engine> new_engine(const engine::type type)
 {
     std::unique_ptr<engine> engine;
-    switch(type)
+    if(type == engine::type::inline8)
     {
-        default:
-        case engine::type::inline8: engine = std::make_unique<inline8>(); break;
+        engine = std::make_unique<inline8>();
     }
     engine->reset();
     return engine;
