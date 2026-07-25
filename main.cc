@@ -298,7 +298,7 @@ struct plot : cell
         const ensim::real div = max / min;
         const int xm_p = x_p + sdl::font_p;
         const int ym_p = y_p + sdl::font_p;
-        const std::array<message, 4> messages = {
+        const message messages[] = {
             message(xm_p, ym_p + 0 * sdl::font_p, sdl::white, std::string(name)),
             message(xm_p, ym_p + 1 * sdl::font_p, sdl::white, "max " + std::to_string(max)),
             message(xm_p, ym_p + 2 * sdl::font_p, sdl::white, "min " + std::to_string(min)),
@@ -322,12 +322,28 @@ struct popup : cell
     static constexpr int dh_p = h_p / 8;
 
     int index;
+
+    popup(const int index)
+        : index(index)
+        {
+        }
+
+    std::pair<int, int> calc_position()
+    {
+        const int x_p = sdl::w_p - w_p - index * dw_p;
+        const int y_p = index * dh_p;
+        return { x_p, y_p };
+    }
+};
+
+struct plot_popup : popup
+{
     std::string name;
     const ensim::line& x_signal;
     const ensim::line& y_signal;
 
-    popup(const int index, const std::string& name, const ensim::line& x_signal, const ensim::line& y_signal)
-        : index(index)
+    plot_popup(const int index, const std::string& name, const ensim::line& x_signal, const ensim::line& y_signal)
+        : popup(index)
         , name(name)
         , x_signal(x_signal)
         , y_signal(y_signal)
@@ -336,8 +352,7 @@ struct popup : cell
 
     void draw(sdl& sdl) override
     {
-        const int x_p = sdl::w_p - w_p - index * dw_p;
-        const int y_p = index * dh_p;
+        const auto [x_p, y_p] = calc_position();
         const rect rect(x_p, y_p, w_p, h_p, sdl::black);
         if(x_signal.empty() or y_signal.empty())
         {
@@ -350,7 +365,7 @@ struct popup : cell
         const points points = project(xx, yy, rect, sdl::red);
         const int xm_p = x_p + sdl::font_p;
         const int ym_p = y_p + sdl::font_p;
-        const std::array<message, 5> messages = {
+        const message messages[] = {
             message(xm_p, ym_p + 0 * sdl::font_p, sdl::white, name),
             message(xm_p, ym_p + 1 * sdl::font_p, sdl::white, "x_min = " + std::to_string(x_min)),
             message(xm_p, ym_p + 2 * sdl::font_p, sdl::white, "x_max = " + std::to_string(x_max)),
@@ -359,6 +374,33 @@ struct popup : cell
         };
         sdl.fill(rect);
         sdl.draw(points);
+        for(const auto& x : messages)
+        {
+            sdl.write(x);
+        }
+    }
+};
+
+struct help_popup : popup
+{
+    help_popup(const int index)
+        : popup(index)
+        {
+        }
+
+    void draw(sdl& sdl) override
+    {
+        const auto [x_p, y_p] = calc_position();
+        const rect rect(x_p, y_p, w_p, h_p, sdl::black);
+        const int xm_p = x_p + sdl::font_p;
+        const int ym_p = y_p + sdl::font_p;
+        const message messages[] = {
+            message(xm_p, ym_p + 0 * sdl::font_p, sdl::white, "You found the help screen!"),
+            message(xm_p, ym_p + 1 * sdl::font_p, sdl::white, "Q and E to cycle these popups."),
+            message(xm_p, ym_p + 2 * sdl::font_p, sdl::white, "W A S D for chamber select."),
+            message(xm_p, ym_p + 3 * sdl::font_p, sdl::white, "AGPL V3."),
+        };
+        sdl.fill(rect);
         for(const auto& x : messages)
         {
             sdl.write(x);
@@ -424,7 +466,7 @@ struct ui
         if(next == 1)
         {
             popups.push_back(
-                std::make_unique<popup>(
+                std::make_unique<plot_popup>(
                     next,
                     "pressure_volume_diagram",
                     engine.get_volume_signal_m3(),
@@ -435,12 +477,18 @@ struct ui
         if(next == 2)
         {
             popups.push_back(
-                std::make_unique<popup>(
+                std::make_unique<plot_popup>(
                     next,
                     "temperature_volume_diagram",
                     engine.get_volume_signal_m3(),
                     engine.get_static_temperature_signal_k()
                 )
+            );
+        }
+        if(next == 3)
+        {
+            popups.push_back(
+                std::make_unique<help_popup>(next)
             );
         }
     }
