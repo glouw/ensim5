@@ -52,9 +52,9 @@ struct flow
     static constexpr size_t N = H - 1;
     static_assert(N % 2 == 0);
 
-    static constexpr real nozzle_gamma = 4.0_r / 3.0_r;
+    static constexpr real gamma = 3.0_r / 2.0_r;
     static constexpr real universal_gas_constant_j_per_mol_k = 8.3144598_r;
-    static constexpr real cv_j_per_mol_k = universal_gas_constant_j_per_mol_k / (nozzle_gamma - 1.0_r);
+    static constexpr real cv_j_per_mol_k = universal_gas_constant_j_per_mol_k / (gamma - 1.0_r);
     static constexpr real molar_mass_kg_per_mol = 0.023_r;
     static constexpr real cv_j_per_kg_k = cv_j_per_mol_k / molar_mass_kg_per_mol;
     static constexpr real specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
@@ -62,8 +62,6 @@ struct flow
     static constexpr real ambient_static_pressure_pa = 101325.0_r;
     static constexpr real energy_octane_j_per_kg = 47.9e6_r;
     static constexpr real stoich_air_fuel_ratio = 14.7_r;
-
-    static_assert(nozzle_gamma == 4.0_r / 3.0_r, "manual gamma power optimizations unmet");
 
     lane<H> chamber_prev_volume_m3;
     lane<H> chamber_volume_m3;
@@ -122,16 +120,17 @@ struct flow
     }
 
     /*
-     * Assume upstream chamber total pressure (Pt) is equal to upstream chamber static pressure.
-     * Downstream chamber static pressure (Ps) remains as-is.
+     * Assume upstream chamber total pressure (Pt) is equal to upstream
+     * chamber static pressure. Downstream chamber static pressure (Ps)
+     * remains as-is.
      *              ____________________
      *             /
      *            /            y - 1
      *           /             -----
-     *          /                y              ____________
-     *         /   2         Pt                /
-     * M = _  /  ----- * [ (----) - 1 ]  = _  / A * (B - 1)
-     *      \/   y - 1       Ps             \/
+     *          /                y
+     *         /   2         Pt
+     * M = _  /  ----- * [ (----) - 1 ]
+     *      \/   y - 1       Ps
      */
 
     fn void calc_nozzle_machs()
@@ -139,7 +138,7 @@ struct flow
         for(size_t i = 0; i < N; i++)
         {
             const size_t j = i + 1;
-            const real X = (2.0_r / (nozzle_gamma - 1.0_r));
+            const real X = (2.0_r / (gamma - 1.0_r));
             const real Pi = chamber_static_pressure_pa[i];
             const real Pj = chamber_static_pressure_pa[j];
             const real Pt = fmax(Pi, Pj);
@@ -147,14 +146,14 @@ struct flow
             const real direction = Pi > Pj ? 1.0_r : -1.0_r;
 
             /*
-             *     y - 1    1.333 - 1                        1     1          __________
-             *     ----- = ---------- = 0.25                --- * ---        /    ______
-             *       y       1.333                0.25       2     2        /    /
-             * Term                         = Term    = Term          = _  / _  /  Term
-             *                                                           \/   \/
+             *      y - 1                        3
+             *      ----- = 0.3333... where y = ---
+             *        y                          2
+             * Term
              */
 
-            const real Y = sqrt(sqrt(Pt / Ps));
+            static_assert(gamma == 3.0_r / 2.0_r);
+            const real Y = cuberoot(Pt / Ps);
             const real M = direction * sqrt(X * (Y - 1.0_r));
             nozzle_mach[i] = clamper(M, -1.0_r, 1.0_r);
         }
@@ -182,8 +181,8 @@ struct flow
             const real Rs = specific_gas_constant_j_per_kg_k;
             const real Tt = chamber_static_temperature_k[i];
             const real M = nozzle_mach[i];
-            const real X = nozzle_gamma * Rs * Tt;
-            const real Y = 0.5_r * (nozzle_gamma - 1.0_r) * M * M;
+            const real X = gamma * Rs * Tt;
+            const real Y = 0.5_r * (gamma - 1.0_r) * M * M;
             const real u = M * sqrt(X / (1.0_r + Y));
             nozzle_velocity_m_per_s[i] = u;
         }
@@ -209,17 +208,17 @@ struct flow
             const real Tt = chamber_static_temperature_k[i];
             const real M = nozzle_mach[i];
             const real X = Pt / (Rs * Tt);
-            const real C = 1.0_r + 0.5_r * (nozzle_gamma - 1.0_r) * M * M;
 
             /*
-             *        1         1
-             *      ----- = --------- = 3
-             *      y - 1   1.333 - 1
-             * Term                     = Term * Term * Term
-             *
+             *        1                  3
+             *      ----- = 2 where y = ---
+             *      y - 1                2
+             * Term
              */
 
-            nozzle_static_density_kg_per_m3[i] = X / (C * C * C);
+            static_assert(gamma == 3.0_r / 2.0_r);
+            const real C = 1.0_r + 0.5_r * (gamma - 1.0_r) * M * M;
+            nozzle_static_density_kg_per_m3[i] = X / (C * C);
         }
     }
 
@@ -276,14 +275,15 @@ struct flow
             const real V2 = chamber_volume_m3[i];
             const real dv = V1 / V2;
 
-            /*                                     _____
-             *                         1          /
-             *      y = 1.333 - 1.0 = --- = _ 3  / Term
-             * Term                    3     \  /
-             *                                \/
+            /*
+             *               1             3
+             *      y - 1 = --- where y = ---
+             * Term          2             2
+             *
              */
 
-            chamber_static_temperature_k[i] = Ts1 * cuberoot(dv);
+            static_assert(gamma == 3.0_r / 2.0_r);
+            chamber_static_temperature_k[i] = Ts1 * sqrt(dv);
         }
     }
 
@@ -324,15 +324,16 @@ struct flow
             const real m0 = mi - dm;
             const real m1 = mj + dm;
 
-            /*                                     _____
-             *                         1          /
-             *      y = 1.333 - 1.0 = --- = _ 3  / Term
-             * Term                    3     \  /
-             *                                \/
+            /*
+             *               1             3
+             *      y - 1 = --- where y = ---
+             * Term          2             2
+             *
              */
 
-            chamber_static_temperature_k[i] *= cuberoot(m0 / mi);
-            chamber_static_temperature_k[j] *= cuberoot(m1 / mj);
+            static_assert(gamma == 3.0_r / 2.0_r);
+            chamber_static_temperature_k[i] *= sqrt(m0 / mi);
+            chamber_static_temperature_k[j] *= sqrt(m1 / mj);
             chamber_mass_kg[i] = m0;
             chamber_mass_kg[j] = m1;
         }
@@ -458,7 +459,7 @@ struct crankshaft
 
     fn bool update(const real angular_acceleration_r_per_s2)
     {
-        angular_velocity_r_per_s = 100.0_r;
+        angular_velocity_r_per_s = 300.0_r;
         accelerate(angular_acceleration_r_per_s2);
         turn();
         const bool cycled = otto_cycled();

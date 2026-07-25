@@ -15,7 +15,7 @@ namespace ensim
  *
  */
 
-#if 0
+#if 1
 using real = float;
 #else
 using real = double;
