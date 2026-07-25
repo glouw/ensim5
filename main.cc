@@ -1,8 +1,4 @@
 #include <SDL3/SDL.h>
-#include <list>
-#include <algorithm>
-#include <memory>
-#include <format>
 
 #include "ensim.hh"
 
@@ -84,9 +80,9 @@ struct sdl
         SDL_DestroyRenderer(renderer);
     }
 
-    std::list<SDL_Event> poll()
+    std::vector<SDL_Event> poll()
     {
-        std::list<SDL_Event> events;
+        std::vector<SDL_Event> events;
         SDL_Event event;
         while(SDL_PollEvent(&event))
         {
@@ -221,66 +217,68 @@ struct frame : cell
     }
 };
 
+ensim::line lingen(const size_t size)
+{
+    ensim::line linear;
+    for(size_t i = 0; i < size; i++)
+    {
+        linear.push_back(i);
+    }
+    return linear;
+}
+
+ensim::line normalize(const ensim::line& line)
+{
+    const auto [min, max] = minmax(line);
+    ensim::line out = line;
+    for(auto& x : out)
+    {
+        x /= max;
+    }
+    return out;
+}
+
+ensim::line downsample(const ensim::line& line, const size_t size)
+{
+    ensim::line out;
+    out.reserve(size);
+    for(size_t i = 0; i < size; i++)
+    {
+        const size_t j = i * line.size() / size;
+        out.push_back(line[j]);
+    }
+    return out;
+}
+
+points project(const ensim::line& xx, const ensim::line& yy, const rect& rect, const uint32_t color)
+{
+    const auto [x_min, x_max] = minmax(xx);
+    const auto [y_min, y_max] = minmax(yy);
+    const size_t size = xx.size();
+    points points(color);
+    points.self.reserve(size);
+    for(size_t i = 0; i < size; i++)
+    {
+        const float x_ratio = (xx[i] - x_min) / (x_max - x_min);
+        const float y_ratio = (yy[i] - y_min) / (y_max - y_min);
+        points.self.push_back(rect.project(x_ratio, y_ratio));
+    }
+    return points;
+}
+
 struct plot : cell
 {
+    static constexpr size_t max_points = 512;
     static constexpr int h_p = sdl::h_p / g_signals;
 
     int y;
     ensim::engine& engine;
 
-    plot(int y, ensim::engine& engine)
+    plot(const int y, ensim::engine& engine)
         : y(y)
         , engine(engine)
         {
         }
-
-    ensim::line normalize(const ensim::line& line)
-    {
-        const auto [min, max] = minmax(line);
-        ensim::line out = line;
-        for(auto& x : out)
-        {
-            x /= max;
-        }
-        return out;
-    }
-
-    ensim::line downsample(const ensim::line& line)
-    {
-        static constexpr size_t max = 1024;
-        const size_t size = line.size();
-        if(size <= max)
-        {
-            return line;
-        }
-        ensim::line out;
-        out.reserve(max);
-        const size_t step = size / max;
-        for(size_t i = 0, j = 0; i < size; i += step)
-        {
-            out.push_back(line[i]);
-            if(++j == max)
-            {
-                break;
-            }
-        }
-        return out;
-    }
-
-    points project(const ensim::line& line, const rect& rect, const uint32_t color)
-    {
-        const auto [min, max] = minmax(line);
-        const size_t size = line.size();
-        points points(color);
-        points.self.reserve(size);
-        for(size_t i = 0; i < size; i++)
-        {
-            const float x_ratio = float(i) / (size - 1);
-            const float y_ratio = (line[i] - min) / (max - min);
-            points.self.push_back(rect.project(x_ratio, y_ratio));
-        }
-        return points;
-    }
 
     void draw(sdl& sdl) override
     {
@@ -288,27 +286,82 @@ struct plot : cell
         const int y_p = y * h_p;
         const rect rect(x_p, y_p, sdl::w_p - x_p, h_p, sdl::black);
         const std::string_view name = engine.get_signal_name(y);
-        const ensim::line& raw = engine.get_signal(y);
-        if(not raw.empty())
+        const ensim::line& y_signal = engine.get_signal(y);
+        if(y_signal.empty())
         {
-            const ensim::line signal = normalize(downsample(raw));
-            const points points = project(signal, rect, sdl::red);
-            const auto [min, max] = minmax(raw);
-            const ensim::real div = max / min;
-            const int xm_p = x_p + sdl::font_p;
-            const int ym_p = y_p + sdl::font_p;
-            const std::array<message, 4> messages = {
-                message(xm_p, ym_p + 0 * sdl::font_p, sdl::white, std::string(name)),
-                message(xm_p, ym_p + 1 * sdl::font_p, sdl::white, std::format("max {:.6f}", max)),
-                message(xm_p, ym_p + 2 * sdl::font_p, sdl::white, std::format("min {:.6f}", min)),
-                message(xm_p, ym_p + 3 * sdl::font_p, sdl::white, std::format("div {:.6f}", div)),
-            };
-            sdl.fill(rect);
-            sdl.draw(points);
-            for(const auto& x : messages)
-            {
-                sdl.write(x);
-            }
+            return;
+        }
+        const ensim::line xx = lingen(max_points);
+        const ensim::line yy = normalize(downsample(y_signal, max_points));
+        const points points = project(xx, yy, rect, sdl::red);
+        const auto [min, max] = minmax(y_signal);
+        const ensim::real div = max / min;
+        const int xm_p = x_p + sdl::font_p;
+        const int ym_p = y_p + sdl::font_p;
+        const std::array<message, 4> messages = {
+            message(xm_p, ym_p + 0 * sdl::font_p, sdl::white, std::string(name)),
+            message(xm_p, ym_p + 1 * sdl::font_p, sdl::white, "max " + std::to_string(max)),
+            message(xm_p, ym_p + 2 * sdl::font_p, sdl::white, "min " + std::to_string(min)),
+            message(xm_p, ym_p + 3 * sdl::font_p, sdl::white, "div " + std::to_string(div)),
+        };
+        sdl.fill(rect);
+        sdl.draw(points);
+        for(const auto& x : messages)
+        {
+            sdl.write(x);
+        }
+    }
+};
+
+struct popup : cell
+{
+    static constexpr size_t max_points = 1024;
+    static constexpr int w_p = sdl::h_p / 2;
+    static constexpr int h_p = sdl::h_p / 2;
+    static constexpr int dw_p = w_p / 8;
+    static constexpr int dh_p = h_p / 8;
+
+    int index;
+    std::string name;
+    const ensim::line& x_signal;
+    const ensim::line& y_signal;
+
+    popup(const int index, const std::string& name, const ensim::line& x_signal, const ensim::line& y_signal)
+        : index(index)
+        , name(name)
+        , x_signal(x_signal)
+        , y_signal(y_signal)
+        {
+        }
+
+    void draw(sdl& sdl) override
+    {
+        const int x_p = sdl::w_p - w_p - index * dw_p;
+        const int y_p = index * dh_p;
+        const rect rect(x_p, y_p, w_p, h_p, sdl::black);
+        if(x_signal.empty() or y_signal.empty())
+        {
+            return;
+        }
+        const auto [x_min, x_max] = minmax(x_signal);
+        const auto [y_min, y_max] = minmax(y_signal);
+        const ensim::line xx = normalize(downsample(x_signal, max_points));
+        const ensim::line yy = normalize(downsample(y_signal, max_points));
+        const points points = project(xx, yy, rect, sdl::red);
+        const int xm_p = x_p + sdl::font_p;
+        const int ym_p = y_p + sdl::font_p;
+        const std::array<message, 5> messages = {
+            message(xm_p, ym_p + 0 * sdl::font_p, sdl::white, name),
+            message(xm_p, ym_p + 1 * sdl::font_p, sdl::white, "x_min = " + std::to_string(x_min)),
+            message(xm_p, ym_p + 2 * sdl::font_p, sdl::white, "x_max = " + std::to_string(x_max)),
+            message(xm_p, ym_p + 3 * sdl::font_p, sdl::white, "y_min = " + std::to_string(y_min)),
+            message(xm_p, ym_p + 4 * sdl::font_p, sdl::white, "y_max = " + std::to_string(y_max)),
+        };
+        sdl.fill(rect);
+        sdl.draw(points);
+        for(const auto& x : messages)
+        {
+            sdl.write(x);
         }
     }
 };
@@ -336,12 +389,9 @@ struct port : cell
 
 struct ui
 {
-    std::list<std::unique_ptr<cell>> data;
     int x_select = 0;
     int y_select = 0;
     bool done = false;
-    size_t engine_w;
-    size_t engine_h;
 
     ui(ensim::engine& engine)
         : engine_w(engine.get_w())
@@ -349,41 +399,75 @@ struct ui
     {
         if(engine_w >= g_signals)
         {
-            throw std::runtime_error(std::format("max {} signals supported", g_signals));
+            throw std::runtime_error("max signals supported: " + std::to_string(g_signals));
         }
         for(size_t y = 0; y < engine_h; y++)
         for(size_t x = 0; x < engine_w; x++)
         {
-            append(std::make_unique<chamber>(x, y, x_select, y_select, engine));
+            base.push_back(std::make_unique<chamber>(x, y, x_select, y_select, engine));
         }
         for(size_t y = 0; y < engine_h; y++)
         {
-            append(std::make_unique<plot>(y, engine));
+            base.push_back(std::make_unique<plot>(y, engine));
         }
         for(size_t y = 0; y < engine_h; y++)
         for(size_t x = 0; x < engine_w; x++)
         {
-            append(std::make_unique<port>(x, y, engine));
+            base.push_back(std::make_unique<port>(x, y, engine));
         }
-        append(std::make_unique<frame>());
+        base.push_back(std::make_unique<frame>());
     }
 
-    void append(std::unique_ptr<cell> cell)
+    void push_popup(ensim::engine& engine)
     {
-        data.push_back(std::move(cell));
+        const int next = popups.size() + 1;
+        if(next == 1)
+        {
+            popups.push_back(
+                std::make_unique<popup>(
+                    next,
+                    "pressure_volume_diagram",
+                    engine.get_volume_signal_m3(),
+                    engine.get_static_pressure_signal_pa()
+                )
+            );
+        }
+        if(next == 2)
+        {
+            popups.push_back(
+                std::make_unique<popup>(
+                    next,
+                    "temperature_volume_diagram",
+                    engine.get_volume_signal_m3(),
+                    engine.get_static_temperature_signal_k()
+                )
+            );
+        }
+    }
+
+    void pop_popup()
+    {
+        if(popups.size() > 0)
+        {
+            popups.pop_back();
+        }
     }
 
     void draw(sdl& sdl)
     {
-        for(const auto& x : data)
+        for(const auto& elem : base)
         {
-            x->draw(sdl);
+            elem->draw(sdl);
+        }
+        for(const auto& popup : popups)
+        {
+            popup->draw(sdl);
         }
     }
 
-    void poll(sdl& sdl)
+    void poll(sdl& sdl, ensim::engine& engine)
     {
-        const std::list<SDL_Event> events = sdl.poll();
+        const std::vector<SDL_Event> events = sdl.poll();
         for(const auto& event : events)
         {
             if(event.type == SDL_EVENT_QUIT)
@@ -396,11 +480,19 @@ struct ui
                 if(event.key.key == SDLK_S) y_select += 1;
                 if(event.key.key == SDLK_D) x_select += 1;
                 if(event.key.key == SDLK_A) x_select -= 1;
+                if(event.key.key == SDLK_E) pop_popup();
+                if(event.key.key == SDLK_Q) push_popup(engine);
                 x_select %= engine_w;
                 y_select %= engine_h;
             }
         }
     }
+
+private:
+    size_t engine_w;
+    size_t engine_h;
+    std::vector<std::unique_ptr<cell>> base;
+    std::vector<std::unique_ptr<cell>> popups;
 };
 
 int main(int argc, char**)
@@ -419,7 +511,7 @@ int main(int argc, char**)
             engine->run(512, ui.x_select, ui.y_select);
             sdl.clear();
             ui.draw(sdl);
-            ui.poll(sdl);
+            ui.poll(sdl, *engine);
             sdl.render();
         }
     }

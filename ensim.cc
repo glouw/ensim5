@@ -458,7 +458,7 @@ struct crankshaft
 
     fn bool update(const real angular_acceleration_r_per_s2)
     {
-        angular_velocity_r_per_s = 500.0_r;
+        angular_velocity_r_per_s = 100.0_r;
         accelerate(angular_acceleration_r_per_s2);
         turn();
         const bool cycled = otto_cycled();
@@ -788,30 +788,29 @@ struct inline_pistons
     X(chamber_mass_kg)                \
     X(chamber_static_pressure_pa)     \
     X(chamber_static_temperature_k)
-#define SPARKPLUGS(X)                 \
+
+#define SPARKPLUGS(X) \
     X(fired)
-#define PISTONS(X)                    \
-    X(gas_torque_n_m)                 \
+
+#define PISTONS(X)    \
+    X(gas_torque_n_m) \
     X(inertia_torque_n_m)
 
 #define DIAGS(X) FLUIDS(X) SPARKPLUGS(X) PISTONS(X)
 
 enum
 {
-    #define X(name) e_##name,
+    #define X(name) g_##name,
     DIAGS(X)
     #undef X
-    e_diags_size,
+    g_diags_size,
 };
 
-static constexpr std::array<std::string_view, e_diags_size> signal_names = {
+static constexpr std::array<std::string_view, g_diags_size> signal_names = {
     #define X(name) #name,
     DIAGS(X)
     #undef X
 };
-
-template<typename... T>
-concept aggregate_of = (std::is_aggregate_v<T>&& ...);
 
 /*
  * Engines are modelled by W (Width) indepdent SIMD flow lanes
@@ -834,6 +833,9 @@ concept aggregate_of = (std::is_aggregate_v<T>&& ...);
  *
  */
 
+template<typename... T>
+concept aggregate_of = (std::is_aggregate_v<T> and ...);
+
 template<
     size_t W,
     size_t H,
@@ -841,7 +843,7 @@ template<
     template<size_t> class P,
     template<size_t> class C,
     template<size_t> class S>
-requires(aggregate_of<crankshaft, P<W>, flow<H, PY>, C<W>, S<W>>)
+requires(H == 9 and aggregate_of<crankshaft, P<W>, flow<H, PY>, C<W>, S<W>>)
 struct as_engine : engine
 {
     crankshaft crankshaft = {};
@@ -850,22 +852,22 @@ struct as_engine : engine
     C<W> outlet_cam = {};
     S<W> sparkplugs = {};
     std::array<flow<H, PY>, W> flows = {};
-    grid front = grid(e_diags_size);
-    grid back = grid(e_diags_size);
+    grid front = grid(g_diags_size);
+    grid back = grid(g_diags_size);
 
     void log_at(const size_t x, const size_t y)
     {
         if(x < W and y < H)
         {
-            #define X(name) back[e_##name].push_back(flows[x].name[y]);
+            #define X(name) back[g_##name].push_back(flows[x].name[y]);
             FLUIDS(X)
             #undef X
             if(y == PY)
             {
-                #define X(name) back[e_##name].push_back(sparkplugs.name[x]);
+                #define X(name) back[g_##name].push_back(sparkplugs.name[x]);
                 SPARKPLUGS(X)
                 #undef X
-                #define X(name) back[e_##name].push_back(pistons.name[x]);
+                #define X(name) back[g_##name].push_back(pistons.name[x]);
                 PISTONS(X)
                 #undef X
             }
@@ -915,16 +917,24 @@ struct as_engine : engine
         reset_chambers();
     }
 
+    void diags_swap()
+    {
+        for(size_t i = 0; i < front.size(); i++)
+        {
+            std::swap(front[i], back[i]);
+        }
+        for(auto& line : back)
+        {
+            line.clear();
+        }
+    }
+
     void update_crankshaft()
     {
         const bool otto_cycled = crankshaft.update(0.0_r);
         if(otto_cycled)
         {
-            std::swap(front, back);
-            for(auto& line : back)
-            {
-                line.clear();
-            }
+            diags_swap();
         }
     }
 
@@ -999,6 +1009,21 @@ struct as_engine : engine
         return front[index];
     }
 
+    const line& get_static_temperature_signal_k() const override
+    {
+        return get_signal(g_chamber_static_temperature_k);
+    }
+
+    const line& get_static_pressure_signal_pa() const override
+    {
+        return get_signal(g_chamber_static_pressure_pa);
+    }
+
+    const line& get_volume_signal_m3() const override
+    {
+        return get_signal(g_chamber_volume_m3);
+    }
+
     size_t get_w() const override { return W; }
     size_t get_h() const override { return H; }
     size_t get_y() const override { return PY; }
@@ -1065,9 +1090,9 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
                 0.2_r,
                 0.1_r,
                 0.0_r,
-                0.0000001_r,
-                0.0000002_r,
-                0.0000003_r,
+                0.1_r,
+                0.2_r,
+                0.3_r,
                 resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {

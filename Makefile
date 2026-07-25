@@ -1,7 +1,7 @@
 ASANFLAGS = #-fsanitize=address,undefined
 CFLAGS = -O3 -ffast-math -march=native -g
 WFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wpedantic -ferror-limit=1
-CC = clang++ -std=c++20
+CC = clang++ -std=c++26
 LDFLAGS = -lSDL3
 OUT = ensim
 ASM = ensim.asm
