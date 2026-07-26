@@ -207,7 +207,7 @@ struct flow
             const real Rs = specific_gas_constant_j_per_kg_k;
             const real Tt = chamber_static_temperature_k[i];
             const real M = nozzle_mach[i];
-            const real X = Pt / (Rs * Tt);
+            const real pt = Pt / (Rs * Tt);
 
             /*
              *        1                  3
@@ -218,7 +218,7 @@ struct flow
 
             static_assert(gamma == 3.0_r / 2.0_r);
             const real C = 1.0_r + 0.5_r * (gamma - 1.0_r) * M * M;
-            nozzle_static_density_kg_per_m3[i] = X / (C * C);
+            nozzle_static_density_kg_per_m3[i] = pt / (C * C);
         }
     }
 
@@ -415,27 +415,29 @@ struct crankshaft
     real theta_r;
     real last_theta_r;
     real angular_velocity_r_per_s;
-    real moment_of_inertia_kg_m2;
+    real angular_acceleration_r_per_s2;
 
     /*
-     * dw = dw/dt * dt
+     * dw = a * dt
      *
      */
 
-    fn void accelerate(const real angular_acceleration_r_per_s2)
+    fn void accelerate()
     {
-        angular_velocity_r_per_s += angular_acceleration_r_per_s2 * dt_s;
+        const real a = angular_acceleration_r_per_s2;
+        angular_velocity_r_per_s += a * dt_s;
     }
 
     /*
-     * dth = dth/dt * dt
+     * dth = w * dt
      *
      */
 
     fn void turn()
     {
         last_theta_r = theta_r;
-        theta_r += angular_velocity_r_per_s * dt_s;
+        const real w = angular_velocity_r_per_s;
+        theta_r += w * dt_s;
     }
 
     fn bool otto_cycled()
@@ -445,38 +447,23 @@ struct crankshaft
         return t0 > t1;
     }
 
-    /*
-     *      1         2
-     * I = --- * m * r
-     *      2
-     *
-     */
-
-    fn void calc_moment_of_inertia()
+    fn bool update()
     {
-        moment_of_inertia_kg_m2 = 0.5_r * mass_kg * radius_m * radius_m;
-    }
-
-    fn bool update(const real angular_acceleration_r_per_s2)
-    {
-        angular_velocity_r_per_s = 300.0_r;
-        accelerate(angular_acceleration_r_per_s2);
+        accelerate();
         turn();
-        const bool cycled = otto_cycled();
-        calc_moment_of_inertia();
-        return cycled;
+        return otto_cycled();
     }
 };
 
 template<size_t W>
 struct sparkplugs
 {
-    static constexpr real fire_delay_theta_r = 1e-1_r;
     lane<W> engage_theta_r;
     mask<W> prev_fired;
     mask<W> fired;
     mask<W> rising_edge;
 
+    static constexpr real fire_delay_theta_r = 1e-1_r;
     real crankshaft_theta_r;
 
     fn void calc_fired()
@@ -599,10 +586,14 @@ struct inline_pistons
     lane<W> moment_of_inertia_kg_m2;
     lane<W> gas_torque_n_m;
     lane<W> inertia_torque_n_m;
+    lane<W> friction_torque_n_m;
+    lane<W> total_torque_n_m;
     lane<W> chamber_static_pressure_pa;
 
     real crankshaft_angular_velocity_r_per_s;
     real crankshaft_theta_r;
+
+    static constexpr real friction_n_m_s2_per_r2 = 0.001_r;
 
     /*
      * t = t0 + t1
@@ -764,21 +755,56 @@ struct inline_pistons
         }
     }
 
+    /*
+     *           2
+     * Tf = - K w
+     *
+     */
+
+    fn void calc_friction_torque()
+    {
+        for(size_t i = 0; i < W; i++)
+        {
+            const real K = friction_n_m_s2_per_r2;
+            const real w = crankshaft_angular_velocity_r_per_s;
+            friction_torque_n_m[i] = -K * w * w;
+        }
+    }
+
+    /*
+     * Tt = Tg + Ti + Tf
+     *
+     */
+
+    fn void calc_total_torque()
+    {
+        for(size_t i = 0; i < W; i++)
+        {
+            const real Tg = gas_torque_n_m[i];
+            const real Ti = inertia_torque_n_m[i];
+            const real Tf = friction_torque_n_m[i];
+            total_torque_n_m[i] = Tg + Ti + Tf;
+
+        }
+    }
+
     fn void calc_volumetrics()
     {
         calc_thetas();
         calc_sin_cos();
         calc_positions();
         calc_volumes();
+        calc_masses();
+        calc_moments_of_inertia();
     }
 
     fn void update()
     {
         calc_volumetrics();
-        calc_masses();
-        calc_moments_of_inertia();
         calc_gas_torques();
         calc_inertia_torques();
+        calc_friction_torque();
+        calc_total_torque();
     }
 };
 
@@ -932,7 +958,23 @@ struct as_engine : engine
 
     void update_crankshaft()
     {
-        const bool otto_cycled = crankshaft.update(0.0_r);
+        real engine_torque_n_m = 0.0_r;
+        real engine_moment_of_inertia_kg_m2 = 0.0_r;
+        for(size_t x = 0; x < W; x++)
+        {
+            engine_torque_n_m += pistons.total_torque_n_m[x];
+            engine_moment_of_inertia_kg_m2 += pistons.moment_of_inertia_kg_m2[x];
+        }
+
+        /*      T
+         * a = ---
+         *      I
+         */
+
+        const real T = engine_torque_n_m;
+        const real I = engine_moment_of_inertia_kg_m2;
+        crankshaft.angular_acceleration_r_per_s2 = T / I;
+        const bool otto_cycled = crankshaft.update();
         if(otto_cycled)
         {
             diags_swap();
@@ -1025,9 +1067,14 @@ struct as_engine : engine
         return get_signal(g_chamber_volume_m3);
     }
 
+    const real& get_crankshaft_angular_velocity_r_per_s() const override
+    {
+        return crankshaft.angular_velocity_r_per_s;
+    }
+
     size_t get_w() const override { return W; }
     size_t get_h() const override { return H; }
-    size_t get_y() const override { return PY; }
+    size_t get_p() const override { return PY; }
     size_t bytes() const override { return sizeof *this; }
 
     real get_port_open_ratio(const size_t x, const size_t y) const override
@@ -1054,6 +1101,7 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
     {
         this->crankshaft.mass_kg = 25.3_r;
         this->crankshaft.radius_m = 0.031_r;
+        this->crankshaft.angular_velocity_r_per_s = 50.0_r;
     }
 
     void setup_pistons()

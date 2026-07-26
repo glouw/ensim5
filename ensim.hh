@@ -15,7 +15,7 @@ namespace ensim
  *
  */
 
-#if 1
+#if 0
 using real = float;
 #else
 using real = double;
@@ -40,7 +40,7 @@ struct engine
     virtual void reset() = 0;
     virtual size_t get_w() const = 0;
     virtual size_t get_h() const = 0;
-    virtual size_t get_y() const = 0;
+    virtual size_t get_p() const = 0;
     virtual size_t bytes() const = 0;
     virtual real get_panic_status(const size_t x, const size_t y) const = 0;
     virtual real get_port_open_ratio(const size_t x, const size_t y) const = 0;
@@ -49,6 +49,7 @@ struct engine
     virtual const line& get_static_temperature_signal_k() const = 0;
     virtual const line& get_static_pressure_signal_pa() const = 0;
     virtual const line& get_volume_signal_m3() const = 0;
+    virtual const real& get_crankshaft_angular_velocity_r_per_s() const = 0;
     virtual ~engine() = default;
 };
 
