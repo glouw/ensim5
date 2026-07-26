@@ -18,13 +18,13 @@ using std::trunc;
 using std::exp;
 
 static constexpr size_t sample_rate_hz = 48000;
-static constexpr real pi = std::numbers::pi_v<real>;
 static constexpr real dt_s = 1.0_r / sample_rate_hz;
-static constexpr real otto_cycle_r = 4.0_r * pi;
-static constexpr real otto_intake_cycle_r = 0.0_r * pi;
-static constexpr real otto_compression_cycle_r = 1.0_r * pi;
-static constexpr real otto_combustion_cycle_r = 2.0_r * pi;
-static constexpr real otto_exhaust_cycle_r = 3.0_r * pi;
+static constexpr real pi_r = std::numbers::pi_v<real>;
+static constexpr real otto_cycle_r = 4.0_r * pi_r;
+static constexpr real otto_intake_cycle_r = 0.0_r * pi_r;
+static constexpr real otto_compression_cycle_r = 1.0_r * pi_r;
+static constexpr real otto_combustion_cycle_r = 2.0_r * pi_r;
+static constexpr real otto_exhaust_cycle_r = 3.0_r * pi_r;
 static constexpr real resevoir_volume_m3 = 1e9_r;
 
 fn constexpr real clamper(const real value, const real lower, const real upper)
@@ -661,7 +661,7 @@ struct inline_pistons
             const real y = pin_y_m[i] + cm;
             const real radius = diameter_m[i] / 2.0_r;
             const real h = block_deck_surface_m - y;
-            volumes_m3[i] = pi * radius * radius * h;
+            volumes_m3[i] = pi_r * radius * radius * h;
         }
     }
 
@@ -677,7 +677,7 @@ struct inline_pistons
             const real r = 0.5_r * diameter_m[i];
             const real h = 2.0_r * head_compression_height_m[i];
             const real p = head_mass_density_kg_per_m3[i];
-            head_mass_kg[i] = pi * r * r * h * p;
+            head_mass_kg[i] = pi_r * r * r * h * p;
         }
     }
 
@@ -711,7 +711,7 @@ struct inline_pistons
         for(size_t i = 0; i < W; i++)
         {
             const real Pg = chamber_static_pressure_pa[i];
-            const real A = pi * diameter_m[i] * diameter_m[i];
+            const real A = pi_r * diameter_m[i] * diameter_m[i];
             const real r = crank_throw_length_m[i];
             const real l = connecting_rod_length_m[i];
             const real X = Pg * A * r * sint[i];
@@ -839,6 +839,49 @@ static constexpr std::array<std::string_view, g_diags_size> signal_names = {
     #undef X
 };
 
+struct highpass_filter
+{
+    real x0 = 0.0_r;
+    real y0 = 0.0_r;
+    const real rc;
+    const real alpha;
+
+    highpass_filter(const real cutoff_freq_hz)
+        : rc(1.0_r / (2.0_r * pi_r * cutoff_freq_hz))
+        , alpha(rc / (rc + dt_s))
+    {
+    }
+
+    real filter(const real x)
+    {
+        const real y = alpha * (y0 + x - x0);
+        x0 = x;
+        y0 = y;
+        return y;
+    }
+};
+
+struct dc_filter : highpass_filter
+{
+    dc_filter(): highpass_filter(5.0_r) {}
+};
+
+struct volume_filter
+{
+    const real max;
+    const real ratio = 1.0_r;
+
+    volume_filter(const real max)
+        : max(max)
+    {
+    }
+
+    real filter(const real x)
+    {
+        return ratio * x / max;
+    }
+};
+
 /*
  * Engines are modelled by W (Width) indepdent SIMD flow lanes
  * from source to sink of H (Height) volumes. The piston row
@@ -870,7 +913,7 @@ template<
     template<size_t> class P,
     template<size_t> class C,
     template<size_t> class S>
-requires(H == 9 and aggregate_of<crankshaft, P<W>, flow<H, PY>, C<W>, S<W>>)
+requires(aggregate_of<crankshaft, P<W>, flow<H, PY>, C<W>, S<W>>)
 struct as_engine : engine
 {
     crankshaft crankshaft = {};
@@ -881,6 +924,9 @@ struct as_engine : engine
     std::array<flow<H, PY>, W> flows = {};
     grid front = grid(g_diags_size);
     grid back = grid(g_diags_size);
+    dc_filter dc;
+    volume_filter volume = volume_filter(500.0);
+    line audio_signal;
 
     void log_at(const size_t x, const size_t y)
     {
@@ -1026,8 +1072,23 @@ struct as_engine : engine
         return grid;
     }
 
+    void sample_audio()
+    {
+        real total_chamber_static_pressure_pa = 0.0_r;
+        for(size_t x = 0; x < W; x++)
+        {
+            total_chamber_static_pressure_pa += flows[x].chamber_static_pressure_pa[PY + 1];
+        }
+        const real x0 = total_chamber_static_pressure_pa;
+        const real x1 = dc.filter(x0);
+        const real x2 = volume.filter(x1);
+        audio_signal.push_back(x2);
+    }
+
     void run(const size_t steps, const size_t x, const size_t y) override
     {
+        audio_signal.clear();
+        audio_signal.reserve(steps);
         for(size_t i = 0; i < steps; i++)
         {
             update_crankshaft();
@@ -1039,6 +1100,7 @@ struct as_engine : engine
             log_at(x, y);
             remember_volumes();
             broadcast_states();
+            sample_audio();
         }
     }
 
@@ -1086,6 +1148,11 @@ struct as_engine : engine
     {
         return flows[x].panic[y];
     }
+
+    const line& get_audio_signal() const override
+    {
+        return audio_signal;
+    }
 };
 
 struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
@@ -1113,13 +1180,13 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
         this->pistons.head_mass_density_kg_per_m3.fill(7800.0_r);
         this->pistons.head_compression_height_m.fill(0.025_r);
         this->pistons.head_clearance_height_m.fill(0.007_r);
-        this->inlet_cam.ramp_theta_r.fill(pi * 0.9_r);
-        this->outlet_cam.ramp_theta_r.fill(pi);
+        this->inlet_cam.ramp_theta_r.fill(pi_r * 0.9_r);
+        this->outlet_cam.ramp_theta_r.fill(pi_r);
         real theta0_r = 0.0_r;
         const size_t width = get_w();
         for(size_t i = 0; i < width; i++)
         {
-            const real shift = pi / 8.0_r;
+            const real shift = pi_r / 8.0_r;
             this->pistons.theta0_r[i] = theta0_r;
             this->inlet_cam.engage_theta_r[i] = theta0_r - shift + otto_intake_cycle_r;
             this->sparkplugs.engage_theta_r[i] = theta0_r + shift + otto_combustion_cycle_r;
@@ -1135,13 +1202,13 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
             flow.chamber_nozzle_open_ratio.fill(1.0_r);
             flow.chamber_volume_m3 = {
                 resevoir_volume_m3,
-                0.3_r,
                 0.2_r,
+                0.1_r,
                 0.1_r,
                 0.0_r,
                 0.1_r,
+                0.1_r,
                 0.2_r,
-                0.3_r,
                 resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
@@ -1150,9 +1217,9 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
                 4e-3_r,
                 3e-3_r,
                 2e-3_r,
-                2e-3_r,
-                2e-3_r,
-                2e-3_r,
+                3e-3_r,
+                3e-3_r,
+                3e-3_r,
             };
         }
     }

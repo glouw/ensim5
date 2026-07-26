@@ -50,6 +50,7 @@ struct engine
     virtual const line& get_static_pressure_signal_pa() const = 0;
     virtual const line& get_volume_signal_m3() const = 0;
     virtual const real& get_crankshaft_angular_velocity_r_per_s() const = 0;
+    virtual const line& get_audio_signal() const = 0;
     virtual ~engine() = default;
 };
 

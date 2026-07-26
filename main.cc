@@ -6,8 +6,6 @@
 
 #include "ensim.hh"
 
-using ensim::operator""_r;
-
 struct point
 {
     SDL_FPoint self;
@@ -50,6 +48,12 @@ struct rect
         , color_ratio(color_ratio)
         {
         }
+
+    rect(const rect& other, const uint32_t color)
+    {
+        *this = other;
+        this->color = color;
+    }
 
     SDL_FPoint project(const float x_ratio, const float y_ratio) const
     {
@@ -257,11 +261,11 @@ private:
     SDL_Renderer* renderer;
 };
 
-std::pair<ensim::real, ensim::real> minmax(const ensim::line& line)
+std::pair<float, float> minmax(const ensim::line& line)
 {
     const auto [min_it, max_it] = std::minmax_element(line.begin(), line.end());
-    const ensim::real min = (min_it == line.end()) ? ensim::real() : *min_it;
-    const ensim::real max = (max_it == line.end()) ? ensim::real() : *max_it;
+    const float min = (min_it == line.end()) ? 0.0f : *min_it;
+    const float max = (max_it == line.end()) ? 0.0f : *max_it;
     return { min, max };
 }
 
@@ -285,7 +289,7 @@ struct signals
         ensim::line out = line;
         for(auto& x : out)
         {
-            x = (max == 0.0_r) ? 1.0_r : x / max;
+            x = (max == 0.0f) ? 1.0f : x / max;
         }
         return out;
     }
@@ -302,22 +306,36 @@ struct signals
         return out;
     }
 
-    points project(const ensim::line& xx, const ensim::line& yy, const rect& rect, const uint32_t color) const
+    points project(const ensim::line& xx, const ensim::line& yy, const rect& rect) const
     {
         const auto [x_min, x_max] = minmax(xx);
         const auto [y_min, y_max] = minmax(yy);
         const size_t size = xx.size();
-        points points(color);
+        points points(rect.color);
         points.self.reserve(size);
         for(size_t i = 0; i < size; i++)
         {
-            const ensim::real dx = x_max - x_min;
-            const ensim::real dy = y_max - y_min;
-            const float x_ratio = dx == ensim::real() ? 1.0f : ((xx[i] - x_min) / dx);
-            const float y_ratio = dy == ensim::real() ? 1.0f : ((yy[i] - y_min) / dy);
+            const float dx = x_max - x_min;
+            const float dy = y_max - y_min;
+            const float x_ratio = dx == 0.0f ? 1.0f : ((xx[i] - x_min) / dx);
+            const float y_ratio = dy == 0.0f ? 1.0f : ((yy[i] - y_min) / dy);
             points.append(rect.project(x_ratio, y_ratio));
         }
         return points;
+    }
+
+    points project_1d(const ensim::line& signal, const rect& rect, const size_t size) const
+    {
+        const ensim::line xx = lingen(size);
+        const ensim::line yy = normalize(downsample(signal, size));
+        return project(xx, yy, rect);
+    }
+
+    points project_2d(const ensim::line& x_signal, const ensim::line& y_signal, const rect& rect, const size_t size) const
+    {
+        const ensim::line xx = normalize(downsample(x_signal, size));
+        const ensim::line yy = normalize(downsample(y_signal, size));
+        return project(xx, yy, rect);
     }
 };
 
@@ -437,12 +455,11 @@ struct plot : signals, cell
         }
         const int x_p = engine.get_w() * chamber::w_p;
         const int y_p = y * h_p;
-        const rect rect(x_p, y_p, sdl::w_p - x_p, h_p, fill_color);
-        const ensim::line xx = lingen(max_points);
-        const ensim::line yy = normalize(downsample(y_signal, max_points));
-        const points points = project(xx, yy, rect, signal_color);
+        const rect fill(x_p, y_p, sdl::w_p - x_p, h_p, fill_color);
+        const rect signal(fill, signal_color);
+        const points data = project_1d(y_signal, signal, max_points);
         const auto [min, max] = minmax(y_signal);
-        const point point(
+        const point font(
             x_p + sdl::line_p,
             y_p + sdl::line_p,
             text_color
@@ -453,9 +470,9 @@ struct plot : signals, cell
             "min " + std::to_string(min),
             "div " + (min ? std::to_string(max / min) : std::string("N/A")),
         };
-        sdl.fill(rect);
-        sdl.draw_lines(points);
-        sdl.write(point, strings);
+        sdl.fill(fill);
+        sdl.draw_lines(data);
+        sdl.write(font, strings);
     }
 
 private:
@@ -513,13 +530,12 @@ struct plot_popup : signals, popup
         {
             return;
         }
-        const rect rect = calc_rect();
+        const rect fill = calc_rect();
+        const rect signal(fill, signal_color);
+        const points data = project_2d(x_signal, y_signal, signal, max_points);
+        const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [x_min, x_max] = minmax(x_signal);
         const auto [y_min, y_max] = minmax(y_signal);
-        const ensim::line xx = normalize(downsample(x_signal, max_points));
-        const ensim::line yy = normalize(downsample(y_signal, max_points));
-        const points points = project(xx, yy, rect, signal_color);
-        const point point(rect.self.x + sdl::line_p, rect.self.y + sdl::line_p, text_color);
         const std::vector<std::string> strings = {
             name,
             "x min = " + std::to_string(x_min),
@@ -527,15 +543,52 @@ struct plot_popup : signals, popup
             "y min = " + std::to_string(y_min),
             "y max = " + std::to_string(y_max),
         };
-        sdl.fill(rect);
-        sdl.draw_lines(points);
-        sdl.write(point, strings);
+        sdl.fill(fill);
+        sdl.draw_lines(data);
+        sdl.write(font, strings);
     }
 
 private:
     std::string name;
     const ensim::line& x_signal;
     const ensim::line& y_signal;
+    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t text_color = sdl::white;
+};
+
+struct audio_popup : signals, popup
+{
+    audio_popup(const int index, const ensim::line& audio_signal)
+        : popup(index)
+        , audio_signal(audio_signal)
+        {
+        }
+
+    void draw(sdl& sdl) override
+    {
+        if(audio_signal.empty())
+        {
+            return;
+        }
+        const rect fill = calc_rect();
+        const rect signal(fill, signal_color);
+        const points data = project_1d(audio_signal, signal, max_points);
+        const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
+        const auto [y_min, y_max] = minmax(audio_signal);
+        const std::vector<std::string> strings = {
+            name,
+            "min = " + std::to_string(y_min),
+            "max = " + std::to_string(y_max),
+            "samples = " + std::to_string(audio_signal.size()),
+        };
+        sdl.fill(fill);
+        sdl.draw_lines(data);
+        sdl.write(font, strings);
+    }
+
+private:
+    const ensim::line& audio_signal;
+    static constexpr std::string name = "audio_signal";
     static constexpr uint32_t signal_color = sdl::red;
     static constexpr uint32_t text_color = sdl::white;
 };
@@ -559,7 +612,7 @@ struct gauge_popup : popup
             rect.self.y + sdl::line_p,
             text_color
         );
-        const ensim::real at = average(value);
+        const float at = average(value);
         const std::vector<std::string> strings = {
             name,
             std::to_string(at),
@@ -576,14 +629,14 @@ struct gauge_popup : popup
     }
 
 private:
-    ensim::real average(const ensim::real of)
+    float average(const float of)
     {
         if(ring.size() == needle_smoothness)
         {
             ring.pop_front();
         }
         ring.push_back(of);
-        ensim::real total = 0.0_r;
+        float total = 0.0f;
         for(const auto& x : ring)
         {
             total += x;
@@ -629,16 +682,16 @@ private:
 
     const std::string name;
     const ensim::real& value;
-    std::list<ensim::real> ring;
+    std::list<float> ring;
     const float max_value;
     const size_t needle_ticks;
     static constexpr float start_theta_r = (4.0f / 3.0f) * std::numbers::pi_v<float>;
     static constexpr float sweep_theta_r = (5.0f / 3.0f) * std::numbers::pi_v<float>;
-    static constexpr float outer_ratio = 0.50f;
-    static constexpr float inner_ratio = 0.03f;
+    static constexpr float outer_ratio = 0.75f;
+    static constexpr float inner_ratio = 0.05f;
     static constexpr float ticks_ratio = 0.75f;
     static constexpr float needle_ratio = 0.85f;
-    static constexpr size_t needle_smoothness = 16;
+    static constexpr size_t needle_smoothness = 8;
     static constexpr uint32_t needle_color = sdl::red;
     static constexpr uint32_t inner_color = sdl::grey;
     static constexpr uint32_t outer_color = sdl::grey;
@@ -703,46 +756,51 @@ struct ui
         base.push_back(std::make_unique<frame>());
     }
 
+    std::unique_ptr<popup> make_popup(ensim::engine& engine)
+    {
+        const size_t next = popups.size() + 1;
+        switch(next)
+        {
+        case 1:
+            return std::make_unique<gauge_popup>(
+                next,
+                "crankshaft_angular_velocity_r_per_s",
+                engine.get_crankshaft_angular_velocity_r_per_s(),
+                1500.0,
+                15
+            );
+        case 2:
+            return std::make_unique<audio_popup>(
+                next,
+                engine.get_audio_signal()
+            );
+        case 3:
+            return std::make_unique<plot_popup>(
+                next,
+                "pressure_volume_diagram",
+                engine.get_volume_signal_m3(),
+                engine.get_static_pressure_signal_pa()
+            );
+        case 4:
+            return std::make_unique<plot_popup>(
+                next,
+                "temperature_volume_diagram",
+                engine.get_volume_signal_m3(),
+                engine.get_static_temperature_signal_k()
+            );
+        case 5:
+            return std::make_unique<help_popup>(
+                next
+            );
+        }
+        return nullptr;
+    }
+
     void push_popup(ensim::engine& engine)
     {
-        const int next = popups.size() + 1;
-        if(next == 1)
+        if(std::unique_ptr<cell> popup = make_popup(engine))
         {
-            popups.push_back(
-                std::make_unique<plot_popup>(
-                    next,
-                    "pressure_volume_diagram",
-                    engine.get_volume_signal_m3(),
-                    engine.get_static_pressure_signal_pa()
-                )
-            );
-        }
-        if(next == 2)
-        {
-            popups.push_back(
-                std::make_unique<plot_popup>(
-                    next,
-                    "temperature_volume_diagram",
-                    engine.get_volume_signal_m3(),
-                    engine.get_static_temperature_signal_k()
-                )
-            );
-        }
-        if(next == 3)
-        {
-            popups.push_back(
-                std::make_unique<gauge_popup>(
-                    next,
-                    "crankshaft_angular_velocity_r_per_s",
-                    engine.get_crankshaft_angular_velocity_r_per_s(),
-                    1300.0,
-                    13
-                )
-            );
-        }
-        if(next == 4)
-        {
-            popups.push_back(std::make_unique<help_popup>(next));
+            popups.push_back(std::move(popup));
         }
     }
 
@@ -801,7 +859,7 @@ public:
     bool done = false;
 };
 
-int main(int argc, char**)
+int main(int argc, const char* const*)
 {
     auto engine = ensim::new_engine(ensim::type::inline8);
     if(argc == 2)
@@ -814,7 +872,7 @@ int main(int argc, char**)
         sdl sdl;
         while(not ui.done)
         {
-            engine->run(512, ui.x_select, ui.y_select);
+            engine->run(1024, ui.x_select, ui.y_select);
             sdl.clear();
             ui.draw(sdl);
             ui.poll(sdl, *engine);
