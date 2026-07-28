@@ -6,6 +6,8 @@
 
 #include "ensim.hh"
 
+using ensim::operator""_r;
+
 struct point
 {
     SDL_FPoint self;
@@ -98,20 +100,26 @@ struct message : point
 
 struct sdl
 {
-    static constexpr int w_p = 1900;
-    static constexpr int h_p = 1000;
-    static constexpr uint32_t grey  = 0xFFAAAAAA;
-    static constexpr uint32_t white = 0xFFFFFFFF;
-    static constexpr uint32_t black = 0xFF000000;
-    static constexpr uint32_t green = 0xFF00FF00;
-    static constexpr uint32_t red   = 0xFFFF0000;
+    static constexpr int w_p = 1920;
+    static constexpr int h_p = 1080;
     static constexpr uint32_t line_p = 16;
     static constexpr uint32_t font_p = 8;
+
+    static constexpr uint32_t grey   = 0xFFAAAAAA;
+    static constexpr uint32_t white  = 0xFFFFFFFF;
+    static constexpr uint32_t black  = 0xFF101010;
+    static constexpr uint32_t green  = 0xFF00FF00;
+    static constexpr uint32_t purple = 0xFFFF00FF;
+    static constexpr uint32_t blue   = 0xFF00AAFF;
+    static constexpr uint32_t orange = 0xFFFFAA00;
+    static constexpr uint32_t red    = 0xFFFF2222;
+    static constexpr uint32_t yellow = 0xFFFFFF00;
 
     sdl()
     {
         SDL_Init(SDL_INIT_VIDEO);
-        SDL_CreateWindowAndRenderer(nullptr, w_p, h_p, SDL_WINDOW_BORDERLESS, &window, &renderer);
+        SDL_CreateWindowAndRenderer(nullptr, w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
+        SDL_SetRenderVSync(renderer, true);
     }
 
     ~sdl()
@@ -349,6 +357,8 @@ struct chamber : cell
 {
     static constexpr int w_p = sdl::w_p / 32;
     static constexpr int h_p = sdl::h_p / signals::count;
+    static constexpr int ws_p = w_p / 3;
+    static constexpr int hs_p = w_p / 3;
 
     chamber(const int x, const int y, int& x_select, int& y_select, ensim::engine& engine)
         : x(x)
@@ -365,19 +375,32 @@ struct chamber : cell
         const int y_p = y * h_p;
         const rect container(x_p, y_p, w_p, h_p, fill_color);
         sdl.fill(container);
-        const int ws_p = w_p / 2;
-        const int hs_p = w_p / 2;
         const int xs_p = x_p + (w_p - ws_p) / 2;
         const int ys_p = y_p + (h_p - hs_p) / 2;
+        const int xf_p = x_p + w_p / 2;
+        const int yf_p = y_p + h_p / 2;
+        const int y_throttle = engine.get_throttle_y();
+        const int y_piston = engine.get_piston_y();
+        const int y_audio = engine.get_audio_y();
         if(engine.get_panic_status(x, y))
         {
-            const rect select(xs_p, ys_p, ws_p, hs_p, panic_color);
-            sdl.fill(select);
+            sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, panic_color));
+        }
+        if(y == y_throttle)
+        {
+            sdl.write(message(xf_p, yf_p, throttle_color, "T"), true);
+        }
+        if(y == y_piston)
+        {
+            sdl.write(message(xf_p, yf_p, piston_color, "P"), true);
+        }
+        if(y == y_audio)
+        {
+            sdl.write(message(xf_p, yf_p, audio_color, "A"), true);
         }
         if(x == x_select and y == y_select)
         {
-            const rect select(xs_p, ys_p, ws_p, hs_p, select_color);
-            sdl.fill(select);
+            sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, select_color));
         }
     }
 
@@ -388,8 +411,11 @@ private:
     int& y_select;
     ensim::engine& engine;
     static constexpr uint32_t fill_color = sdl::black;
+    static constexpr uint32_t throttle_color = sdl::orange;
+    static constexpr uint32_t piston_color = sdl::purple;
+    static constexpr uint32_t audio_color = sdl::blue;
     static constexpr uint32_t panic_color = sdl::red;
-    static constexpr uint32_t select_color = sdl::green;
+    static constexpr uint32_t select_color = sdl::yellow;
 };
 
 struct frame : cell
@@ -453,7 +479,7 @@ struct plot : signals, cell
         {
             return;
         }
-        const int x_p = engine.get_w() * chamber::w_p;
+        const int x_p = engine.get_width() * chamber::w_p;
         const int y_p = y * h_p;
         const rect fill(x_p, y_p, sdl::w_p - x_p, h_p, fill_color);
         const rect signal(fill, signal_color);
@@ -470,7 +496,11 @@ struct plot : signals, cell
             "min " + std::to_string(min),
             "div " + (min ? std::to_string(max / min) : std::string("N/A")),
         };
+        const int yz_p = y_p + h_p * (max / (max - min));
+        const point yz0_p(x_p, yz_p, zero_line_color);
+        const point yz1_p(sdl::w_p, yz_p, zero_line_color);
         sdl.fill(fill);
+        sdl.draw_line(yz0_p, yz1_p);
         sdl.draw_lines(data);
         sdl.write(font, strings);
     }
@@ -481,6 +511,7 @@ private:
     static constexpr uint32_t signal_color = sdl::red;
     static constexpr uint32_t fill_color = sdl::black;
     static constexpr uint32_t text_color = sdl::white;
+    static constexpr uint32_t zero_line_color = sdl::grey;
 };
 
 struct popup : cell
@@ -612,7 +643,7 @@ struct gauge_popup : popup
             rect.self.y + sdl::line_p,
             text_color
         );
-        const float at = average(value);
+        const float at = value;
         const std::vector<std::string> strings = {
             name,
             std::to_string(at),
@@ -629,20 +660,6 @@ struct gauge_popup : popup
     }
 
 private:
-    float average(const float of)
-    {
-        if(ring.size() == needle_smoothness)
-        {
-            ring.pop_front();
-        }
-        ring.push_back(of);
-        float total = 0.0f;
-        for(const auto& x : ring)
-        {
-            total += x;
-        }
-        return total / ring.size();
-    }
 
     float to_angle(const float at) const
     {
@@ -682,16 +699,14 @@ private:
 
     const std::string name;
     const ensim::real& value;
-    std::list<float> ring;
     const float max_value;
     const size_t needle_ticks;
     static constexpr float start_theta_r = (4.0f / 3.0f) * std::numbers::pi_v<float>;
     static constexpr float sweep_theta_r = (5.0f / 3.0f) * std::numbers::pi_v<float>;
     static constexpr float outer_ratio = 0.75f;
     static constexpr float inner_ratio = 0.05f;
-    static constexpr float ticks_ratio = 0.75f;
+    static constexpr float ticks_ratio = 0.82f;
     static constexpr float needle_ratio = 0.85f;
-    static constexpr size_t needle_smoothness = 8;
     static constexpr uint32_t needle_color = sdl::red;
     static constexpr uint32_t inner_color = sdl::grey;
     static constexpr uint32_t outer_color = sdl::grey;
@@ -731,25 +746,23 @@ private:
 struct ui
 {
     ui(ensim::engine& engine)
-        : engine_w(engine.get_w())
-        , engine_h(engine.get_h())
-        , y_select(engine.get_p())
+        : y_select(engine.get_piston_y())
     {
-        if(engine_w >= signals::count)
+        if(engine.get_width() >= signals::count)
         {
             throw std::runtime_error("max signals supported: " + std::to_string(signals::count));
         }
-        for(size_t y = 0; y < engine_h; y++)
-        for(size_t x = 0; x < engine_w; x++)
+        for(size_t y = 0; y < engine.get_height(); y++)
+        for(size_t x = 0; x < engine.get_width(); x++)
         {
             base.push_back(std::make_unique<chamber>(x, y, x_select, y_select, engine));
         }
-        for(size_t y = 0; y < engine_h; y++)
+        for(size_t y = 0; y < engine.get_height(); y++)
         {
             base.push_back(std::make_unique<plot>(y, engine));
         }
-        for(size_t y = 0; y < engine_h; y++)
-        for(size_t x = 0; x < engine_w; x++)
+        for(size_t y = 0; y < engine.get_height(); y++)
+        for(size_t x = 0; x < engine.get_width(); x++)
         {
             base.push_back(std::make_unique<port>(x, y, engine));
         }
@@ -766,8 +779,8 @@ struct ui
                 next,
                 "crankshaft_angular_velocity_r_per_s",
                 engine.get_crankshaft_angular_velocity_r_per_s(),
-                1500.0,
-                15
+                2000.0,
+                20
             );
         case 2:
             return std::make_unique<audio_popup>(
@@ -779,14 +792,14 @@ struct ui
                 next,
                 "pressure_volume_diagram",
                 engine.get_volume_signal_m3(),
-                engine.get_static_pressure_signal_pa()
+                engine.get_pressure_signal_pa()
             );
         case 4:
             return std::make_unique<plot_popup>(
                 next,
                 "temperature_volume_diagram",
                 engine.get_volume_signal_m3(),
-                engine.get_static_temperature_signal_k()
+                engine.get_temperature_signal_k()
             );
         case 5:
             return std::make_unique<help_popup>(
@@ -835,21 +848,44 @@ struct ui
             }
             if(event.type == SDL_EVENT_KEY_DOWN)
             {
+                if(event.key.key == SDLK_1)
+                {
+                    engine.set_throttle_open_ratio(0.00_r);
+                    engine.set_injection_off();
+                }
+                if(event.key.key == SDLK_2)
+                {
+                    engine.set_throttle_open_ratio(0.001_r);
+                    engine.set_injection_on();
+                }
+                if(event.key.key == SDLK_3)
+                {
+                    engine.set_throttle_open_ratio(0.01_r);
+                    engine.set_injection_on();
+                }
+                if(event.key.key == SDLK_4)
+                {
+                    engine.set_throttle_open_ratio(0.1_r);
+                    engine.set_injection_on();
+                }
+                if(event.key.key == SDLK_5)
+                {
+                    engine.set_throttle_open_ratio(0.5_r);
+                    engine.set_injection_on();
+                }
                 if(event.key.key == SDLK_W) y_select -= 1;
                 if(event.key.key == SDLK_S) y_select += 1;
                 if(event.key.key == SDLK_D) x_select += 1;
                 if(event.key.key == SDLK_A) x_select -= 1;
                 if(event.key.key == SDLK_E) pop_popup();
                 if(event.key.key == SDLK_Q) push_popup(engine);
-                x_select %= engine_w;
-                y_select %= engine_h;
+                x_select %= engine.get_width();
+                y_select %= engine.get_height();
             }
         }
     }
 
 private:
-    size_t engine_w;
-    size_t engine_h;
     std::vector<std::unique_ptr<cell>> base;
     std::vector<std::unique_ptr<cell>> popups;
 
@@ -872,7 +908,7 @@ int main(int argc, const char* const*)
         sdl sdl;
         while(not ui.done)
         {
-            engine->run(1024, ui.x_select, ui.y_select);
+            engine->run(800, ui.x_select, ui.y_select);
             sdl.clear();
             ui.draw(sdl);
             ui.poll(sdl, *engine);

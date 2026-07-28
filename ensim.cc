@@ -58,29 +58,32 @@ struct flow
     static constexpr real molar_mass_kg_per_mol = 0.023_r;
     static constexpr real cv_j_per_kg_k = cv_j_per_mol_k / molar_mass_kg_per_mol;
     static constexpr real specific_gas_constant_j_per_kg_k = universal_gas_constant_j_per_mol_k / molar_mass_kg_per_mol;
-    static constexpr real ambient_static_temperature_k = 300.0_r;
-    static constexpr real ambient_static_pressure_pa = 101325.0_r;
+    static constexpr real ambient_temperature_k = 300.0_r;
+    static constexpr real ambient_pressure_pa = 101325.0_r;
     static constexpr real energy_octane_j_per_kg = 47.9e6_r;
     static constexpr real stoich_air_fuel_ratio = 14.7_r;
 
     lane<H> chamber_prev_volume_m3;
     lane<H> chamber_volume_m3;
     lane<H> chamber_nozzle_flow_area_m2;
+    lane<H> chamber_nozzle_real_flow_area_m2;
     lane<H> chamber_nozzle_open_ratio;
-    lane<H> chamber_static_pressure_pa;
-    lane<H> chamber_static_temperature_k;
+    lane<H> chamber_pressure_pa;
+    lane<H> chamber_temperature_k;
     lane<H> chamber_mass_kg;
     lane<H> nozzle_mach;
     lane<H> nozzle_velocity_m_per_s;
     lane<H> nozzle_static_density_kg_per_m3;
     lane<H> nozzle_mass_flow_rate_kg_per_s;
     lane<H> parcel_mass_kg;
-    lane<H> parcel_static_temperature_k;
+    lane<H> parcel_temperature_k;
     mask<H> panic;
-    real flame_height_m;
-    real volume_burned_m3;
-    bool piston_on_fire;
-    real piston_radius_m;
+
+    real piston_injection_enabled;
+    real piston_chamber_flame_height_m;
+    real piston_chamber_mass_burned_m3;
+    real piston_chamber_radius_m;
+    bool piston_chamber_on_fire;
 
     /*
      *     Ps * V
@@ -92,15 +95,15 @@ struct flow
     {
         for(size_t i = 0; i < H; i++)
         {
-            chamber_static_temperature_k[i] = ambient_static_temperature_k;
-            chamber_static_pressure_pa[i] = ambient_static_pressure_pa;
+            chamber_temperature_k[i] = ambient_temperature_k;
+            chamber_pressure_pa[i] = ambient_pressure_pa;
         }
         for(size_t i = 0; i < H; i++)
         {
-            const real Ps = chamber_static_pressure_pa[i];
+            const real Ps = chamber_pressure_pa[i];
             const real V = chamber_volume_m3[i];
             const real Rs = specific_gas_constant_j_per_kg_k;
-            const real Ts = chamber_static_temperature_k[i];
+            const real Ts = chamber_temperature_k[i];
             chamber_mass_kg[i] = (Ps * V) / (Rs * Ts);
         }
     }
@@ -111,15 +114,15 @@ struct flow
      *           V
      */
 
-    fn void calc_chamber_static_pressures()
+    fn void calc_chamber_pressures()
     {
         for(size_t i = 0; i < N; i++)
         {
             const real m = chamber_mass_kg[i];
             const real Rs = specific_gas_constant_j_per_kg_k;
-            const real Ts = chamber_static_temperature_k[i];
+            const real Ts = chamber_temperature_k[i];
             const real V = chamber_volume_m3[i];
-            chamber_static_pressure_pa[i] = m * Rs * Ts / V;
+            chamber_pressure_pa[i] = m * Rs * Ts / V;
         }
     }
 
@@ -143,8 +146,8 @@ struct flow
         {
             const size_t j = i + 1;
             const real X = (2.0_r / (gamma - 1.0_r));
-            const real Pi = chamber_static_pressure_pa[i];
-            const real Pj = chamber_static_pressure_pa[j];
+            const real Pi = chamber_pressure_pa[i];
+            const real Pj = chamber_pressure_pa[j];
             const real Pt = fmax(Pi, Pj);
             const real Ps = fmin(Pi, Pj);
             const real direction = Pi > Pj ? 1.0_r : -1.0_r;
@@ -183,7 +186,7 @@ struct flow
         for(size_t i = 0; i < N; i++)
         {
             const real Rs = specific_gas_constant_j_per_kg_k;
-            const real Tt = chamber_static_temperature_k[i];
+            const real Tt = chamber_temperature_k[i];
             const real M = nozzle_mach[i];
             const real X = gamma * Rs * Tt;
             const real Y = 0.5_r * (gamma - 1.0_r) * M * M;
@@ -207,9 +210,9 @@ struct flow
     {
         for(size_t i = 0; i < N; i++)
         {
-            const real Pt = chamber_static_pressure_pa[i];
+            const real Pt = chamber_pressure_pa[i];
             const real Rs = specific_gas_constant_j_per_kg_k;
-            const real Tt = chamber_static_temperature_k[i];
+            const real Tt = chamber_temperature_k[i];
             const real M = nozzle_mach[i];
             const real pt = Pt / (Rs * Tt);
 
@@ -226,6 +229,14 @@ struct flow
         }
     }
 
+    fn void calc_nozzle_real_flow_areas()
+    {
+        for(size_t i = 0; i < N; i++)
+        {
+            chamber_nozzle_real_flow_area_m2[i] = chamber_nozzle_open_ratio[i] * chamber_nozzle_flow_area_m2[i];
+        }
+    }
+
     /* .
      * m = ps A u
      *
@@ -236,7 +247,7 @@ struct flow
         for(size_t i = 0; i < N; i++)
         {
             const real ps = nozzle_static_density_kg_per_m3[i];
-            const real A = chamber_nozzle_open_ratio[i] * chamber_nozzle_flow_area_m2[i];
+            const real A = chamber_nozzle_real_flow_area_m2[i];
             const real u = nozzle_velocity_m_per_s[i];
             const real mdot = ps * A * u;
             nozzle_mass_flow_rate_kg_per_s[i] = mdot;
@@ -258,9 +269,9 @@ struct flow
             const real mdot = nozzle_mass_flow_rate_kg_per_s[i];
             const real dm = mdot * dt_s;
             parcel_mass_kg[i] = dm;
-            const real Ti = chamber_static_temperature_k[i];
-            const real Tj = chamber_static_temperature_k[j];
-            parcel_static_temperature_k[i] = mdot > 0.0_r ? Ti : Tj;
+            const real Ti = chamber_temperature_k[i];
+            const real Tj = chamber_temperature_k[j];
+            parcel_temperature_k[i] = mdot > 0.0_r ? Ti : Tj;
         }
     }
 
@@ -274,7 +285,7 @@ struct flow
     {
         for(size_t i = 0; i < N; i++)
         {
-            const real Ts1 = chamber_static_temperature_k[i];
+            const real Ts1 = chamber_temperature_k[i];
             const real V1 = chamber_prev_volume_m3[i];
             const real V2 = chamber_volume_m3[i];
             const real dv = V1 / V2;
@@ -287,7 +298,7 @@ struct flow
              */
 
             static_assert(gamma == 3.0_r / 2.0_r);
-            chamber_static_temperature_k[i] = Ts1 * sqrt(dv);
+            chamber_temperature_k[i] = Ts1 * sqrt(dv);
         }
     }
 
@@ -304,10 +315,10 @@ struct flow
             const size_t j = i + 1;
             const real dm = parcel_mass_kg[i];
             const real m = chamber_mass_kg[j];
-            const real Tp = parcel_static_temperature_k[i];
-            const real Ts0 = chamber_static_temperature_k[j];
+            const real Tp = parcel_temperature_k[i];
+            const real Ts0 = chamber_temperature_k[j];
             const real Ts1 = (Ts0 * m + Tp * dm) / (m + dm);
-            chamber_static_temperature_k[j] = dm > 0.0_r ? Ts1 : Ts0;
+            chamber_temperature_k[j] = dm > 0.0_r ? Ts1 : Ts0;
         }
     }
 
@@ -336,39 +347,61 @@ struct flow
              */
 
             static_assert(gamma == 3.0_r / 2.0_r);
-            chamber_static_temperature_k[i] *= sqrt(m0 / mi);
-            chamber_static_temperature_k[j] *= sqrt(m1 / mj);
+            chamber_temperature_k[i] *= sqrt(m0 / mi);
+            chamber_temperature_k[j] *= sqrt(m1 / mj);
             chamber_mass_kg[i] = m0;
             chamber_mass_kg[j] = m1;
         }
     }
 
-    fn void calc_panics()
+    fn void ignite_piston_chamber()
     {
-        for(size_t i = 0; i < N; i++)
-        {
-            panic[i] |= chamber_mass_kg[i] <= 0.0_r;
-            panic[i] |= chamber_static_temperature_k[i] <= 0.0_r;
-            panic[i] |= chamber_static_pressure_pa[i] <= 0.0_r;
-        }
+        piston_chamber_flame_height_m = 0.0_r;
+        piston_chamber_mass_burned_m3 = 0.0_r;
+        piston_chamber_on_fire = true;
     }
 
     fn void calc_combustion()
     {
-        if(piston_on_fire)
+#if 1
+        if(piston_chamber_on_fire)
         {
+            if(piston_injection_enabled)
+            {
+                const real M = chamber_mass_kg[PY];
+                const real Mf = M / (1.0 + stoich_air_fuel_ratio);
+                const real Q = Mf * energy_octane_j_per_kg;
+                const real Cv = cv_j_per_kg_k;
+                const real dTs = Q / (M * Cv);
+                chamber_temperature_k[PY] += dTs;
+            }
+            else
+            {
+            }
+            piston_chamber_on_fire = false;
+        }
+#else
+        if(piston_chamber_on_fire)
+        {
+            const real M = chamber_mass_kg[PY];
             const real V = chamber_volume_m3[PY];
 
             /*
-             *           Ts   2
-             * S = 0.4 [-----]
-             *           Ts0
+             *              Ts    2
+             *           [------]
+             *             Ts0
+             * S =  0.4 ----------------
+             *              Ps    0.125
+             *           [------]
+             *             Ps0
              */
 
-            const real Ts = chamber_static_temperature_k[PY];
-            const real Ts0 = ambient_static_temperature_k;
+            const real Ts = chamber_temperature_k[PY];
+            const real Ts0 = ambient_temperature_k;
+            const real Ps = chamber_pressure_pa[PY];
+            const real Ps0 = ambient_pressure_pa;
             const real Tr = Ts / Ts0;
-            const real S = 0.4_r * Tr * Tr;
+            const real S = 0.4_r * Tr * Tr / sqrt(sqrt(sqrt(Ps/ Ps0)));
 
             /*
              *                 2
@@ -377,82 +410,65 @@ struct flow
              */
 
             const real dh = S * dt_s;
-            const real h1 = flame_height_m;
+            const real h1 = piston_chamber_flame_height_m;
             const real h2 = h1 + dh;
-            const real r = piston_radius_m;
-            const real Vs = (h2 - h1) * pi_r * r * r;
-            const real Vb = volume_burned_m3 + Vs;
+            const real r = piston_chamber_radius_m;
+            const real Vb = (h2 - h1) * pi_r * r * r;
+
+            const real p = M / V;
+            const real dm = Vb * p;
+            const real Mb = piston_chamber_mass_burned_m3 + dm;
 
             /*
-             *              Q
+             *             M Q
              * Ts = Ts + --------
              *            AFR Cv
              *
              */
 
-            if(Vb / V < 1.0_r)
+            if(Mb / M < 1.0_r)
             {
                 const real Q = energy_octane_j_per_kg;
                 const real Cv = cv_j_per_kg_k;
-                const real dTs = (Vs / V) * Q / (stoich_air_fuel_ratio * Cv);
-                chamber_static_temperature_k[PY] += dTs;
+                const real X = (dm * Q);
+                const real Y = (1.0_r + stoich_air_fuel_ratio) * M * Cv;
+                const real dTs = X / Y;
+                chamber_temperature_k[PY] += dTs;
             }
             else
             {
-                piston_on_fire = false;
+                piston_chamber_on_fire = false;
             }
 
-            flame_height_m = h2;
-            volume_burned_m3 = Vb;
+            piston_chamber_flame_height_m = h2;
+            piston_chamber_mass_burned_m3 = Mb;
+        }
+#endif
+    }
+
+    fn void calc_panics()
+    {
+        for(size_t i = 0; i < N; i++)
+        {
+            panic[i] |= chamber_mass_kg[i] <= 0.0_r;
+            panic[i] |= chamber_temperature_k[i] <= 0.0_r;
+            panic[i] |= chamber_pressure_pa[i] <= 0.0_r;
         }
     }
 
     fn void update()
     {
-        /*
-         * Calculate conservation of momentum.
-         *
-         */
-
-        calc_chamber_static_pressures();
+        calc_chamber_pressures();
         calc_nozzle_machs();
         calc_nozzle_velocities();
         calc_nozzle_static_densities();
+        calc_nozzle_real_flow_areas();
         calc_nozzle_mass_flow_rates();
-
-        /*
-         * Calculates transport.
-         *
-         */
-
         calc_nozzle_parcels();
-
-        /*
-         * Calculate conservation of energy.
-         *
-         */
-
         calc_compressions();
         calc_forward_energy_transfers();
-
-        /*
-         * Calculate conservation of mass.
-         *
-         */
-
         calc_mass_transfers();
-
-        /*
-         *
-         */
-
         calc_combustion();
-
-        /*
-         * Misc debug.
-         *
-         */
-
         calc_panics();
     }
 };
@@ -534,12 +550,9 @@ struct sparkplugs
         for(size_t i = 0; i < W; i++)
         {
             prev_fired[i] = fired[i];
-            const real mod_theta_r = modulos(crankshaft_theta_r, otto_cycle_r);
-            const real mod_engage_theta_r = engage_theta_r[i] >= otto_cycle_r
-                ? (engage_theta_r[i] - otto_cycle_r)
-                : (engage_theta_r[i]);
-            const real mod_engage_delayed_theta_r = mod_engage_theta_r + fire_delay_theta_r;
-            fired[i] = mod_theta_r > mod_engage_delayed_theta_r;
+            const real theta0_r = modulos(crankshaft_theta_r, otto_cycle_r);
+            const real theta1_r = engage_theta_r[i] >= otto_cycle_r ? (engage_theta_r[i] - otto_cycle_r) : engage_theta_r[i];
+            fired[i] = theta0_r > theta1_r + fire_delay_theta_r;
         }
     }
 
@@ -576,17 +589,17 @@ struct simple_cam
     {
         for(size_t i = 0; i < W; i++)
         {
-            real mod_engage_theta_r = modulos(engage_theta_r[i], otto_cycle_r);
-            if(mod_engage_theta_r < 0.0_r)
+            real theta0_r = modulos(engage_theta_r[i], otto_cycle_r);
+            if(theta0_r < 0.0_r)
             {
-                mod_engage_theta_r += otto_cycle_r;
+                theta0_r += otto_cycle_r;
             }
-            real mod_theta_r = modulos(crankshaft_theta_r, otto_cycle_r);
-            if(mod_theta_r < mod_engage_theta_r)
+            real theta1_r = modulos(crankshaft_theta_r, otto_cycle_r);
+            if(theta1_r < theta0_r)
             {
-                mod_theta_r += otto_cycle_r;
+                theta1_r += otto_cycle_r;
             }
-            const real open_r = mod_theta_r - mod_engage_theta_r;
+            const real open_r = theta1_r - theta0_r;
             const real t = open_r / ramp_theta_r[i];
             const real a = t * t * t * t;
             const real b = t * a;
@@ -597,7 +610,7 @@ struct simple_cam
             const real C = 70.0_r * c;
             const real D = 20.0_r * d;
             const real R = clamper(A - B + C - D, 0.0_r, 1.0_r);
-            open_ratio[i] = mod_theta_r < mod_engage_theta_r ? 0.0_r : R;
+            open_ratio[i] = theta1_r < theta0_r ? 0.0_r : R;
         }
     }
 
@@ -675,12 +688,12 @@ struct inline_pistons
     lane<W> inertia_torque_n_m;
     lane<W> friction_torque_n_m;
     lane<W> total_torque_n_m;
-    lane<W> chamber_static_pressure_pa;
+    lane<W> chamber_pressure_pa;
 
     real crankshaft_angular_velocity_r_per_s;
     real crankshaft_theta_r;
 
-    static constexpr real friction_n_m_s2_per_r2 = 0.0002_r;
+    static constexpr real friction_n_m_s2_per_r2 = 0.00005_r;
 
     /*
      * t = t0 + t1
@@ -797,7 +810,7 @@ struct inline_pistons
     {
         for(size_t i = 0; i < W; i++)
         {
-            const real Pg = chamber_static_pressure_pa[i];
+            const real Pg = chamber_pressure_pa[i];
             const real A = pi_r * diameter_m[i] * diameter_m[i];
             const real r = crank_throw_length_m[i];
             const real l = connecting_rod_length_m[i];
@@ -896,11 +909,11 @@ struct inline_pistons
 
 #define FLUIDS(X) \
     X(chamber_volume_m3) \
-    X(chamber_nozzle_open_ratio) \
+    X(chamber_nozzle_real_flow_area_m2) \
     X(nozzle_mass_flow_rate_kg_per_s) \
     X(chamber_mass_kg) \
-    X(chamber_static_pressure_pa) \
-    X(chamber_static_temperature_k)
+    X(chamber_pressure_pa) \
+    X(chamber_temperature_k)
 
 #define SPARKPLUGS(X) \
     X(fired)
@@ -954,13 +967,8 @@ struct dc_filter : highpass_filter
 
 struct volume_filter
 {
-    const real max;
-    const real ratio = 1.0_r;
-
-    volume_filter(const real max)
-        : max(max)
-    {
-    }
+    const real max = 1000.0_r;
+    real ratio = 1.0_r;
 
     real filter(const real x)
     {
@@ -968,23 +976,26 @@ struct volume_filter
     }
 };
 
+struct throttle
+{
+    real open_ratio = 0.1_r;
+};
+
+struct injector
+{
+    bool enabled = true;
+};
+
 /*
- * Engines are modelled by W (Width) indepdent SIMD flow lanes
- * from source to sink of H (Height) volumes. The piston row
- * is specified by PY (Piston Y).
- *
- * For example, an inline-3 configuration has
- * W == 3, H == 9, and PY == 4.
- *
- * [ ]  [ ]  [ ] | <- Source
- * [ ]  [ ]  [ | | <- Air Filter
- * [ ]  [ ]  [ ] | <- Throttle Body
- * [ ]  [ ]  [ ] | <- Intake Runner
- * [ ]  [ ]  [ ] H <- Piston (PY)
- * [ ]  [ ]  [ ] | <- Exhaust Runner
- * [ ]  [ ]  [ ] | <- Collector
- * [ ]  [ ]  [ ] | <- Exhaust
- * [ ]  [ ]  [ ] | <- Sink
+ * [ ]  ...  [ ] | <- Source
+ * [ ]  ...  [ | | <- Intake
+ * [ ]  ...  [ ] | <- Intake Manifold
+ * [ ]  ...  [ ] | <- Intake Runner
+ * [ ]  ...  [ ] H <- Piston (PY)
+ * [ ]  ...  [ ] | <- Exhaust Runner
+ * [ ]  ...  [ ] | <- Exhaust Manifold
+ * [ ]  ...  [ ] | <- Exhaust
+ * [ ]  ...  [ ] | <- Sink
  * +---- W ----+ +
  *
  */
@@ -995,7 +1006,9 @@ concept aggregate_of = (std::is_aggregate_v<T> and ...);
 template<
     size_t W,
     size_t H,
+    size_t TY,
     size_t PY,
+    size_t AY,
     template<size_t> class P,
     template<size_t> class C,
     template<size_t> class S>
@@ -1004,16 +1017,24 @@ struct as_engine : engine
 {
     crankshaft crankshaft = {};
     flywheel flywheel = {};
+    throttle throttle = {};
+    injector injector = {};
     P<W> pistons = {};
     C<W> inlet_cam = {};
     C<W> outlet_cam = {};
     S<W> sparkplugs = {};
     std::array<flow<H, PY>, W> flows = {};
-    grid front = grid(g_diags_size);
-    grid back = grid(g_diags_size);
+    grid front;
+    grid back;
     dc_filter dc;
-    volume_filter volume = volume_filter(500.0);
+    volume_filter volume;
     line audio_signal;
+
+    as_engine()
+    {
+        front.resize(g_diags_size);
+        back.resize(g_diags_size);
+    }
 
     void log_at(const size_t x, const size_t y)
     {
@@ -1034,10 +1055,10 @@ struct as_engine : engine
         }
     }
 
-    fn void broadcast_states()
+    fn void broadcast()
     {
         /*
-         * Broadcast crankshaft out.
+         * Crankshaft theta -> inlet/outlet cams + pistons + sparkplugs thetas.
          *
          */
 
@@ -1048,17 +1069,7 @@ struct as_engine : engine
         pistons.crankshaft_angular_velocity_r_per_s = crankshaft.angular_velocity_r_per_s;
 
         /*
-         * Broadcast piston to flow combustion.
-         *
-         */
-
-        for(size_t x = 0; x < W; x++)
-        {
-            flows[x].piston_radius_m = pistons.diameter_m[x] / 2.0_r;
-        }
-
-        /*
-         * Broadcast cams to nozzles.
+         * Cam open ratios -> chamber open ratios.
          *
          */
 
@@ -1069,35 +1080,49 @@ struct as_engine : engine
         }
 
         /*
-         * Broadcast pressure and volume.
+         * Throttle open ratios -> chamber open ratios.
          *
          */
 
         for(size_t x = 0; x < W; x++)
         {
-            flows[x].chamber_volume_m3[PY] = pistons.volumes_m3[x];
-            pistons.chamber_static_pressure_pa[x] = flows[x].chamber_static_pressure_pa[PY];
+            flows[x].chamber_nozzle_open_ratio[TY] = throttle.open_ratio;
         }
 
         /*
-         * Broadcast acceleration to cranksahft.
+         * Piston shapes <-> flow shapes.
          *
          */
 
-        real moment_of_inertia_kg_m2 = 0.0_r;
         for(size_t x = 0; x < W; x++)
         {
-            moment_of_inertia_kg_m2 += pistons.moment_of_inertia_kg_m2[x];
+            flows[x].piston_injection_enabled = injector.enabled;
+            flows[x].piston_chamber_radius_m = pistons.diameter_m[x] / 2.0_r;
+            flows[x].chamber_volume_m3[PY] = pistons.volumes_m3[x];
+            pistons.chamber_pressure_pa[x] = flows[x].chamber_pressure_pa[PY];
         }
-        moment_of_inertia_kg_m2 += flywheel.moment_of_inertia_kg_m2;
-        moment_of_inertia_kg_m2 += crankshaft.moment_of_inertia_kg_m2;
-        real torque_n_m = 0.0_r;
+
+        /*
+         * System torque + inertia to system angular acceleration.
+         *
+         *      t
+         * a = ---
+         *      I
+         */
+
+        real I = 0.0_r;
         for(size_t x = 0; x < W; x++)
         {
-            torque_n_m += pistons.total_torque_n_m[x];
+            I += pistons.moment_of_inertia_kg_m2[x];
         }
-        torque_n_m += 100.0_r; /* temp starter */
-        crankshaft.angular_acceleration_r_per_s2 = torque_n_m / moment_of_inertia_kg_m2;
+        I += flywheel.moment_of_inertia_kg_m2;
+        I += crankshaft.moment_of_inertia_kg_m2;
+        real t = 0.0_r;
+        for(size_t x = 0; x < W; x++)
+        {
+            t += pistons.total_torque_n_m[x];
+        }
+        crankshaft.angular_acceleration_r_per_s2 = t / I;
     }
 
     void remember_volumes()
@@ -1118,8 +1143,10 @@ struct as_engine : engine
 
     void reset() override
     {
+        crankshaft.update();
+        flywheel.update();
         pistons.calc_volumetrics();
-        broadcast_states();
+        broadcast();
         remember_volumes();
         reset_chambers();
     }
@@ -1136,96 +1163,48 @@ struct as_engine : engine
         }
     }
 
-    void update_flywheel()
-    {
-        flywheel.update();
-    }
-
-    void update_crankshaft()
-    {
-        const bool otto_cycled = crankshaft.update();
-        if(otto_cycled)
-        {
-            diags_swap();
-        }
-    }
-
-    void update_cams()
-    {
-        inlet_cam.update();
-        outlet_cam.update();
-    }
-
-    void update_sparkplugs()
-    {
-        sparkplugs.update();
-    }
-
-    void update_pistons()
-    {
-        pistons.update();
-    }
-
-    void update_flows()
-    {
-        for(size_t x = 0; x < W; x++)
-        {
-            flows[x].update();
-        }
-    }
-
-    fn void update_injection()
-    {
-        for(size_t x = 0; x < W; x++)
-        {
-            if(sparkplugs.rising_edge[x])
-            {
-                flows[x].flame_height_m = 0.0_r;
-                flows[x].volume_burned_m3 = 0.0_r;
-                flows[x].piston_on_fire = true;
-            }
-        }
-    }
-
-    grid new_grid(const size_t width, const size_t height) const
-    {
-        grid grid(height);
-        for(auto& row : grid)
-        {
-            row.resize(width);
-        }
-        return grid;
-    }
-
     void sample_audio()
     {
-        real total_chamber_static_pressure_pa = 0.0_r;
+        real x0 = 0.0_r;
         for(size_t x = 0; x < W; x++)
         {
-            total_chamber_static_pressure_pa += flows[x].chamber_static_pressure_pa[PY + 1];
+            x0 += flows[x].chamber_pressure_pa[AY];
         }
-        const real x0 = total_chamber_static_pressure_pa;
         const real x1 = dc.filter(x0);
         const real x2 = volume.filter(x1);
         audio_signal.push_back(x2);
     }
 
-    void run(const size_t steps, const size_t x, const size_t y) override
+    void run(const size_t steps, const size_t xx, const size_t yy) override
     {
         audio_signal.clear();
         audio_signal.reserve(steps);
         for(size_t i = 0; i < steps; i++)
         {
-            update_flywheel();
-            update_crankshaft();
-            update_cams();
-            update_sparkplugs();
-            update_pistons();
-            update_injection();
-            update_flows();
-            log_at(x, y);
+            flywheel.update();
+            const bool otto_cycled = crankshaft.update();
+            if(otto_cycled)
+            {
+                diags_swap();
+            }
+            inlet_cam.update();
+            outlet_cam.update();
+            sparkplugs.update();
+            pistons.update();
+            for(size_t x = 0; x < W; x++)
+            {
+                if(sparkplugs.rising_edge[x])
+                {
+                    flows[x].ignite_piston_chamber();
+                }
+            }
+            for(size_t x = 0; x < W; x++)
+            {
+                flows[x].update();
+            }
+            log_at(xx, yy);
             remember_volumes();
-            broadcast_states();
+            broadcast();
             sample_audio();
         }
     }
@@ -1240,14 +1219,14 @@ struct as_engine : engine
         return front[index];
     }
 
-    const line& get_static_temperature_signal_k() const override
+    const line& get_temperature_signal_k() const override
     {
-        return get_signal(g_chamber_static_temperature_k);
+        return get_signal(g_chamber_temperature_k);
     }
 
-    const line& get_static_pressure_signal_pa() const override
+    const line& get_pressure_signal_pa() const override
     {
-        return get_signal(g_chamber_static_pressure_pa);
+        return get_signal(g_chamber_pressure_pa);
     }
 
     const line& get_volume_signal_m3() const override
@@ -1260,10 +1239,35 @@ struct as_engine : engine
         return crankshaft.angular_velocity_r_per_s;
     }
 
-    size_t get_w() const override { return W; }
-    size_t get_h() const override { return H; }
-    size_t get_p() const override { return PY; }
-    size_t bytes() const override { return sizeof *this; }
+    size_t get_width() const override
+    {
+        return W;
+    }
+
+    size_t get_height() const override
+    {
+        return H;
+    }
+
+    size_t bytes() const override
+    {
+        return sizeof *this;
+    }
+
+    size_t get_piston_y() const override
+    {
+        return PY;
+    }
+
+    size_t get_audio_y() const override
+    {
+        return AY;
+    }
+
+    size_t get_throttle_y() const override
+    {
+        return TY;
+    }
 
     real get_port_open_ratio(const size_t x, const size_t y) const override
     {
@@ -1279,32 +1283,32 @@ struct as_engine : engine
     {
         return audio_signal;
     }
+
+    void set_throttle_open_ratio(const real open_ratio) override
+    {
+        throttle.open_ratio = open_ratio;
+    }
+
+    void set_injection_on() override
+    {
+        injector.enabled = true;
+    }
+
+    void set_injection_off() override
+    {
+        injector.enabled = false;
+    }
 };
 
-struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
+struct inline8 : as_engine<8, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs>
 {
     inline8()
     {
-        setup_flywheel();
-        setup_crankshaft();
-        setup_pistons();
-        setup_flow();
-    }
-
-    void setup_flywheel()
-    {
-        this->flywheel.mass_kg = 8.15_r;
-        this->flywheel.radius_m = 0.18_r;
-    }
-
-    void setup_crankshaft()
-    {
+        this->flywheel.mass_kg = 17.0_r;
+        this->flywheel.radius_m = 0.25_r;
         this->crankshaft.mass_kg = 25.3_r;
         this->crankshaft.radius_m = 0.031_r;
-    }
-
-    void setup_pistons()
-    {
+        this->crankshaft.angular_velocity_r_per_s = 500.0_r;
         this->pistons.diameter_m.fill(0.085_r);
         this->pistons.crank_throw_length_m.fill(0.038_r);
         this->pistons.connecting_rod_length_m.fill(0.1_r);
@@ -1313,44 +1317,44 @@ struct inline8 : as_engine<8, 9, 4, inline_pistons, simple_cam, sparkplugs>
         this->pistons.head_compression_height_m.fill(0.025_r);
         this->pistons.head_clearance_height_m.fill(0.007_r);
         this->inlet_cam.ramp_theta_r.fill(pi_r * 0.9_r);
-        this->outlet_cam.ramp_theta_r.fill(pi_r);
+        this->outlet_cam.ramp_theta_r.fill(pi_r * 0.9_r);
         real theta0_r = 0.0_r;
-        const size_t width = get_w();
+        const size_t width = get_width();
         for(size_t i = 0; i < width; i++)
         {
             this->pistons.theta0_r[i] = theta0_r;
             this->inlet_cam.engage_theta_r[i] = theta0_r + otto_intake_cycle_r - pi_r / 8.0_r;
-            this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r + pi_r / 16.0_r;
+            this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r + pi_r / 8.0_r;
             this->outlet_cam.engage_theta_r[i] = theta0_r + otto_exhaust_cycle_r - pi_r / 8.0_r;
             theta0_r += otto_cycle_r / static_cast<real>(width);
         }
-    }
-
-    void setup_flow()
-    {
         for(auto& flow : this->flows)
         {
             flow.chamber_nozzle_open_ratio.fill(1.0_r);
             flow.chamber_volume_m3 = {
                 resevoir_volume_m3,
-                0.2_r,
-                0.1_r,
-                0.1_r,
-                0.0_r,
-                0.1_r,
-                0.1_r,
-                0.2_r,
+                0.0015_r,
+                0.0015_r,
+                0.0015_r,
+
+                0.000_r,
+
+                0.005_r,
+                0.010_r,
+                0.010_r,
                 resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
-                6e-3_r,
-                5e-3_r,
-                4e-3_r,
-                3e-3_r,
-                2e-3_r,
-                3e-3_r,
-                3e-3_r,
-                3e-3_r,
+                0.001_r,
+                0.001_r,
+                0.001_r,
+
+                0.001_r,
+                0.001_r,
+
+                0.001_r,
+                0.001_r,
+                0.001_r,
             };
         }
     }
