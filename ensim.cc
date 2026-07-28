@@ -363,26 +363,13 @@ struct flow
 
     fn void calc_combustion()
     {
-#if 1
         if(piston_chamber_on_fire)
         {
-            if(piston_injection_enabled)
+            if(not piston_injection_enabled)
             {
-                const real M = chamber_mass_kg[PY];
-                const real Mf = M / (1.0 + stoich_air_fuel_ratio);
-                const real Q = Mf * energy_octane_j_per_kg;
-                const real Cv = cv_j_per_kg_k;
-                const real dTs = Q / (M * Cv);
-                chamber_temperature_k[PY] += dTs;
+                piston_chamber_on_fire = false;
+                return;
             }
-            else
-            {
-            }
-            piston_chamber_on_fire = false;
-        }
-#else
-        if(piston_chamber_on_fire)
-        {
             const real M = chamber_mass_kg[PY];
             const real V = chamber_volume_m3[PY];
 
@@ -401,7 +388,8 @@ struct flow
             const real Ps = chamber_pressure_pa[PY];
             const real Ps0 = ambient_pressure_pa;
             const real Tr = Ts / Ts0;
-            const real S = 0.4_r * Tr * Tr / sqrt(sqrt(sqrt(Ps/ Ps0)));
+            const real Pr = Ps/ Ps0;
+            const real S = 0.4_r * Tr * Tr / sqrt(sqrt(sqrt(Pr)));
 
             /*
              *                 2
@@ -415,24 +403,32 @@ struct flow
             const real r = piston_chamber_radius_m;
             const real Vb = (h2 - h1) * pi_r * r * r;
 
-            const real p = M / V;
-            const real dm = Vb * p;
-            const real Mb = piston_chamber_mass_burned_m3 + dm;
-
             /*
-             *             M Q
-             * Ts = Ts + --------
-             *            AFR Cv
+             *      M
+             * p = ---
+             *      V
+             *
+             * Mburned = Vb * p
              *
              */
 
-            if(Mb / M < 1.0_r)
+            const real p = M / V;
+            const real Mb = Vb * p;
+
+            /*
+             *             Q
+             * Ts = Ts + ------
+             *            M Cv
+             *
+             */
+
+            const real TMb = piston_chamber_mass_burned_m3 + Mb;
+            if(TMb / M < 1.0_r)
             {
-                const real Q = energy_octane_j_per_kg;
+                const real MFb = Mb / (1.0 + stoich_air_fuel_ratio);
+                const real Q = MFb * energy_octane_j_per_kg;
                 const real Cv = cv_j_per_kg_k;
-                const real X = (dm * Q);
-                const real Y = (1.0_r + stoich_air_fuel_ratio) * M * Cv;
-                const real dTs = X / Y;
+                const real dTs = Q / (M * Cv);
                 chamber_temperature_k[PY] += dTs;
             }
             else
@@ -441,9 +437,8 @@ struct flow
             }
 
             piston_chamber_flame_height_m = h2;
-            piston_chamber_mass_burned_m3 = Mb;
+            piston_chamber_mass_burned_m3 = TMb;
         }
-#endif
     }
 
     fn void calc_panics()
@@ -978,7 +973,7 @@ struct volume_filter
 
 struct throttle
 {
-    real open_ratio = 0.1_r;
+    real open_ratio = 0.02_r;
 };
 
 struct injector
@@ -1304,7 +1299,7 @@ struct inline8 : as_engine<8, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs
 {
     inline8()
     {
-        this->flywheel.mass_kg = 17.0_r;
+        this->flywheel.mass_kg = 10.0_r;
         this->flywheel.radius_m = 0.25_r;
         this->crankshaft.mass_kg = 25.3_r;
         this->crankshaft.radius_m = 0.031_r;
@@ -1324,7 +1319,7 @@ struct inline8 : as_engine<8, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs
         {
             this->pistons.theta0_r[i] = theta0_r;
             this->inlet_cam.engage_theta_r[i] = theta0_r + otto_intake_cycle_r - pi_r / 8.0_r;
-            this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r + pi_r / 8.0_r;
+            this->sparkplugs.engage_theta_r[i] = theta0_r + otto_combustion_cycle_r - pi_r / 8.0_r;
             this->outlet_cam.engage_theta_r[i] = theta0_r + otto_exhaust_cycle_r - pi_r / 8.0_r;
             theta0_r += otto_cycle_r / static_cast<real>(width);
         }
