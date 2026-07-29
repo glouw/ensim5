@@ -1,6 +1,8 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <numbers>
+#include <thread>
+#include <chrono>
 #include <cmath>
 #include <list>
 
@@ -23,7 +25,9 @@ struct point
 struct points
 {
     std::vector<SDL_FPoint> self;
-    uint32_t color;
+    uint32_t color = 0x0;
+
+    points() = default;
 
     points(const uint32_t color): color(color) {}
 
@@ -117,13 +121,19 @@ struct sdl
 
     sdl()
     {
-        SDL_Init(SDL_INIT_VIDEO);
-        SDL_CreateWindowAndRenderer(nullptr, w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
+        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_BORDERLESS, &window, &renderer);
         SDL_SetRenderVSync(renderer, true);
+        audio_spec.channels = 1;
+        audio_spec.format = SDL_AUDIO_F32;
+        audio_spec.freq = ensim::sample_rate_hz;
+        audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
+        SDL_ResumeAudioStreamDevice(audio_stream);
     }
 
     ~sdl()
     {
+        SDL_DestroyAudioStream(audio_stream);
         SDL_DestroyWindow(window);
         SDL_DestroyRenderer(renderer);
     }
@@ -264,9 +274,21 @@ struct sdl
         draw_points(points);
     }
 
+    int get_audio_buffer_size()
+    {
+        return SDL_GetAudioStreamQueued(audio_stream) / sizeof(float);
+    }
+
+    void buffer_audio(const std::vector<float>& audio)
+    {
+        SDL_PutAudioStreamData(audio_stream, audio.data(), audio.size() * sizeof(float));
+    }
+
 private:
     SDL_Window* window;
     SDL_Renderer* renderer;
+    SDL_AudioStream* audio_stream;
+    SDL_AudioSpec audio_spec;
 };
 
 std::pair<float, float> minmax(const ensim::line& line)
@@ -293,6 +315,10 @@ struct signals
 
     ensim::line normalize(const ensim::line& line) const
     {
+        if(line.size() <= 16)
+        {
+            return line;
+        }
         const auto [min, max] = minmax(line);
         ensim::line out = line;
         for(auto& x : out)
@@ -306,10 +332,15 @@ struct signals
     {
         ensim::line out;
         out.reserve(size);
+        if(line.empty())
+        {
+            return out;
+        }
         for(size_t i = 0; i < size; i++)
         {
             const size_t j = i * line.size() / size;
-            out.push_back(line[j]);
+            const ensim::real value = line[j];
+            out.push_back(value);
         }
         return out;
     }
@@ -334,6 +365,10 @@ struct signals
 
     points project_1d(const ensim::line& signal, const rect& rect, const size_t size) const
     {
+        if(signal.size() <= 16)
+        {
+            return {};
+        }
         const ensim::line xx = lingen(size);
         const ensim::line yy = normalize(downsample(signal, size));
         return project(xx, yy, rect);
@@ -341,6 +376,10 @@ struct signals
 
     points project_2d(const ensim::line& x_signal, const ensim::line& y_signal, const rect& rect, const size_t size) const
     {
+        if(x_signal.size() <= 16)
+        {
+            return {};
+        }
         const ensim::line xx = normalize(downsample(x_signal, size));
         const ensim::line yy = normalize(downsample(y_signal, size));
         return project(xx, yy, rect);
@@ -374,7 +413,6 @@ struct chamber : cell
         const int x_p = x * w_p;
         const int y_p = y * h_p;
         const rect container(x_p, y_p, w_p, h_p, fill_color);
-        sdl.fill(container);
         const int xs_p = x_p + (w_p - ws_p) / 2;
         const int ys_p = y_p + (h_p - hs_p) / 2;
         const int xf_p = x_p + w_p / 2;
@@ -382,10 +420,11 @@ struct chamber : cell
         const int y_throttle = engine.get_throttle_y();
         const int y_piston = engine.get_piston_y();
         const int y_audio = engine.get_audio_y();
-        if(engine.get_panic_status(x, y))
-        {
-            sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, panic_color));
-        }
+        // if(...) TODO
+        // {
+        //     sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, panic_color));
+        // }
+        sdl.fill(container);
         if(y == y_throttle)
         {
             sdl.write(message(xf_p, yf_p, throttle_color, "T"), true);
@@ -437,7 +476,7 @@ struct port : cell
     static constexpr int w_p = chamber::w_p / 4;
     static constexpr int h_p = chamber::w_p / 4;
 
-    port(int x, int y, ensim::engine& engine)
+    port(const int x, const int y, ensim::engine& engine)
         : x(x)
         , y(y)
         , engine(engine)
@@ -448,7 +487,7 @@ struct port : cell
     {
         const int x_p = chamber::w_p * x + chamber::w_p / 2 - w_p / 2;
         const int y_p = chamber::h_p * y + chamber::h_p / 1 - h_p;
-        const float ratio = engine.get_port_open_ratio(x, y);
+        const ensim::atom& ratio = engine.get_port_open_ratio(x, y);
         const rect rect(x_p, y_p, w_p, h_p, fill_color, ratio);
         sdl.fill(rect);
     }
@@ -475,10 +514,6 @@ struct plot : signals, cell
     {
         const std::string_view name = engine.get_signal_name(y);
         const ensim::line& y_signal = engine.get_signal(y);
-        if(y_signal.empty())
-        {
-            return;
-        }
         const int x_p = engine.get_width() * chamber::w_p;
         const int y_p = y * h_p;
         const rect fill(x_p, y_p, sdl::w_p - x_p, h_p, fill_color);
@@ -557,12 +592,9 @@ struct plot_popup : signals, popup
 
     void draw(sdl& sdl) override
     {
-        if(x_signal.empty() or y_signal.empty())
-        {
-            return;
-        }
         const rect fill = calc_rect();
         const rect signal(fill, signal_color);
+        sdl.fill(fill);
         const points data = project_2d(x_signal, y_signal, signal, max_points);
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [x_min, x_max] = minmax(x_signal);
@@ -574,7 +606,6 @@ struct plot_popup : signals, popup
             "y min = " + std::to_string(y_min),
             "y max = " + std::to_string(y_max),
         };
-        sdl.fill(fill);
         sdl.draw_lines(data);
         sdl.write(font, strings);
     }
@@ -589,18 +620,15 @@ private:
 
 struct audio_popup : signals, popup
 {
-    audio_popup(const int index, const ensim::line& audio_signal)
+    audio_popup(const int index, const std::string& name, const ensim::line& audio_signal)
         : popup(index)
+        , name(name)
         , audio_signal(audio_signal)
         {
         }
 
     void draw(sdl& sdl) override
     {
-        if(audio_signal.empty())
-        {
-            return;
-        }
         const rect fill = calc_rect();
         const rect signal(fill, signal_color);
         const points data = project_1d(audio_signal, signal, max_points);
@@ -618,15 +646,15 @@ struct audio_popup : signals, popup
     }
 
 private:
+    const std::string name;
     const ensim::line& audio_signal;
-    static constexpr std::string name = "audio_signal";
     static constexpr uint32_t signal_color = sdl::red;
     static constexpr uint32_t text_color = sdl::white;
 };
 
 struct gauge_popup : popup
 {
-    gauge_popup(const int index, const std::string& name, const ensim::real& value, const float max_value, const size_t needle_ticks)
+    gauge_popup(const int index, const std::string& name, const ensim::atom& value, const float max_value, const size_t needle_ticks)
         : popup(index)
         , name(name)
         , value(value)
@@ -660,7 +688,6 @@ struct gauge_popup : popup
     }
 
 private:
-
     float to_angle(const float at) const
     {
         return start_theta_r - (at / max_value) * sweep_theta_r;
@@ -698,7 +725,7 @@ private:
     }
 
     const std::string name;
-    const ensim::real& value;
+    const ensim::atom& value;
     const float max_value;
     const size_t needle_ticks;
     static constexpr float start_theta_r = (4.0f / 3.0f) * std::numbers::pi_v<float>;
@@ -716,8 +743,10 @@ private:
 
 struct help_popup : popup
 {
-    help_popup(const int index)
+    help_popup(const int index, const std::string& name, ensim::engine& engine)
         : popup(index)
+        , name(name)
+        , engine(engine)
         {
         }
 
@@ -730,24 +759,29 @@ struct help_popup : popup
             text_color
         );
         const std::vector<std::string> strings = {
-            "help!",
+            name,
             "Q,E to cycle through these popups.",
             "W,A,S,D for chamber select.",
-            "AGPL V3."
+            "AGPL V3.",
+            "Render drops: " + std::to_string(engine.get_swap_drops()),
         };
         sdl.fill(rect);
         sdl.write(point, strings);
     }
 
 private:
+    const std::string name;
+    ensim::engine& engine;
     static constexpr uint32_t text_color = sdl::white;
 };
 
 struct ui
 {
     ui(ensim::engine& engine)
-        : y_select(engine.get_piston_y())
+        : engine(engine)
+        , y_select(engine.get_piston_y())
     {
+        engine.set_logger(x_select, y_select);
         if(engine.get_width() >= signals::count)
         {
             throw std::runtime_error("max signals supported: " + std::to_string(signals::count));
@@ -769,49 +803,28 @@ struct ui
         base.push_back(std::make_unique<frame>());
     }
 
-    std::unique_ptr<popup> make_popup(ensim::engine& engine)
+    std::unique_ptr<popup> make_popup()
     {
+        const ensim::atom& angular_velocity = engine.get_angular_velocity_r_per_s();
+        const ensim::line& volume = engine.get_volume_signal_m3();
+        const ensim::line& temperature = engine.get_temperature_signal_k();
+        const ensim::line& pressure = engine.get_pressure_signal_pa();
+        const ensim::line& audio = engine.get_audio_signal();
         const size_t next = popups.size() + 1;
         switch(next)
         {
-        case 1:
-            return std::make_unique<gauge_popup>(
-                next,
-                "crankshaft_angular_velocity_r_per_s",
-                engine.get_crankshaft_angular_velocity_r_per_s(),
-                2000.0,
-                20
-            );
-        case 2:
-            return std::make_unique<audio_popup>(
-                next,
-                engine.get_audio_signal()
-            );
-        case 3:
-            return std::make_unique<plot_popup>(
-                next,
-                "pressure_volume_diagram",
-                engine.get_volume_signal_m3(),
-                engine.get_pressure_signal_pa()
-            );
-        case 4:
-            return std::make_unique<plot_popup>(
-                next,
-                "temperature_volume_diagram",
-                engine.get_volume_signal_m3(),
-                engine.get_temperature_signal_k()
-            );
-        case 5:
-            return std::make_unique<help_popup>(
-                next
-            );
+        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 2000.0, 20);
+        case 2: return std::make_unique<audio_popup>(next, "audio", audio);
+        case 3: return std::make_unique<plot_popup> (next, "pressure (p) volume (m3) diagram", volume, pressure);
+        case 4: return std::make_unique<plot_popup> (next, "temperature (k) volume (m3) diagram", volume, temperature);
+        case 5: return std::make_unique<help_popup> (next, "help", engine);
         }
         return nullptr;
     }
 
-    void push_popup(ensim::engine& engine)
+    void push_popup()
     {
-        if(std::unique_ptr<cell> popup = make_popup(engine))
+        if(std::unique_ptr<cell> popup = make_popup())
         {
             popups.push_back(std::move(popup));
         }
@@ -827,6 +840,7 @@ struct ui
 
     void draw(sdl& sdl)
     {
+        engine.set_swap_lock_on();
         for(const auto& elem : base)
         {
             elem->draw(sdl);
@@ -835,9 +849,10 @@ struct ui
         {
             popup->draw(sdl);
         }
+        engine.set_swap_lock_off();
     }
 
-    void poll(sdl& sdl, ensim::engine& engine)
+    void poll(sdl& sdl)
     {
         const std::vector<SDL_Event> events = sdl.poll();
         for(const auto& event : events)
@@ -877,10 +892,11 @@ struct ui
                 if(event.key.key == SDLK_S) y_select += 1;
                 if(event.key.key == SDLK_D) x_select += 1;
                 if(event.key.key == SDLK_A) x_select -= 1;
-                if(event.key.key == SDLK_E) pop_popup();
-                if(event.key.key == SDLK_Q) push_popup(engine);
                 x_select %= engine.get_width();
                 y_select %= engine.get_height();
+                engine.set_logger(x_select, y_select);
+                if(event.key.key == SDLK_E) pop_popup();
+                if(event.key.key == SDLK_Q) push_popup();
             }
         }
     }
@@ -890,6 +906,7 @@ private:
     std::vector<std::unique_ptr<cell>> popups;
 
 public:
+    ensim::engine& engine;
     int x_select = 0;
     int y_select = 0;
     bool done = false;
@@ -897,22 +914,40 @@ public:
 
 int main(int argc, const char* const*)
 {
-    auto engine = ensim::new_engine(ensim::type::inline8);
     if(argc == 2)
     {
-        engine->run(44800);
+        ensim::new_engine(ensim::type::inline8)->run(ensim::sample_rate_hz);
     }
     else
     {
-        ui ui(*engine);
-        sdl sdl;
+        std::atomic<bool> done = false;
+        auto engine = ensim::new_engine(ensim::type::inline8);
+        struct sdl sdl;
+        std::thread thread {
+            [&done, &engine, &sdl]()
+            {
+                while(!done)
+                {
+                    using namespace std::chrono_literals;
+                    if(sdl.get_audio_buffer_size() < 1024)
+                    {
+                        engine->run(200);
+                        std::vector<float> data = engine->get_audio_data();
+                        sdl.buffer_audio(data);
+                    }
+                    std::this_thread::sleep_for(1ms);
+                }
+            }
+        };
+        struct ui ui(*engine);
         while(not ui.done)
         {
-            engine->run(800, ui.x_select, ui.y_select);
             sdl.clear();
             ui.draw(sdl);
-            ui.poll(sdl, *engine);
+            ui.poll(sdl);
             sdl.render();
         }
+        done = true;
+        thread.join();
     }
 }
