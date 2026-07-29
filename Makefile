@@ -1,4 +1,4 @@
-ASANFLAGS =-fsanitize=address
+ASANFLAGS =#-fsanitize=address
 CFLAGS = -O3 -ffast-math -march=native -g
 WFLAGS = -Wall -Wextra -Wpedantic
 CC = clang++ -std=c++20

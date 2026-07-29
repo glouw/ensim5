@@ -122,7 +122,7 @@ struct sdl
     sdl()
     {
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_BORDERLESS, &window, &renderer);
+        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
         SDL_SetRenderVSync(renderer, true);
         audio_spec.channels = 1;
         audio_spec.format = SDL_AUDIO_F32;
@@ -922,24 +922,25 @@ int main(int argc, const char* const*)
     {
         std::atomic<bool> done = false;
         auto engine = ensim::new_engine(ensim::type::inline8);
-        struct sdl sdl;
-        std::thread thread {
+        sdl sdl;
+        std::thread thread(
             [&done, &engine, &sdl]()
             {
+                std::vector<float> data;
                 while(!done)
                 {
                     using namespace std::chrono_literals;
                     if(sdl.get_audio_buffer_size() < 1024)
                     {
-                        engine->run(200);
-                        std::vector<float> data = engine->get_audio_data();
                         sdl.buffer_audio(data);
+                        engine->run(200);
+                        data = engine->get_audio_data();
                     }
                     std::this_thread::sleep_for(1ms);
                 }
             }
-        };
-        struct ui ui(*engine);
+        );
+        ui ui(*engine);
         while(not ui.done)
         {
             sdl.clear();
