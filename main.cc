@@ -8,8 +8,6 @@
 
 #include "ensim.hh"
 
-using ensim::operator""_r;
-
 struct point
 {
     SDL_FPoint self;
@@ -315,10 +313,6 @@ struct signals
 
     ensim::line normalize(const ensim::line& line) const
     {
-        if(line.size() <= 16)
-        {
-            return line;
-        }
         const auto [min, max] = minmax(line);
         ensim::line out = line;
         for(auto& x : out)
@@ -330,6 +324,10 @@ struct signals
 
     ensim::line downsample(const ensim::line& line, const size_t size) const
     {
+        if(line.size() < size)
+        {
+            return line;
+        }
         ensim::line out;
         out.reserve(size);
         if(line.empty())
@@ -365,21 +363,14 @@ struct signals
 
     points project_1d(const ensim::line& signal, const rect& rect, const size_t size) const
     {
-        if(signal.size() <= 16)
-        {
-            return {};
-        }
-        const ensim::line xx = lingen(size);
-        const ensim::line yy = normalize(downsample(signal, size));
+        const ensim::line temp = downsample(signal, size);
+        const ensim::line xx = lingen(std::min(size, temp.size()));
+        const ensim::line yy = normalize(temp);
         return project(xx, yy, rect);
     }
 
     points project_2d(const ensim::line& x_signal, const ensim::line& y_signal, const rect& rect, const size_t size) const
     {
-        if(x_signal.size() <= 16)
-        {
-            return {};
-        }
         const ensim::line xx = normalize(downsample(x_signal, size));
         const ensim::line yy = normalize(downsample(y_signal, size));
         return project(xx, yy, rect);
@@ -530,6 +521,7 @@ struct plot : signals, cell
             "max " + std::to_string(max),
             "min " + std::to_string(min),
             "div " + (min ? std::to_string(max / min) : std::string("N/A")),
+            "rng " + std::to_string(max - min),
         };
         const int yz_p = y_p + h_p * (max / (max - min));
         const point yz0_p(x_p, yz_p, zero_line_color);
@@ -810,6 +802,7 @@ struct ui
         const ensim::line& temperature = engine.get_temperature_signal_k();
         const ensim::line& pressure = engine.get_pressure_signal_pa();
         const ensim::line& audio = engine.get_audio_signal();
+        const ensim::line& impulse = engine.get_impulse_signal();
         const size_t next = popups.size() + 1;
         switch(next)
         {
@@ -817,7 +810,8 @@ struct ui
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
         case 3: return std::make_unique<plot_popup> (next, "pressure (p) volume (m3) diagram", volume, pressure);
         case 4: return std::make_unique<plot_popup> (next, "temperature (k) volume (m3) diagram", volume, temperature);
-        case 5: return std::make_unique<help_popup> (next, "help", engine);
+        case 5: return std::make_unique<audio_popup>(next, "impulse signal", impulse);
+        case 6: return std::make_unique<help_popup> (next, "help", engine);
         }
         return nullptr;
     }
@@ -863,29 +857,30 @@ struct ui
             }
             if(event.type == SDL_EVENT_KEY_DOWN)
             {
-                if(event.key.key == SDLK_1)
+                using ensim::operator""_r;
+                if(event.key.key == SDLK_0)
                 {
                     engine.set_throttle_open_ratio(0.00_r);
                     engine.set_injection_off();
                 }
+                if(event.key.key == SDLK_1)
+                {
+                    engine.set_throttle_open_ratio(0.25_r);
+                    engine.set_injection_on();
+                }
                 if(event.key.key == SDLK_2)
                 {
-                    engine.set_throttle_open_ratio(0.001_r);
+                    engine.set_throttle_open_ratio(0.50_r);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_3)
                 {
-                    engine.set_throttle_open_ratio(0.01_r);
+                    engine.set_throttle_open_ratio(0.75_r);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_4)
                 {
-                    engine.set_throttle_open_ratio(0.1_r);
-                    engine.set_injection_on();
-                }
-                if(event.key.key == SDLK_5)
-                {
-                    engine.set_throttle_open_ratio(0.5_r);
+                    engine.set_throttle_open_ratio(0.99_r);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_W) y_select -= 1;
@@ -926,16 +921,15 @@ int main(int argc, const char* const*)
         std::thread thread(
             [&done, &engine, &sdl]()
             {
-                std::vector<float> data;
                 while(!done)
                 {
-                    using namespace std::chrono_literals;
-                    if(sdl.get_audio_buffer_size() < 1024)
+                    if(sdl.get_audio_buffer_size() < 2048)
                     {
+                        engine->run(400);
+                        std::vector<float> data = engine->get_audio_data();
                         sdl.buffer_audio(data);
-                        engine->run(200);
-                        data = engine->get_audio_data();
                     }
+                    using namespace std::chrono_literals;
                     std::this_thread::sleep_for(1ms);
                 }
             }
