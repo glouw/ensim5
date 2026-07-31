@@ -81,7 +81,7 @@ struct flow
     lane<H> nozzle_static_density_kg_per_m3 = {};
     lane<H> nozzle_mass_flow_rate_kg_per_s = {};
     lane<H> parcel_mass_kg = {};
-    lane<H> parcel_total_temperature_k = {};
+    lane<H> parcel_static_temperature_k = {};
     mask<H> panic = {};
     real piston_injection_enabled = 0.0_r;
     real piston_chamber_flame_height_m = 0.0_r;
@@ -289,7 +289,7 @@ struct flow
     /*
      *      .
      * mp = m dt
-     * Ttp = Tt,upstream
+     * Tsp = Ts,upstream
      *
      */
 
@@ -301,9 +301,9 @@ struct flow
             const real mdot = nozzle_mass_flow_rate_kg_per_s[i];
             const real dm = mdot * g_dt_s;
             parcel_mass_kg[i] = dm;
-            const real Tti = chamber_total_temperature_k[i];
-            const real Ttj = chamber_total_temperature_k[j];
-            parcel_total_temperature_k[i] = mdot > 0.0_r ? Tti : Ttj;
+            const real Tsi = chamber_static_temperature_k[i];
+            const real Tsj = chamber_static_temperature_k[j];
+            parcel_static_temperature_k[i] = mdot > 0.0_r ? Tsi : Tsj;
         }
     }
 
@@ -347,10 +347,24 @@ struct flow
             const size_t j = i + 1;
             const real dm = parcel_mass_kg[i];
             const real m = chamber_mass_kg[j];
-            const real Ttp = parcel_total_temperature_k[i];
+            const real Tsp = parcel_static_temperature_k[i];
             const real Ts0 = chamber_static_temperature_k[j];
-            const real Ts1 = (Ts0 * m + Ttp * dm) / (m + dm);
+            const real Ts1 = (Ts0 * m + Tsp * dm) / (m + dm);
             chamber_static_temperature_k[j] = dm > 0.0_r ? Ts1 : Ts0;
+        }
+    }
+
+    fn void calc_reverse_energy_transfers()
+    {
+        for(size_t i = N; i > 0; i--)
+        {
+            const real dm = parcel_mass_kg[i];
+            const real fdm = fabs(dm);
+            const real m = chamber_mass_kg[i];
+            const real Tsp = parcel_static_temperature_k[i];
+            const real Ts0 = chamber_static_temperature_k[i];
+            const real Ts1 = (Ts0 * m + Tsp * fdm) / (m + fdm);
+            chamber_static_temperature_k[i] = dm < 0.0_r ? Ts1 : Ts0;
         }
     }
 
@@ -557,6 +571,7 @@ struct flow
         calc_nozzle_parcels();
         calc_compressions();
         calc_forward_energy_transfers();
+        calc_reverse_energy_transfers();
         calc_mass_transfers();
         calc_combustion();
         calc_panics();
@@ -717,10 +732,9 @@ struct inline_pistons
     lane<W> friction_torque_n_m = {};
     lane<W> total_torque_n_m = {};
     lane<W> chamber_static_pressure_pa = {};
+    lane<W> friction_n_m_s2_per_r2 = {};
     real crankshaft_angular_velocity_r_per_s = 0.0_r;
     real crankshaft_theta_r = 0.0_r;
-
-    static constexpr real friction_n_m_s2_per_r2 = 0.00004_r;
 
     /*
      * t = t0 + t1
@@ -892,7 +906,7 @@ struct inline_pistons
     {
         for(size_t i = 0; i < W; i++)
         {
-            const real K = friction_n_m_s2_per_r2;
+            const real K = friction_n_m_s2_per_r2[i];
             const real w = crankshaft_angular_velocity_r_per_s;
             friction_torque_n_m[i] = -K * w * w;
         }
@@ -1076,14 +1090,15 @@ static const line g_impulse = {
 
 struct impulse_filter
 {
-    line buffer = line(g_impulse.size());
+    static constexpr size_t size = 8192;
+    line buffer = line(size);
     size_t index = 0;
 
     real filter(const real sample)
     {
         buffer[index] = sample;
         real result = 0;
-        size_t y = g_impulse.size();
+        size_t y = size;
         size_t x = y - index;
         for(size_t i = 0; i < x; i++)
         {
@@ -1548,26 +1563,21 @@ struct inline8 : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkplugs
     inline8()
     {
         this->dc.set_cutoff_frequency(60.0_r);
-        this->throttle.table = {
-            0.0000,
-            0.00015,
-            0.0012,
-            0.0040,
-        };
-        this->pregain.ratio = 0.5_r;
+        this->pregain.ratio = 0.01_r;
         this->gain.ratio = 0.01_r;
-        this->flywheel.mass_kg = 5.0_r;
-        this->flywheel.radius_m = 0.07_r;
-        this->crankshaft.mass_kg = 25.3_r;
-        this->crankshaft.radius_m = 0.031_r;
+        this->flywheel.mass_kg = 2.0_r;
+        this->flywheel.radius_m = 0.09_r;
+        this->crankshaft.mass_kg = 6.3_r;
+        this->crankshaft.radius_m = 0.050_r;
         this->crankshaft.angular_velocity_r_per_s = 400.0_r;
-        this->pistons.diameter_m.fill(0.085_r);
-        this->pistons.crank_throw_length_m.fill(0.038_r);
-        this->pistons.connecting_rod_length_m.fill(0.1_r);
-        this->pistons.connecting_rod_mass_kg.fill(0.4_r);
-        this->pistons.head_mass_density_kg_per_m3.fill(7800.0_r);
-        this->pistons.head_compression_height_m.fill(0.025_r);
-        this->pistons.head_clearance_height_m.fill(0.007_r);
+        this->pistons.diameter_m.fill(0.089_r);
+        this->pistons.crank_throw_length_m.fill(0.035_r);
+        this->pistons.connecting_rod_length_m.fill(0.120_r);
+        this->pistons.connecting_rod_mass_kg.fill(0.55_r);
+        this->pistons.head_mass_density_kg_per_m3.fill(2700.0_r);
+        this->pistons.head_compression_height_m.fill(0.03_r);
+        this->pistons.head_clearance_height_m.fill(0.006_r);
+        this->pistons.friction_n_m_s2_per_r2.fill(0.00002_r);
         this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.9_r);
         this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.9_r);
         real theta0_r = 0.0_r;
@@ -1585,26 +1595,32 @@ struct inline8 : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkplugs
             flow.chamber_nozzle_open_ratio.fill(1.0_r);
             flow.chamber_volume_m3 = {
                 g_resevoir_volume_m3,
-                0.001_r,
-                0.001_r,
-                0.001_r,
-                0.000_r,
-                0.003_r,
-                0.030_r,
-                0.030_r,
+                0.0005_r, // Intake
+                0.0002_r, // Throttle
+                0.0008_r, // Runner
+                0.0000_r, // Piston
+                0.0008_r, // Runner
+                0.0015_r, // Exhaust1
+                0.0030_r, // Exhaust2
                 g_resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
-                0.004_r,
-                0.004_r,
-                0.004_r,
-                0.004_r,
-                0.001_r,
-                0.003_r,
-                0.004_r,
-                0.005_r,
+                0.0005_r,
+                0.0005_r,
+                0.0003_r,
+                0.0003_r,
+                0.0001_r,
+                0.0010_r,
+                0.0020_r,
+                0.0030_r,
             };
         }
+        this->throttle.table = {
+            0.000,
+            0.001,
+            0.010,
+            0.100,
+        };
     }
 };
 
