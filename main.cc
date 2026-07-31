@@ -411,11 +411,15 @@ struct chamber : cell
         const int y_throttle = engine.get_throttle_y();
         const int y_piston = engine.get_piston_y();
         const int y_audio = engine.get_audio_y();
-        // if(...) TODO
-        // {
-        //     sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, panic_color));
-        // }
         sdl.fill(container);
+        if(x == x_select and y == y_select)
+        {
+            sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, select_color));
+        }
+        if(engine.get_panic(x, y))
+        {
+            sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, panic_color));
+        }
         if(y == y_throttle)
         {
             sdl.write(message(xf_p, yf_p, throttle_color, "T"), true);
@@ -427,10 +431,6 @@ struct chamber : cell
         if(y == y_audio)
         {
             sdl.write(message(xf_p, yf_p, audio_color, "A"), true);
-        }
-        if(x == x_select and y == y_select)
-        {
-            sdl.fill(rect(xs_p, ys_p, ws_p, hs_p, select_color));
         }
     }
 

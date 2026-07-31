@@ -29,6 +29,7 @@ consteval real operator""_r(const long double x)
     return static_cast<real>(x);
 }
 
+using trip = std::atomic<bool>;
 using atom = std::atomic<real>;
 using line = std::vector<real>;
 using grid = std::vector<line>;
@@ -53,6 +54,7 @@ struct engine
     virtual std::string_view get_signal_name(const size_t index) const = 0;
     virtual const atom& get_angular_velocity_r_per_s() const = 0;
     virtual const atom& get_port_open_ratio(const size_t x, const size_t y) const = 0;
+    virtual const trip& get_panic(const size_t x, const size_t y) const = 0;
     virtual size_t get_swap_drops() const = 0;
 
     virtual const line& get_signal(const size_t index) const = 0;

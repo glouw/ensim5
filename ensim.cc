@@ -82,6 +82,7 @@ struct flow
     lane<H> nozzle_mass_flow_rate_kg_per_s = {};
     lane<H> parcel_mass_kg = {};
     lane<H> parcel_total_temperature_k = {};
+    mask<H> panic = {};
     real piston_injection_enabled = 0.0_r;
     real piston_chamber_flame_height_m = 0.0_r;
     real piston_chamber_mass_burned_m3 = 0.0_r;
@@ -531,6 +532,16 @@ struct flow
         }
     }
 
+    fn void calc_panics()
+    {
+        for(size_t i = 0; i < N; i++)
+        {
+            panic[i] |= chamber_mass_kg[i] <= 0.0_r;
+            panic[i] |= chamber_static_temperature_k[i] <= 0.0_r;
+            panic[i] |= chamber_static_pressure_pa[i] <= 0.0_r;
+        }
+    }
+
     fn void update()
     {
         calc_chamber_dynamic_pressures();
@@ -548,6 +559,7 @@ struct flow
         calc_forward_energy_transfers();
         calc_mass_transfers();
         calc_combustion();
+        calc_panics();
     }
 };
 
@@ -1033,12 +1045,10 @@ struct highpass_filter
     real rc = 0.0_r;
     real alpha = 0.0_r;
 
-    highpass_filter() = default;
-
-    highpass_filter(const real cutoff_freq_hz)
-        : rc(1.0_r / (2.0_r * g_pi_r * cutoff_freq_hz))
-        , alpha(rc / (rc + g_dt_s))
+    void set_cutoff_frequency(const real cutoff_freq_hz)
     {
+        rc = 1.0_r / (2.0_r * g_pi_r * cutoff_freq_hz);
+        alpha = rc / (rc + g_dt_s);
     }
 
     real filter(const real x)
@@ -1101,13 +1111,14 @@ struct alignas(std::hardware_destructive_interference_size) mailbox
     atom throttle_open_ratio = 0.5_r;
     std::atomic<size_t> log_x = -1;
     std::atomic<size_t> log_y = -1;
-    std::atomic<bool> injection_enabled = true;
-    std::atomic<bool> swap_lock = false;
+    trip injection_enabled = true;
+    trip swap_lock = false;
 
     /* Send */
     std::atomic<size_t> swap_drops = 0;
     atom engine_angular_velocity_r_per_s = 0.0_r;
-    std::array<std::array<atom, W>, H> port_open_ratios;
+    std::array<std::array<atom, W>, H> port_open_ratios = {};
+    std::array<std::array<trip, W>, H> panics = {};
 };
 
 /*
@@ -1369,6 +1380,7 @@ struct as_engine : engine
         for(size_t x = 0; x < W; x++)
         {
             mailbox.port_open_ratios[y][x] = flows[x].chamber_nozzle_open_ratio[y];
+            mailbox.panics[y][x] = flows[x].panic[y];
         }
         mailbox.swap_drops += swap_drops;
     }
@@ -1445,6 +1457,11 @@ struct as_engine : engine
     const atom& get_port_open_ratio(const size_t x, const size_t y) const override
     {
         return mailbox.port_open_ratios[y][x];
+    }
+
+    const trip& get_panic(const size_t x, const size_t y) const override
+    {
+        return mailbox.panics[y][x];
     }
 
     size_t get_swap_drops() const override
@@ -1530,7 +1547,7 @@ struct inline8 : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkplugs
 {
     inline8()
     {
-        this->dc = highpass_filter(60.0_r);
+        this->dc.set_cutoff_frequency(60.0_r);
         this->throttle.table = {
             0.0000,
             0.00015,
@@ -1572,7 +1589,7 @@ struct inline8 : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkplugs
                 0.001_r,
                 0.001_r,
                 0.000_r,
-                0.010_r,
+                0.003_r,
                 0.030_r,
                 0.030_r,
                 g_resevoir_volume_m3,
