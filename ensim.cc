@@ -1382,14 +1382,6 @@ struct as_engine : engine
     void update_limiter()
     {
         limiter.update();
-        if(limiter.limiting)
-        {
-            set_injection_off();
-        }
-        else
-        {
-            set_injection_on();
-        }
     }
 
     void update_flywheel()
@@ -1478,7 +1470,8 @@ struct as_engine : engine
             update_flows();
             log_step(log_x, log_y);
             remember_volumes();
-            broadcast(throttle_open_ratio, injection_enabled);
+            const bool injection_overrided = injection_enabled && not limiter.limiting;
+            broadcast(throttle_open_ratio, injection_overrided);
             sample_audio();
         }
         post_mailbox(swap_drops);
