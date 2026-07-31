@@ -14,7 +14,7 @@ static constexpr size_t sample_rate_hz = 48000;
 
 /*
  * Configure SIMD scheme depending on your platform.
- * Float stability is not guaranteed.
+ * Stability with floats not guaranteed.
  *
  */
 
@@ -36,7 +36,7 @@ using grid = std::vector<line>;
 
 enum class type : size_t
 {
-    inline8
+    generic_atv
 };
 
 struct engine
@@ -63,7 +63,7 @@ struct engine
     virtual const line& get_volume_signal_m3() const = 0;
     virtual const line& get_audio_signal() const = 0;
     virtual const line& get_impulse_signal() const = 0;
-    virtual const std::vector<float> get_audio_data() const = 0;
+    virtual const std::vector<float>& get_audio_data() = 0;
     virtual void set_throttle_open_ratio(const real open_ratio) = 0;
     virtual void set_injection_on() = 0;
     virtual void set_injection_off() = 0;

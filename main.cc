@@ -120,7 +120,7 @@ struct sdl
     sdl()
     {
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
+        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_BORDERLESS, &window, &renderer);
         SDL_SetRenderVSync(renderer, true);
         audio_spec.channels = 1;
         audio_spec.format = SDL_AUDIO_F32;
@@ -911,12 +911,12 @@ int main(int argc, const char* const*)
 {
     if(argc == 2)
     {
-        ensim::new_engine(ensim::type::inline8)->run(ensim::sample_rate_hz);
+        ensim::new_engine(ensim::type::generic_atv)->run(ensim::sample_rate_hz);
     }
     else
     {
         std::atomic<bool> done = false;
-        auto engine = ensim::new_engine(ensim::type::inline8);
+        auto engine = ensim::new_engine(ensim::type::generic_atv);
         sdl sdl;
         std::thread thread(
             [&done, &engine, &sdl]()
