@@ -1219,7 +1219,7 @@ struct as_engine : engine
     struct diags diags;
     line audio_signal;
     struct mailbox<W, H> mailbox;
-    std::vector<float> audio_data;
+    mutable std::vector<float> audio_data;
 
     void log_step(const size_t x, const size_t y)
     {
@@ -1370,7 +1370,7 @@ struct as_engine : engine
         real x0 = 0.0_r;
         for(size_t x = 0; x < W; x++)
         {
-            x0 += flows[x].chamber_static_pressure_pa[AY];
+            x0 += flows[x].chamber_total_pressure_pa[AY];
         }
         x0 = dc.filter(x0);
         x0 = pregain.filter(x0);
@@ -1562,7 +1562,7 @@ struct as_engine : engine
         return g_impulse;
     }
 
-    const std::vector<float>& get_audio_data() override
+    const std::vector<float>& get_audio_data() const override
     {
         audio_data.clear();
         const line& audio_signal = get_audio_signal();
@@ -1610,10 +1610,10 @@ struct generic_atv : as_engine<1, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
     generic_atv()
     {
         this->dc.set_cutoff_frequency(10.0_r);
-        this->pregain.ratio = 1.0_r / 10'000.0_r;
-        this->gain.ratio = 0.05_r;
-        this->limiter.max_angular_velocity_r_per_s = 1000.0_r;
-        this->limiter.limit_time_s = 0.05_r;
+        this->pregain.ratio = 0.0033_r;
+        this->gain.ratio = 0.01_r;
+        this->limiter.max_angular_velocity_r_per_s = 1100.0_r;
+        this->limiter.limit_time_s = 0.1_r;
         this->flywheel.mass_kg = 2.0_r;
         this->flywheel.radius_m = 0.10_r;
         this->crankshaft.mass_kg = 8.3_r;
@@ -1630,45 +1630,44 @@ struct generic_atv : as_engine<1, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
         this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.8_r);
         this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.8_r);
         real theta0_r = 0.0_r;
-        const size_t width = get_width();
-        for(size_t i = 0; i < width; i++)
+        for(size_t i = 0; i < get_width(); i++)
         {
             this->pistons.theta0_r[i] = theta0_r;
             this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - g_pi_r / 8.0_r;
             this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - g_pi_r / 8.0_r;
             this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r - g_pi_r / 8.0_r;
-            theta0_r += g_otto_cycle_r / static_cast<real>(width);
+            theta0_r += g_otto_cycle_r / static_cast<real>(get_width());
         }
         for(auto& flow : this->flows)
         {
             flow.chamber_nozzle_open_ratio.fill(1.0_r);
             flow.chamber_volume_m3 = {
                 g_resevoir_volume_m3,
-                0.00200_r, // Intake
-                0.00050_r, // Throttle
-                0.00025_r, // Runner
-                0.00000_r, // Piston
-                0.00065_r, // Runner
-                0.00100_r, // Exhaust1
-                0.00100_r, // Exhaust2
+                0.00200_r, /* Intake   */
+                0.00050_r, /* Throttle */
+                0.00025_r, /* Runner   */
+                0.00000_r, /* Piston   */
+                0.00065_r, /* Runner   */
+                0.00100_r, /* Exhaust1 */
+                0.00100_r, /* Exhaust2 */
                 g_resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
-                0.00100_r, // Atmosphere to Intake
-                0.00080_r, // Intake to Throttle
-                0.00075_r, // Throttle to Runner
-                0.00055_r, // Runner to Piston
-                0.00040_r, // Piston to Runner
-                0.00070_r, // Runner to Exhaust1
-                0.00080_r, // Exhaust1 to Exhaust2
-                0.00100_r, // Exhaust2 to Atmosphere
+                0.00100_r, /* Atmosphere to Intake   */
+                0.00080_r, /* Intake to Throttle     */
+                0.00075_r, /* Throttle to Runner     */
+                0.00055_r, /* Runner to Piston       */
+                0.00040_r, /* Piston to Runner       */
+                0.00120_r, /* Runner to Exhaust1     */
+                0.00150_r, /* Exhaust1 to Exhaust2   */
+                0.00180_r, /* Exhaust2 to Atmosphere */
             };
         }
         this->throttle.table = {
             0.00000_r,
-            0.00040_r,
-            0.00500_r,
-            0.05000_r,
+            0.00033_r,
+            0.01000_r,
+            0.20000_r,
         };
     }
 };
