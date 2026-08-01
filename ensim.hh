@@ -58,8 +58,8 @@ struct engine
     virtual size_t get_swap_drops() const = 0;
 
     virtual const line& get_signal(const size_t index) const = 0;
-    virtual const line& get_temperature_signal_k() const = 0;
-    virtual const line& get_pressure_signal_pa() const = 0;
+    virtual const line& get_static_temperature_signal_k() const = 0;
+    virtual const line& get_static_pressure_signal_pa() const = 0;
     virtual const line& get_volume_signal_m3() const = 0;
     virtual const line& get_audio_signal() const = 0;
     virtual const line& get_impulse_signal() const = 0;

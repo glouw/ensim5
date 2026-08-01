@@ -223,7 +223,9 @@ struct flow
             const real X = gamma * Rs * Tt;
             const real Y = 0.5_r * (gamma - 1.0_r) * M * M;
             const real u = M * sqrt(X / (1.0_r + Y));
-            nozzle_velocity_m_per_s[i] = u;
+            const real A = chamber_nozzle_real_flow_area_m2[i];
+            const real mute = A == 0.0_r ? 0.0_r : 1.0_r;
+            nozzle_velocity_m_per_s[i] = u * mute;
         }
     }
 
@@ -359,11 +361,10 @@ struct flow
         for(size_t i = N; i > 0; i--)
         {
             const real dm = parcel_mass_kg[i];
-            const real fdm = fabs(dm);
             const real m = chamber_mass_kg[i];
             const real Tsp = parcel_static_temperature_k[i];
             const real Ts0 = chamber_static_temperature_k[i];
-            const real Ts1 = (Ts0 * m + Tsp * fdm) / (m + fdm);
+            const real Ts1 = (Ts0 * m - Tsp * dm) / (m - dm);
             chamber_static_temperature_k[i] = dm < 0.0_r ? Ts1 : Ts0;
         }
     }
@@ -1059,11 +1060,11 @@ struct crankshaft
 #define FLUIDS(X) \
     X(chamber_volume_m3) \
     X(chamber_nozzle_real_flow_area_m2) \
-    X(chamber_dynamic_pressure_pa) \
-    X(chamber_dynamic_temperature_k) \
-    X(chamber_mass_kg) \
     X(chamber_static_pressure_pa) \
-    X(chamber_static_temperature_k)
+    X(chamber_static_temperature_k) \
+    X(chamber_mass_kg) \
+    X(nozzle_velocity_m_per_s) \
+    X(nozzle_static_density_kg_per_m3)
 
 #define PISTONS(X) \
     X(gas_torque_n_m) \
@@ -1537,12 +1538,12 @@ struct as_engine : engine
         return diags.front[index];
     }
 
-    const line& get_temperature_signal_k() const override
+    const line& get_static_temperature_signal_k() const override
     {
         return get_signal(g_chamber_static_temperature_k);
     }
 
-    const line& get_pressure_signal_pa() const override
+    const line& get_static_pressure_signal_pa() const override
     {
         return get_signal(g_chamber_static_pressure_pa);
     }

@@ -799,8 +799,8 @@ struct ui
     {
         const ensim::atom& angular_velocity = engine.get_angular_velocity_r_per_s();
         const ensim::line& volume = engine.get_volume_signal_m3();
-        const ensim::line& temperature = engine.get_temperature_signal_k();
-        const ensim::line& pressure = engine.get_pressure_signal_pa();
+        const ensim::line& temperature = engine.get_static_temperature_signal_k();
+        const ensim::line& pressure = engine.get_static_pressure_signal_pa();
         const ensim::line& audio = engine.get_audio_signal();
         const ensim::line& impulse = engine.get_impulse_signal();
         const size_t next = popups.size() + 1;
@@ -808,8 +808,8 @@ struct ui
         {
         case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 2000.0, 20);
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
-        case 3: return std::make_unique<plot_popup> (next, "pressure (p) volume (m3) diagram", volume, pressure);
-        case 4: return std::make_unique<plot_popup> (next, "temperature (k) volume (m3) diagram", volume, temperature);
+        case 3: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
+        case 4: return std::make_unique<plot_popup> (next, "static temperature (k) volume (m3) diagram", volume, temperature);
         case 5: return std::make_unique<audio_popup>(next, "impulse signal", impulse);
         case 6: return std::make_unique<help_popup> (next, "help", engine);
         }
