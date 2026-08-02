@@ -324,16 +324,12 @@ struct signals
 
     ensim::line downsample(const ensim::line& line, const size_t size) const
     {
-        if(line.size() < size)
+        if(line.empty())
         {
-            return line;
+            return {};
         }
         ensim::line out;
         out.reserve(size);
-        if(line.empty())
-        {
-            return out;
-        }
         for(size_t i = 0; i < size; i++)
         {
             const size_t j = i * line.size() / size;

@@ -1061,28 +1061,56 @@ template<size_t W, size_t L>
 requires(L % 8 == 0)
 struct pipe
 {
-    static constexpr size_t substeps = 10;
+    static constexpr size_t M = L - 1;
+    static constexpr size_t substeps = 20;
     static constexpr size_t sample_rate_hz = substeps * g_sample_rate_hz;
     static constexpr real dt_s = 1.0_r / static_cast<real>(sample_rate_hz);
-    static constexpr real cell_length_m = 0.01_r;
-    static constexpr real pipe_length_m = cell_length_m * L;
-    static constexpr real pipe_radius_m = 0.01_r;
+    static constexpr real pipe_length_m = 0.5_r;
+    static constexpr real cell_length_m = pipe_length_m / static_cast<real>(L);
+    static constexpr real pipe_radius_m = 0.02_r;
     static constexpr real cell_volume_m3 = g_pi_r * pipe_radius_m * pipe_radius_m * cell_length_m;
+    static constexpr real max_wave_speed_m_per_s = 800.0_r;
+    static constexpr real cfl = max_wave_speed_m_per_s * dt_s / cell_length_m;
+    static_assert(cfl < 0.5_r);
 
     lane<W> mass_flow_in_kg = {};
     lane<W> velocity_in_m_per_s = {};
-    lane<W> momentum_in_kg_m_per_s = {};
     lane<W> static_temperature_in_k = {};
+    lane<W> momentum_in_kg_m_per_s = {};
     lane<W> total_energy_in_j = {};
+
+    /*
+     * inflow
+     * +------------------+ outflow
+     * |        |         |
+     * +------------------+
+     *          ^
+     *          | ratio percent
+     */
+
+    real mic_position_ratio = 0.5_r;
+
+    /*
+     * +------+     +------+     +------+     +------+
+     * |  U0  |     |  U1  |     |  U2  | ... |  UL  |
+     * +------+     +------+     +------+     +------+
+     * +------+     +------+     +------+     +------+
+     * |  F0  |     |  F1  |     |  F2  | ... |  FL  |
+     * +------+     +------+     +------+     +------+
+     *        +-----+      +-----+      +-----+
+     *        | Ff0 |      | Ff1 |      | FfM | M == L - 1
+     *        +-----+      +-----+      +-----+
+     */
+
     lane<L> U_r = {};
     lane<L> U_ru = {};
     lane<L> U_rE = {};
     lane<L> F_r = {};  /* r u         */
     lane<L> F_ru = {}; /* r u u + P   */
     lane<L> F_rE = {}; /* u E r + u P */
-    lane<L> Ff_r = {};
-    lane<L> Ff_ru = {};
-    lane<L> Ff_rE = {};
+    lane<M> Ff_r = {};
+    lane<M> Ff_ru = {};
+    lane<M> Ff_rE = {};
 
     pipe()
     {
@@ -1126,10 +1154,11 @@ struct pipe
             p += momentum_in_kg_m_per_s[i];
             E += total_energy_in_j[i];
         }
+        const size_t at = 0;
         const real V = cell_volume_m3;
-        U_r[0] = m / V;
-        U_ru[0] = p / V;
-        U_rE[0] = E / V;
+        U_r[at]  += m / V;
+        U_ru[at] += p / V;
+        U_rE[at] += E / V;
     }
 
     void calc_last_cell()
@@ -1143,19 +1172,30 @@ struct pipe
         U_rE[last] = r * Cv * Ts;
     }
 
-    void calc_zeroth_cell_flux()
+    real calc_cell_static_pressure(const size_t at) const
     {
-        const real ru = U_ru[0];
-        const real r = U_r[0];
-        const real rE = U_rE[0];
+        const real ru = U_ru[at];
+        const real r = U_r[at];
+        const real rE = U_rE[at];
         const real u = ru / r;
         const real Cv = g_cv_j_per_kg_k;
         const real Ts = (rE / r - 0.5_r * u * u) / Cv;
         const real Rs = g_specific_gas_constant_j_per_kg_k;
-        const real P = r * Rs * Ts;
-        F_r[0] = ru;
-        F_ru[0] = r * u * u + P;
-        F_rE[0] = u * (rE + P);
+        const real Ps = r * Rs * Ts;
+        return Ps;
+    }
+
+    void calc_zeroth_cell_flux()
+    {
+        const size_t at = 0;
+        const real ru = U_ru[at];
+        const real r = U_r[at];
+        const real rE = U_rE[at];
+        const real u = ru / r;
+        const real P = calc_cell_static_pressure(at);
+        F_r[at] = ru;
+        F_ru[at] = r * u * u + P;
+        F_rE[at] = u * (rE + P);
     }
 
     /*
@@ -1167,7 +1207,7 @@ struct pipe
     fn void calc_lax_friedrichs_face_fluxes() // TODO: Consider upgrading to Local LF / Rusanov
     {
         const real dx_dt = cell_length_m / dt_s;
-        for(size_t i = 0; i < L - 1; i++)
+        for(size_t i = 0; i < M; i++)
         {
             const size_t j = i + 1;
             Ff_r [i] = 0.5_r * (F_r [i] + F_r [j]) - 0.5_r * dx_dt * (U_r [j] - U_r [i]);
@@ -1185,7 +1225,7 @@ struct pipe
     fn void update_cells()
     {
         const real dt_dx = dt_s / cell_length_m;
-        for(size_t i = 1; i < L - 1; i++)
+        for(size_t i = 1; i < M; i++)
         {
             const size_t j = i - 1;
             U_r [i] -= dt_dx * (Ff_r [i] - Ff_r [j]);
@@ -1194,14 +1234,21 @@ struct pipe
         }
     }
 
+    real calc_audio_sample() const
+    {
+        const size_t at = mic_position_ratio * (L - 1);
+        const real Ps = calc_cell_static_pressure(at) - g_ambient_pressure_pa;
+        return Ps;
+    }
+
     void update()
     {
         calc_in_flow();
         calc_zeroth_cell();
-        calc_zeroth_cell_flux();
         for(size_t i = 0; i < substeps; i++)
         {
             calc_last_cell();
+            calc_zeroth_cell_flux();
             calc_lax_friedrichs_face_fluxes();
             update_cells();
         }
@@ -1521,11 +1568,7 @@ struct as_engine : engine
 
     void sample_audio()
     {
-        real x0 = 0.0_r;
-        for(size_t x = 0; x < W; x++)
-        {
-            x0 += flows[x].chamber_total_pressure_pa[AY];
-        }
+        real x0 = pipe.calc_audio_sample();
         x0 = dc.filter(x0);
         x0 = pregain.filter(x0);
         x0 = convolution.filter(x0);
@@ -1590,6 +1633,12 @@ struct as_engine : engine
         for(size_t x = 0; x < W; x++)
         {
             flows[x].update();
+        }
+        for(size_t x = 0; x < W; x++)
+        {
+            pipe.mass_flow_in_kg[x] = flows[x].parcel_mass_kg[AY];
+            pipe.velocity_in_m_per_s[x] = flows[x].nozzle_velocity_m_per_s[AY];
+            pipe.static_temperature_in_k[x] = flows[x].parcel_static_temperature_k[AY];
         }
     }
 
@@ -1769,16 +1818,17 @@ struct generic_atv : as_engine<1, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
 {
     generic_atv()
     {
-        this->dc.set_cutoff_frequency(10.0_r);
-        this->pregain.ratio = 0.0033_r;
-        this->gain.ratio = 0.01_r;
-        this->limiter.max_angular_velocity_r_per_s = 1100.0_r;
+        this->dc.set_cutoff_frequency(60.0_r);
+        this->pipe.mic_position_ratio = 0.1_r;
+        this->pregain.ratio = 0.00001_r;
+        this->gain.ratio = 0.03_r;
+        this->limiter.max_angular_velocity_r_per_s = 900.0_r;
         this->limiter.limit_time_s = 0.1_r;
         this->flywheel.mass_kg = 2.0_r;
         this->flywheel.radius_m = 0.10_r;
         this->crankshaft.mass_kg = 8.3_r;
         this->crankshaft.radius_m = 0.050_r;
-        this->crankshaft.angular_velocity_r_per_s = 300.0_r;
+        this->crankshaft.angular_velocity_r_per_s = 250.0_r;
         this->pistons.diameter_m.fill(0.089_r);
         this->pistons.crank_throw_length_m.fill(0.035_r);
         this->pistons.connecting_rod_length_m.fill(0.120_r);
