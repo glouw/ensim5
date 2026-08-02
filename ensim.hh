@@ -10,7 +10,7 @@
 namespace ensim
 {
 
-static constexpr size_t sample_rate_hz = 48000;
+static constexpr size_t g_sample_rate_hz = 48000;
 
 /*
  * Configure SIMD scheme depending on your platform.

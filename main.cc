@@ -124,7 +124,7 @@ struct sdl
         SDL_SetRenderVSync(renderer, true);
         audio_spec.channels = 1;
         audio_spec.format = SDL_AUDIO_F32;
-        audio_spec.freq = ensim::sample_rate_hz;
+        audio_spec.freq = ensim::g_sample_rate_hz;
         audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
         SDL_ResumeAudioStreamDevice(audio_stream);
     }
@@ -911,7 +911,7 @@ int main(int argc, const char* const*)
 {
     if(argc == 2)
     {
-        ensim::new_engine(ensim::type::generic_atv)->run(ensim::sample_rate_hz);
+        ensim::new_engine(ensim::type::generic_atv)->run(ensim::g_sample_rate_hz);
     }
     else
     {
