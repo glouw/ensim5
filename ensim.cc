@@ -1065,9 +1065,9 @@ struct pipe
     static constexpr size_t substeps = 20;
     static constexpr size_t sample_rate_hz = substeps * g_sample_rate_hz;
     static constexpr real dt_s = 1.0_r / static_cast<real>(sample_rate_hz);
-    static constexpr real pipe_length_m = 0.5_r;
+    static constexpr real pipe_length_m = 1.0_r;
     static constexpr real cell_length_m = pipe_length_m / static_cast<real>(L);
-    static constexpr real pipe_radius_m = 0.02_r;
+    static constexpr real pipe_radius_m = 0.015_r;
     static constexpr real cell_volume_m3 = g_pi_r * pipe_radius_m * pipe_radius_m * cell_length_m;
     static constexpr real max_wave_speed_m_per_s = 800.0_r;
     static constexpr real cfl = max_wave_speed_m_per_s * dt_s / cell_length_m;
