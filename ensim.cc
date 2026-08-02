@@ -1057,12 +1057,12 @@ struct crankshaft
     }
 };
 
-template<size_t W, size_t L>
-requires(L % 8 == 0)
+template<size_t W>
 struct pipe
 {
+    static constexpr size_t L = 128;
     static constexpr size_t M = L - 1;
-    static constexpr size_t substeps = 20;
+    static constexpr size_t substeps = 10;
     static constexpr size_t sample_rate_hz = substeps * g_sample_rate_hz;
     static constexpr real dt_s = 1.0_r / static_cast<real>(sample_rate_hz);
     static constexpr real pipe_length_m = 1.0_r;
@@ -1417,7 +1417,7 @@ struct as_engine : engine
     struct gain_filter gain;
     struct convolution_filter convolution;
     struct diags diags;
-    struct pipe<W, 128> pipe;
+    struct pipe<W> pipe;
     line audio_signal;
     struct mailbox<W, H> mailbox;
     mutable std::vector<float> audio_data;
@@ -1814,13 +1814,13 @@ struct as_engine : engine
     }
 };
 
-struct generic_atv : as_engine<1, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs>
+struct generic_atv : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkplugs>
 {
     generic_atv()
     {
-        this->dc.set_cutoff_frequency(60.0_r);
+        this->dc.set_cutoff_frequency(250.0_r);
         this->pipe.mic_position_ratio = 0.1_r;
-        this->pregain.ratio = 0.00001_r;
+        this->pregain.ratio = 0.000002_r;
         this->gain.ratio = 0.03_r;
         this->limiter.max_angular_velocity_r_per_s = 900.0_r;
         this->limiter.limit_time_s = 0.1_r;

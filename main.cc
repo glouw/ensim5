@@ -622,11 +622,13 @@ struct audio_popup : signals, popup
         const points data = project_1d(audio_signal, signal, max_points);
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [y_min, y_max] = minmax(audio_signal);
+        const bool clipping = y_min < -0.999f || y_max >= 0.999f;
         const std::vector<std::string> strings = {
             name,
             "min = " + std::to_string(y_min),
             "max = " + std::to_string(y_max),
             "samples = " + std::to_string(audio_signal.size()),
+            std::string(clipping ? "CLIPPING!" : ""),
         };
         sdl.fill(fill);
         sdl.draw_lines(data);
