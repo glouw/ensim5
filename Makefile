@@ -7,7 +7,7 @@ OUT = ensim
 ASM = ensim.asm
 OBJS = ensim.o main.o
 DEPS = ensim.hh Makefile
-PERF = perf stat -d -d -d -r 20
+PERF = perf stat -d -d -d -r 5
 DUMP = objdump -dr -C
 
 run: all

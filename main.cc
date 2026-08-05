@@ -591,8 +591,8 @@ struct plot_popup : signals, popup
             name,
             "x min = " + std::to_string(x_min),
             "x max = " + std::to_string(x_max),
-            "y min = " + std::to_string(y_min),
             "y max = " + std::to_string(y_max),
+            "y min = " + std::to_string(y_min),
         };
         sdl.draw_lines(data);
         sdl.write(font, strings);
@@ -622,11 +622,13 @@ struct audio_popup : signals, popup
         const points data = project_1d(audio_signal, signal, max_points);
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [y_min, y_max] = minmax(audio_signal);
+        const float amplitude = push(y_max - y_min);
         const bool clipping = y_min < -0.999f || y_max >= 0.999f;
         const std::vector<std::string> strings = {
             name,
-            "min = " + std::to_string(y_min),
             "max = " + std::to_string(y_max),
+            "min = " + std::to_string(y_min),
+            "amplitude = " + std::to_string(amplitude),
             "samples = " + std::to_string(audio_signal.size()),
             std::string(clipping ? "CLIPPING!" : ""),
         };
@@ -635,7 +637,23 @@ struct audio_popup : signals, popup
         sdl.write(font, strings);
     }
 
+    float push(const float amplitude)
+    {
+        if(amplitudes.size() == 60)
+        {
+            amplitudes.pop_front();
+        }
+        amplitudes.push_back(amplitude);
+        float total = 0.0f;
+        for(auto& x : amplitudes)
+        {
+            total += x;
+        }
+        return total / amplitudes.size();
+    }
+
 private:
+    std::list<float> amplitudes;
     const std::string name;
     const ensim::line& audio_signal;
     static constexpr uint32_t signal_color = sdl::red;
@@ -801,15 +819,17 @@ struct ui
         const ensim::line& pressure = engine.get_static_pressure_signal_pa();
         const ensim::line& audio = engine.get_audio_signal();
         const ensim::line& impulse = engine.get_impulse_signal();
+        const ensim::line& pipe_pressure = engine.get_pipe_pressure_signal();
         const size_t next = popups.size() + 1;
         switch(next)
         {
         case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 2000.0, 20);
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
-        case 3: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
-        case 4: return std::make_unique<plot_popup> (next, "static temperature (k) volume (m3) diagram", volume, temperature);
-        case 5: return std::make_unique<audio_popup>(next, "impulse signal", impulse);
-        case 6: return std::make_unique<help_popup> (next, "help", engine);
+        case 3: return std::make_unique<audio_popup>(next, "pipe pressure", pipe_pressure);
+        case 4: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
+        case 5: return std::make_unique<plot_popup> (next, "static temperature (k) volume (m3) diagram", volume, temperature);
+        case 6: return std::make_unique<audio_popup>(next, "impulse signal", impulse);
+        case 7: return std::make_unique<help_popup> (next, "help", engine);
         }
         return nullptr;
     }
@@ -910,37 +930,34 @@ int main(int argc, const char* const*)
     if(argc == 2)
     {
         ensim::new_engine(ensim::type::generic_atv)->run(ensim::g_sample_rate_hz);
+        return 0;
     }
-    else
-    {
-        std::atomic<bool> done = false;
-        auto engine = ensim::new_engine(ensim::type::generic_atv);
-        sdl sdl;
-        std::thread thread(
-            [&done, &engine, &sdl]()
-            {
-                while(!done)
-                {
-                    if(sdl.get_audio_buffer_size() < 2048)
-                    {
-                        engine->run(400);
-                        std::vector<float> data = engine->get_audio_data();
-                        sdl.buffer_audio(data);
-                    }
-                    using namespace std::chrono_literals;
-                    std::this_thread::sleep_for(1ms);
-                }
-            }
-        );
-        ui ui(*engine);
-        while(not ui.done)
+    std::atomic<bool> done = false;
+    auto engine = ensim::new_engine(ensim::type::generic_atv);
+    sdl sdl;
+    std::jthread thread(
+        [&done, &engine, &sdl]()
         {
-            sdl.clear();
-            ui.draw(sdl);
-            ui.poll(sdl);
-            sdl.render();
+            while(!done)
+            {
+                if(sdl.get_audio_buffer_size() < 4096)
+                {
+                    engine->run(200);
+                    std::vector<float> data = engine->get_audio_data();
+                    sdl.buffer_audio(data);
+                }
+                using namespace std::chrono_literals;
+                std::this_thread::sleep_for(100us);
+            }
         }
-        done = true;
-        thread.join();
+    );
+    ui ui(*engine);
+    while(not ui.done)
+    {
+        sdl.clear();
+        ui.draw(sdl);
+        ui.poll(sdl);
+        sdl.render();
     }
+    done = true;
 }

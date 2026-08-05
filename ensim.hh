@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include <atomic>
 #include <string_view>
 
 namespace ensim
@@ -63,6 +64,7 @@ struct engine
     virtual const line& get_volume_signal_m3() const = 0;
     virtual const line& get_audio_signal() const = 0;
     virtual const line& get_impulse_signal() const = 0;
+    virtual const line& get_pipe_pressure_signal() const = 0;
     virtual const std::vector<float>& get_audio_data() const = 0;
     virtual void set_throttle_open_ratio(const real open_ratio) = 0;
     virtual void set_injection_on() = 0;

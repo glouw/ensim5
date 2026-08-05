@@ -1,9 +1,11 @@
 #include "ensim.hh"
 
 #include <array>
+#include <exception>
 #include <numbers>
 #include <cmath>
-#include <atomic>
+#include <mutex>
+#include <string>
 
 #define fn __attribute__((used))
 
@@ -27,7 +29,7 @@ static constexpr real g_otto_combustion_cycle_r = 2.0_r * g_pi_r;
 static constexpr real g_otto_exhaust_cycle_r = 3.0_r * g_pi_r;
 static constexpr real g_resevoir_volume_m3 = 1e9_r;
 static constexpr real g_ambient_temperature_k = 300.0_r;
-static constexpr real g_ambient_pressure_pa = 101325.0_r;
+static constexpr real g_ambient_pressure_pa = 132'800.0_r;
 static constexpr real g_ambient_density_kg_per_m3 = 1.225_r;
 static constexpr real g_gamma = 3.0_r / 2.0_r;
 static constexpr real g_universal_gas_constant_j_per_mol_k = 8.3144598_r;
@@ -267,7 +269,9 @@ struct flow
     {
         for(size_t i = 0; i < N; i++)
         {
-            chamber_nozzle_real_flow_area_m2[i] = chamber_nozzle_open_ratio[i] * chamber_nozzle_flow_area_m2[i];
+            const real r = chamber_nozzle_open_ratio[i];
+            const real A = chamber_nozzle_flow_area_m2[i];
+            chamber_nozzle_real_flow_area_m2[i] = r * A;
         }
     }
 
@@ -852,7 +856,7 @@ struct inline_pistons
     {
         for(size_t i = 0; i < W; i++)
         {
-            const real Pg = chamber_static_pressure_pa[i] - g_ambient_pressure_pa;
+            const real Pg = chamber_static_pressure_pa[i];
             const real A = g_pi_r * diameter_m[i] * diameter_m[i];
             const real r = crank_throw_length_m[i];
             const real l = connecting_rod_length_m[i];
@@ -1060,35 +1064,40 @@ struct crankshaft
 template<size_t W>
 struct pipe
 {
-    static constexpr size_t L = 128;
+    static constexpr size_t L = 256;
     static constexpr size_t M = L - 1;
     static constexpr size_t substeps = 10;
-    static constexpr size_t sample_rate_hz = substeps * g_sample_rate_hz;
-    static constexpr real dt_s = 1.0_r / static_cast<real>(sample_rate_hz);
-    static constexpr real pipe_length_m = 1.0_r;
-    static constexpr real cell_length_m = pipe_length_m / static_cast<real>(L);
-    static constexpr real pipe_radius_m = 0.015_r;
-    static constexpr real cell_volume_m3 = g_pi_r * pipe_radius_m * pipe_radius_m * cell_length_m;
-    static constexpr real max_wave_speed_m_per_s = 800.0_r;
-    static constexpr real cfl = max_wave_speed_m_per_s * dt_s / cell_length_m;
-    static_assert(cfl < 0.5_r);
+    static constexpr real dt_s = g_dt_s / static_cast<real>(substeps);
+    const real length_m = 1.50_r;
+    const real radius_m = 0.01_r;
+    const real dx_m = length_m / static_cast<real>(L);
+    const real dx_volume_m3 = g_pi_r * radius_m * radius_m * dx_m;
+    const real max_wave_speed_m_per_s = 800.0_r;
+    const real cfl = max_wave_speed_m_per_s * dt_s / dx_m;
+    const real max_cfl = 0.75_r;
+    const real dx_dt = dx_m / dt_s;
+    const real dt_dx = dt_s / dx_m;
+    const real mic_position_ratio = 0.75_r;
+    line pipe_pressure;
 
-    lane<W> mass_flow_in_kg = {};
-    lane<W> velocity_in_m_per_s = {};
-    lane<W> static_temperature_in_k = {};
-    lane<W> momentum_in_kg_m_per_s = {};
-    lane<W> total_energy_in_j = {};
+    virtual void calc_flux_faces() = 0;
 
-    /*
-     * inflow
-     * +------------------+ outflow
-     * |        |         |
-     * +------------------+
-     *          ^
-     *          | ratio percent
-     */
+    pipe()
+    {
+        reset();
+    }
 
-    real mic_position_ratio = 0.5_r;
+    pipe(const real length_m, const real radius_m, const real mic_position_ratio)
+        : length_m(length_m)
+        , radius_m(radius_m)
+        , mic_position_ratio(mic_position_ratio)
+    {
+        reset();
+    }
+
+    lane<W> in_mass_flow_rate_kg_per_s = {};
+    lane<W> in_velocity_m_per_s = {};
+    lane<W> in_static_temperature_k = {};
 
     /*
      * +------+     +------+     +------+     +------+
@@ -1105,114 +1114,98 @@ struct pipe
     lane<L> U_r = {};
     lane<L> U_ru = {};
     lane<L> U_rE = {};
-    lane<L> F_r = {};  /* r u         */
-    lane<L> F_ru = {}; /* r u u + P   */
-    lane<L> F_rE = {}; /* u E r + u P */
+    lane<L> F_r = {};
+    lane<L> F_ru = {};
+    lane<L> F_rE = {};
     lane<M> Ff_r = {};
     lane<M> Ff_ru = {};
     lane<M> Ff_rE = {};
 
-    pipe()
+    void to_ambient(const size_t i)
     {
-        reset();
+        const real r = g_ambient_density_kg_per_m3;
+        const real u = 0.0_r;
+        const real ru = r * u;
+        const real Rs = g_specific_gas_constant_j_per_kg_k;
+        const real Ts = g_ambient_temperature_k;
+        const real rE = r * Rs * Ts / (g_gamma - 1.0_r) + ru * ru / (2.0_r * r);
+        U_r[i] = r;
+        U_ru[i] = ru;
+        U_rE[i] = rE;
     }
 
     void reset()
     {
+        if(cfl >= max_cfl)
+        {
+            throw std::runtime_error("cfl condition unmet: " + std::to_string(cfl) + " >= " + std::to_string(max_cfl));
+        }
         for(size_t i = 0; i < L; i++)
         {
-            const real r = g_ambient_density_kg_per_m3;
-            const real Ts = g_ambient_temperature_k;
-            const real Cv = g_cv_j_per_kg_k;
-            U_r[i]  = r;
-            U_ru[i] = 0.0_r;
-            U_rE[i] = r * Cv * Ts;
+            to_ambient(i);
         }
     }
 
-    void calc_in_flow()
+    void energize(const size_t i, const real mass_kg, const real momentum_kg_m_per_s, const real total_energy_j)
     {
+        if(mass_kg != 0.0_r)
+        {
+            const real V = dx_volume_m3;
+            const real r = mass_kg / V;
+            const real p = momentum_kg_m_per_s;
+            const real E = total_energy_j / mass_kg;
+            U_r[i] += r;
+            U_ru[i] += p / V;
+            U_rE[i] += r * E;
+        }
+    }
+
+    void carry(const size_t i)
+    {
+        U_r [i] = 1.0_r * U_r [i - 1];
+        U_ru[i] = 1.0_r * U_ru[i - 1];
+        U_rE[i] = 1.0_r * U_rE[i - 1];
+    }
+
+    void calc_boundary_conditions()
+    {
+        real mass_kg = 0.0_r;
+        real momentum_kg_m_per_s = 0.0_r;
+        real total_energy_j = 0.0_r;
         for(size_t i = 0; i < W; i++)
         {
-            const real u = velocity_in_m_per_s[i];
-            const real Ts = static_temperature_in_k[i];
+            const real mdot = in_mass_flow_rate_kg_per_s[i];
+            const real u = in_velocity_m_per_s[i];
+            const real Ts = in_static_temperature_k[i];
             const real Cv = g_cv_j_per_kg_k;
-            const real m = mass_flow_in_kg[i];
-            momentum_in_kg_m_per_s[i] = m * u;
-            total_energy_in_j[i] = m * (Cv * Ts + 0.5_r * u * u);
+            const real m = mdot * dt_s;
+            const real E = Cv * Ts + 0.5_r * u * u;
+            mass_kg += m;
+            momentum_kg_m_per_s += m * u;
+            total_energy_j += E * m;
         }
-    }
-
-    void calc_zeroth_cell()
-    {
-        real m = 0.0_r;
-        real p = 0.0_r; /* Momentum, not pressure */
-        real E = 0.0_r;
-        for(size_t i = 0; i < W; i++)
-        {
-            m += mass_flow_in_kg[i];
-            p += momentum_in_kg_m_per_s[i];
-            E += total_energy_in_j[i];
-        }
-        const size_t at = 0;
-        const real V = cell_volume_m3;
-        U_r[at]  += m / V;
-        U_ru[at] += p / V;
-        U_rE[at] += E / V;
-    }
-
-    void calc_last_cell()
-    {
-        const real r = g_ambient_density_kg_per_m3;
-        const real Ts = g_ambient_temperature_k;
-        const real Cv = g_cv_j_per_kg_k;
-        const size_t last = L - 1;
-        U_r[last]  = r;
-        U_ru[last] = 0.0_r;
-        U_rE[last] = r * Cv * Ts;
-    }
-
-    real calc_cell_static_pressure(const size_t at) const
-    {
-        const real ru = U_ru[at];
-        const real r = U_r[at];
-        const real rE = U_rE[at];
-        const real u = ru / r;
-        const real Cv = g_cv_j_per_kg_k;
-        const real Ts = (rE / r - 0.5_r * u * u) / Cv;
-        const real Rs = g_specific_gas_constant_j_per_kg_k;
-        const real Ps = r * Rs * Ts;
-        return Ps;
-    }
-
-    void calc_zeroth_cell_flux()
-    {
-        const size_t at = 0;
-        const real ru = U_ru[at];
-        const real r = U_r[at];
-        const real rE = U_rE[at];
-        const real u = ru / r;
-        const real P = calc_cell_static_pressure(at);
-        F_r[at] = ru;
-        F_ru[at] = r * u * u + P;
-        F_rE[at] = u * (rE + P);
+        to_ambient(0);
+        carry(L - 1);
+        energize(0, mass_kg, momentum_kg_m_per_s, total_energy_j);
     }
 
     /*
-     *        1                  dx
-     * Ff =  --- [ Fl + Fr ] - ------ * [ Ur - Ul ]
-     *        2                 2 dt
+     *  F = [ rr \ ruu + Ps \ u(rE + Ps) ]
      */
 
-    fn void calc_lax_friedrichs_face_fluxes() // TODO: Consider upgrading to Local LF / Rusanov
+    void calc_fluxes()
     {
-        const real dx_dt = cell_length_m / dt_s;
-        for(size_t i = 0; i < M; i++)
+        for(size_t i = 0; i < L; i++)
         {
-            const size_t j = i + 1;
-            Ff_r [i] = 0.5_r * (F_r [i] + F_r [j]) - 0.5_r * dx_dt * (U_r [j] - U_r [i]);
-            Ff_ru[i] = 0.5_r * (F_ru[i] + F_ru[j]) - 0.5_r * dx_dt * (U_ru[j] - U_ru[i]);
-            Ff_rE[i] = 0.5_r * (F_rE[i] + F_rE[j]) - 0.5_r * dx_dt * (U_rE[j] - U_rE[i]);
+            const real r = U_r[i];
+            const real ru = U_ru[i];
+            const real rE = U_rE[i];
+            const real u = ru / r;
+            const real E = rE / r;
+            const real Ps = (g_gamma - 1.0_r) * r * (E - 0.5_r * u * u);
+            F_r[i] = ru;
+            F_ru[i]= ru * u + Ps;
+            F_rE[i] = u * (rE + Ps);
         }
     }
 
@@ -1222,10 +1215,9 @@ struct pipe
      *          dx
      */
 
-    fn void update_cells()
+    void calc_cells()
     {
-        const real dt_dx = dt_s / cell_length_m;
-        for(size_t i = 1; i < M; i++)
+        for(size_t i = 1; i < L - 1; i++)
         {
             const size_t j = i - 1;
             U_r [i] -= dt_dx * (Ff_r [i] - Ff_r [j]);
@@ -1234,23 +1226,237 @@ struct pipe
         }
     }
 
-    real calc_audio_sample() const
+    void update()
     {
-        const size_t at = mic_position_ratio * (L - 1);
-        const real Ps = calc_cell_static_pressure(at) - g_ambient_pressure_pa;
+        for(size_t i = 0; i < substeps; i++)
+        {
+            calc_boundary_conditions();
+            calc_fluxes();
+            calc_flux_faces();
+            calc_cells();
+        }
+    }
+
+    real calc_static_pressure(const size_t i)
+    {
+        const real r = U_r[i];
+        const real ru = U_ru[i];
+        const real rE = U_rE[i];
+        const real u = ru / r;
+        const real E = rE / r;
+        const real Ps = (g_gamma - 1.0_r) * r * (E - 0.5_r * u * u);
         return Ps;
     }
 
-    void update()
+    void calc_pipe_pressure()
     {
-        calc_in_flow();
-        calc_zeroth_cell();
-        for(size_t i = 0; i < substeps; i++)
+        pipe_pressure.clear();
+        for(size_t i = 0; i < L; i++)
         {
-            calc_last_cell();
-            calc_zeroth_cell_flux();
-            calc_lax_friedrichs_face_fluxes();
-            update_cells();
+            const real Ps = calc_static_pressure(i);
+            pipe_pressure.push_back(Ps);
+        }
+    }
+
+    real calc_audio_sample()
+    {
+        const size_t i = mic_position_ratio * (L - 1);
+        return calc_static_pressure(i);
+    }
+};
+
+template<size_t W>
+struct lf_pipe : pipe<W>
+{
+    using pipe<W>::M;
+    using pipe<W>::dx_dt;
+    using pipe<W>::Ff_r;
+    using pipe<W>::Ff_ru;
+    using pipe<W>::Ff_rE;
+    using pipe<W>::F_r;
+    using pipe<W>::F_ru;
+    using pipe<W>::F_rE;
+    using pipe<W>::U_r;
+    using pipe<W>::U_ru;
+    using pipe<W>::U_rE;
+    using pipe<W>::calc_static_pressure;
+
+    /*
+     *       1                 1
+     * Ff = --- [ Fl + Fr ] - --- dx/dt * [ Ur - Ul ]
+     *       2                 2
+     */
+
+    void calc_flux_faces() override
+    {
+        for(size_t i = 0; i < M; i++)
+        {
+            const size_t j = i + 1;
+            Ff_r [i] = 0.5_r * ((F_r [i] + F_r [j]) - dx_dt * (U_r [j] - U_r [i]));
+            Ff_ru[i] = 0.5_r * ((F_ru[i] + F_ru[j]) - dx_dt * (U_ru[j] - U_ru[i]));
+            Ff_rE[i] = 0.5_r * ((F_rE[i] + F_rE[j]) - dx_dt * (U_rE[j] - U_rE[i]));
+        }
+    }
+};
+
+template<size_t W>
+struct lfr_pipe : pipe<W>
+{
+    using pipe<W>::M;
+    using pipe<W>::dx_dt;
+    using pipe<W>::Ff_r;
+    using pipe<W>::Ff_ru;
+    using pipe<W>::Ff_rE;
+    using pipe<W>::F_r;
+    using pipe<W>::F_ru;
+    using pipe<W>::F_rE;
+    using pipe<W>::U_r;
+    using pipe<W>::U_ru;
+    using pipe<W>::U_rE;
+    using pipe<W>::calc_static_pressure;
+
+    void calc_flux_faces() override
+    {
+        for(size_t i = 0; i < M; i++)
+        {
+            const size_t j = i + 1;
+            const real cl = sqrt(g_gamma * calc_static_pressure(i) / U_r[i]);
+            const real cr = sqrt(g_gamma * calc_static_pressure(j) / U_r[j]);
+            const real ul = U_ru[i] / U_r[i];
+            const real ur = U_ru[j] / U_r[j];
+            const real alpha = fmax(fabs(ul) + cl, fabs(ur) + cr);
+            Ff_r [i] = 0.5_r * ((F_r [i] + F_r [j]) - alpha * (U_r [j] - U_r [i]));
+            Ff_ru[i] = 0.5_r * ((F_ru[i] + F_ru[j]) - alpha * (U_ru[j] - U_ru[i]));
+            Ff_rE[i] = 0.5_r * ((F_rE[i] + F_rE[j]) - alpha * (U_rE[j] - U_rE[i]));
+        }
+    }
+};
+
+template<size_t W>
+struct hlle_pipe : pipe<W>
+{
+    using pipe<W>::M;
+    using pipe<W>::dx_dt;
+    using pipe<W>::Ff_r;
+    using pipe<W>::Ff_ru;
+    using pipe<W>::Ff_rE;
+    using pipe<W>::F_r;
+    using pipe<W>::F_ru;
+    using pipe<W>::F_rE;
+    using pipe<W>::U_r;
+    using pipe<W>::U_ru;
+    using pipe<W>::U_rE;
+    using pipe<W>::calc_static_pressure;
+
+    void calc_flux_faces() override
+    {
+        for(size_t i = 0; i < M; i++)
+        {
+            const size_t j = i + 1;
+            const real pL = calc_static_pressure(i);
+            const real pR = calc_static_pressure(j);
+            const real cL = sqrt(g_gamma * pL / U_r[i]);
+            const real cR = sqrt(g_gamma * pR / U_r[j]);
+            const real uL = U_ru[i] / U_r[i];
+            const real uR = U_ru[j] / U_r[j];
+            const real SL = fmin(uL - cL, uR - cR);
+            const real SR = fmax(uL + cL, uR + cR);
+            if(SL >= 0.0_r)
+            {
+                Ff_r[i]  = F_r[i];
+                Ff_ru[i] = F_ru[i];
+                Ff_rE[i] = F_rE[i];
+            }
+            else
+            if(SR <= 0.0_r)
+            {
+                Ff_r[i]  = F_r[j];
+                Ff_ru[i] = F_ru[j];
+                Ff_rE[i] = F_rE[j];
+            }
+            else
+            {
+                const real inv = 1.0_r / (SR - SL);
+                Ff_r[i] = inv * (SR * F_r[i] - SL * F_r[j] + SL * SR * (U_r[j] - U_r[i]));
+                Ff_ru[i] = inv * (SR * F_ru[i] - SL * F_ru[j] + SL * SR * (U_ru[j] - U_ru[i]));
+                Ff_rE[i] = inv * (SR * F_rE[i] - SL * F_rE[j] + SL * SR * (U_rE[j] - U_rE[i]));
+            }
+        }
+    }
+};
+
+template<size_t W>
+struct hllc_pipe : pipe<W>
+{
+    using pipe<W>::M;
+    using pipe<W>::dx_dt;
+    using pipe<W>::Ff_r;
+    using pipe<W>::Ff_ru;
+    using pipe<W>::Ff_rE;
+    using pipe<W>::F_r;
+    using pipe<W>::F_ru;
+    using pipe<W>::F_rE;
+    using pipe<W>::U_r;
+    using pipe<W>::U_ru;
+    using pipe<W>::U_rE;
+    using pipe<W>::calc_static_pressure;
+
+    void calc_flux_faces() override
+    {
+        for(size_t i = 0; i < M; i++)
+        {
+            const size_t j = i + 1;
+            const real rhoL = U_r[i];
+            const real rhoR = U_r[j];
+            const real uL = U_ru[i] / rhoL;
+            const real uR = U_ru[j] / rhoR;
+            const real pL = calc_static_pressure(i);
+            const real pR = calc_static_pressure(j);
+            const real cL = sqrt(g_gamma * pL / rhoL);
+            const real cR = sqrt(g_gamma * pR / rhoR);
+            const real SL = fmin(uL - cL, uR - cR);
+            const real SR = fmax(uL + cL, uR + cR);
+            const real SM = (pR - pL + rhoL * uL * (SL - uL) - rhoR * uR * (SR - uR)) / (rhoL * (SL - uL) - rhoR * (SR - uR));
+            if(SL >= 0.0_r)
+            {
+                Ff_r[i]  = F_r[i];
+                Ff_ru[i] = F_ru[i];
+                Ff_rE[i] = F_rE[i];
+            }
+            else
+            if(SM >= 0.0_r)
+            {
+                const real rhoSL = rhoL * (SL - uL) / (SL - SM);
+                const real pStar = pL + rhoL * (SL - uL) * (SM - uL);
+                const real E_L = U_rE[i] / rhoL;
+                const real EStar = ((SL - uL) * E_L - pL * uL / rhoL + pStar * SM / rhoSL) / (SL - SM);
+                const real Ustar_r  = rhoSL;
+                const real Ustar_ru = rhoSL * SM;
+                const real Ustar_rE = rhoSL * EStar;
+                Ff_r[i]  = F_r[i] + SL * (Ustar_r - U_r[i]);
+                Ff_ru[i] = F_ru[i] + SL * (Ustar_ru - U_ru[i]);
+                Ff_rE[i] = F_rE[i] + SL * (Ustar_rE - U_rE[i]);
+            }
+            else
+            if(SR > 0.0_r)
+            {
+                const real rhoSR = rhoR * (SR - uR) / (SR - SM);
+                const real pStar = pR + rhoR * (SR - uR) * (SM - uR);
+                const real E_R = U_rE[j] / rhoR;
+                const real EStar = ((SR - uR) * E_R - pR * uR / rhoR + pStar * SM / rhoSR) / (SR - SM);
+                const real Ustar_r  = rhoSR;
+                const real Ustar_ru = rhoSR * SM;
+                const real Ustar_rE = rhoSR * EStar;
+                Ff_r[i] = F_r[j] + SR * (Ustar_r - U_r[j]);
+                Ff_ru[i] = F_ru[j] + SR * (Ustar_ru - U_ru[j]);
+                Ff_rE[i] = F_rE[j] + SR * (Ustar_rE - U_rE[j]);
+            }
+            else
+            {
+                Ff_r[i]  = F_r[j];
+                Ff_ru[i] = F_ru[j];
+                Ff_rE[i] = F_rE[j];
+            }
         }
     }
 };
@@ -1261,8 +1467,8 @@ struct pipe
     X(chamber_static_pressure_pa) \
     X(chamber_static_temperature_k) \
     X(chamber_mass_kg) \
-    X(nozzle_velocity_m_per_s) \
-    X(nozzle_static_density_kg_per_m3)
+    X(nozzle_mass_flow_rate_kg_per_s) \
+    X(nozzle_velocity_m_per_s)
 
 #define PISTONS(X) \
     X(gas_torque_n_m) \
@@ -1284,24 +1490,28 @@ static constexpr std::array<std::string_view, g_diags_size> signal_names = {
     #undef X
 };
 
-struct highpass_filter
+struct dc_filter
 {
-    real x0 = 0.0_r;
-    real y0 = 0.0_r;
-    real rc = 0.0_r;
+    real x_prev = 0.0_r;
+    real y_prev = 0.0_r;
     real alpha = 0.0_r;
+
+    dc_filter()
+    {
+        set_cutoff_frequency(5.0_r);
+    }
 
     void set_cutoff_frequency(const real cutoff_freq_hz)
     {
-        rc = 1.0_r / (2.0_r * g_pi_r * cutoff_freq_hz);
+        const real rc = 1.0_r / (2.0_r * g_pi_r * cutoff_freq_hz);
         alpha = rc / (rc + g_dt_s);
     }
 
     real filter(const real x)
     {
-        const real y = alpha * (y0 + x - x0);
-        x0 = x;
-        y0 = y;
+        const real y = alpha * (y_prev + x - x_prev);
+        x_prev = x;
+        y_prev = y;
         return y;
     }
 };
@@ -1312,7 +1522,15 @@ struct gain_filter
 
     real filter(const real x)
     {
-        return clamper(x * ratio, -1.0_r, 1.0_r);
+        return x * ratio;
+    }
+};
+
+struct clamp_filter
+{
+    real filter(const real x)
+    {
+        return clamper(x, -1.0_r, 1.0_r);
     }
 };
 
@@ -1365,7 +1583,6 @@ struct alignas(std::hardware_destructive_interference_size) mailbox
     std::atomic<size_t> log_x = -1;
     std::atomic<size_t> log_y = -1;
     trip injection_enabled = true;
-    trip swap_lock = false;
 
     /* Send */
     std::atomic<size_t> swap_drops = 0;
@@ -1412,15 +1629,18 @@ struct as_engine : engine
     struct throttle throttle;
     struct crankshaft crankshaft;
     struct flywheel flywheel;
-    struct highpass_filter dc;
+    struct dc_filter dc;
     struct gain_filter pregain;
     struct gain_filter gain;
+    struct clamp_filter clamp;
     struct convolution_filter convolution;
     struct diags diags;
-    struct pipe<W> pipe;
+    struct lfr_pipe<W> pipe;
     line audio_signal;
     struct mailbox<W, H> mailbox;
     mutable std::vector<float> audio_data;
+    line pipe_pressure;
+    std::mutex swap_mutex;
 
     void log_step(const size_t x, const size_t y)
     {
@@ -1539,25 +1759,28 @@ struct as_engine : engine
 
     bool diags_swap()
     {
-        if(mailbox.swap_lock)
+        if(swap_mutex.try_lock())
+        {
+            for(size_t i = 0; i < diags.front.size(); i++)
+            {
+                std::swap(diags.front[i], diags.back[i]);
+            }
+            for(auto& line : diags.back)
+            {
+                line.clear();
+            }
+            pipe.calc_pipe_pressure();
+            std::swap(pipe_pressure, pipe.pipe_pressure);
+            swap_mutex.unlock();
+            return true;
+        }
+        else
         {
             /*
              * Discard back if front in use by renderer.
              * Addng more samples to back will distort diags oscilloscope trigger.
              */
 
-            for(auto& line : diags.back)
-            {
-                line.clear();
-            }
-            return true;
-        }
-        else
-        {
-            for(size_t i = 0; i < diags.front.size(); i++)
-            {
-                std::swap(diags.front[i], diags.back[i]);
-            }
             for(auto& line : diags.back)
             {
                 line.clear();
@@ -1573,11 +1796,18 @@ struct as_engine : engine
         x0 = pregain.filter(x0);
         x0 = convolution.filter(x0);
         x0 = gain.filter(x0);
+        x0 = clamp.filter(x0);
         audio_signal.push_back(x0);
     }
 
     void update_pipe()
     {
+        for(size_t x = 0; x < W; x++)
+        {
+            pipe.in_mass_flow_rate_kg_per_s[x] = flows[x].nozzle_mass_flow_rate_kg_per_s[AY];
+            pipe.in_velocity_m_per_s[x] = flows[x].nozzle_velocity_m_per_s[AY];
+            pipe.in_static_temperature_k[x] = flows[x].parcel_static_temperature_k[AY];
+        }
         pipe.update();
     }
 
@@ -1633,12 +1863,6 @@ struct as_engine : engine
         for(size_t x = 0; x < W; x++)
         {
             flows[x].update();
-        }
-        for(size_t x = 0; x < W; x++)
-        {
-            pipe.mass_flow_in_kg[x] = flows[x].parcel_mass_kg[AY];
-            pipe.velocity_in_m_per_s[x] = flows[x].nozzle_velocity_m_per_s[AY];
-            pipe.static_temperature_in_k[x] = flows[x].parcel_static_temperature_k[AY];
         }
     }
 
@@ -1782,6 +2006,11 @@ struct as_engine : engine
         return audio_data;
     }
 
+    const line& get_pipe_pressure_signal() const override
+    {
+        return pipe_pressure;
+    }
+
     void set_throttle_open_ratio(const real open_ratio) override
     {
         mailbox.throttle_open_ratio = open_ratio;
@@ -1805,29 +2034,28 @@ struct as_engine : engine
 
     void set_swap_lock_on() override
     {
-        mailbox.swap_lock = true;
+        swap_mutex.lock();
     }
 
     void set_swap_lock_off() override
     {
-        mailbox.swap_lock = false;
+        swap_mutex.unlock();
     }
 };
 
-struct generic_atv : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkplugs>
+struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs>
 {
     generic_atv()
     {
-        this->dc.set_cutoff_frequency(250.0_r);
-        this->pipe.mic_position_ratio = 0.1_r;
-        this->pregain.ratio = 0.000002_r;
-        this->gain.ratio = 0.03_r;
+        this->dc.set_cutoff_frequency(1000.0_r);
+        this->pregain.ratio = 0.1_r;
+        this->gain.ratio = 0.00001_r;
         this->limiter.max_angular_velocity_r_per_s = 900.0_r;
         this->limiter.limit_time_s = 0.1_r;
-        this->flywheel.mass_kg = 2.0_r;
-        this->flywheel.radius_m = 0.10_r;
-        this->crankshaft.mass_kg = 8.3_r;
-        this->crankshaft.radius_m = 0.050_r;
+        this->flywheel.mass_kg = 3.0_r;
+        this->flywheel.radius_m = 0.60_r;
+        this->crankshaft.mass_kg = 7.3_r;
+        this->crankshaft.radius_m = 0.200_r;
         this->crankshaft.angular_velocity_r_per_s = 250.0_r;
         this->pistons.diameter_m.fill(0.089_r);
         this->pistons.crank_throw_length_m.fill(0.035_r);
@@ -1836,7 +2064,7 @@ struct generic_atv : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkp
         this->pistons.head_mass_density_kg_per_m3.fill(2700.0_r);
         this->pistons.head_compression_height_m.fill(0.03_r);
         this->pistons.head_clearance_height_m.fill(0.006_r);
-        this->pistons.friction_n_m_s2_per_r2.fill(0.00004_r);
+        this->pistons.friction_n_m_s2_per_r2.fill(0.00005_r);
         this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.8_r);
         this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.8_r);
         real theta0_r = 0.0_r;
@@ -1858,8 +2086,8 @@ struct generic_atv : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkp
                 0.00025_r, /* Runner   */
                 0.00000_r, /* Piston   */
                 0.00065_r, /* Runner   */
-                0.00100_r, /* Exhaust1 */
-                0.00100_r, /* Exhaust2 */
+                0.00010_r, /* Exhaust1 */
+                0.00033_r, /* Exhaust2 */
                 g_resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {
@@ -1869,14 +2097,14 @@ struct generic_atv : as_engine<1, 9, 2, 4, 7, inline_pistons, simple_cam, sparkp
                 0.00055_r, /* Runner to Piston       */
                 0.00040_r, /* Piston to Runner       */
                 0.00120_r, /* Runner to Exhaust1     */
-                0.00150_r, /* Exhaust1 to Exhaust2   */
-                0.00180_r, /* Exhaust2 to Atmosphere */
+                0.00170_r, /* Exhaust1 to Exhaust2   */
+                0.00250_r, /* Exhaust2 to Atmosphere */
             };
         }
         this->throttle.table = {
             0.00000_r,
-            0.00033_r,
-            0.01000_r,
+            0.00015_r,
+            0.00500_r,
             0.20000_r,
         };
     }
