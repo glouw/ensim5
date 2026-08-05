@@ -14,10 +14,10 @@ static constexpr size_t g_sample_rate_hz = 48000;
 
 /* Configure SIMD scheme depending on your platform. */
 
-#if 0
-using real = float;
-#else
+#if 1
 using real = double;
+#else
+using real = float; /* Not stable */
 #endif
 
 consteval real operator""_r(const long double x)
@@ -32,11 +32,6 @@ using grid = std::vector<line>;
 
 template<size_t N> using lane = std::array<real, N>;
 template<size_t N> using mask = std::array<bool, N>;
-
-enum class type : size_t
-{
-    generic_atv
-};
 
 struct engine
 {
@@ -72,6 +67,11 @@ struct engine
     virtual void set_swap_lock_off() = 0;
 
     virtual ~engine() = default;
+};
+
+enum class type : size_t
+{
+    generic_atv
 };
 
 std::unique_ptr<engine> new_engine(const type);

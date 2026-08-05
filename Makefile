@@ -6,7 +6,7 @@ LDFLAGS = -lSDL3
 OUT = ensim
 ASM = ensim.asm
 OBJS = ensim.o main.o
-DEPS = ensim.hh Makefile
+DEPS = parts/* ensim.hh Makefile
 PERF = perf stat -d -d -d -r 5
 DUMP = objdump -dr -C
 

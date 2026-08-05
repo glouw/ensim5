@@ -1,3 +1,5 @@
+#include "ensim.hh"
+
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <numbers>
@@ -5,8 +7,6 @@
 #include <chrono>
 #include <cmath>
 #include <list>
-
-#include "ensim.hh"
 
 struct point
 {

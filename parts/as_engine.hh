@@ -1,4 +1,5 @@
 #pragma once
+
 /*
  * [ ]  ...  [ ] | <- Source
  * [ ]  ...  [ | | <- Intake
@@ -24,27 +25,27 @@ template<
     template<size_t> class S>
 struct as_engine : engine
 {
-    struct P<W> pistons;
-    struct C<W> inlet_cam;
-    struct C<W> outlet_cam;
-    struct S<W> sparkplugs;
-    std::array<struct flow<H, PY>, W> flows;
-    struct limiter limiter;
-    struct throttle throttle;
-    struct crankshaft crankshaft;
-    struct flywheel flywheel;
-    struct dc_filter dc;
-    struct gain_filter pregain;
-    struct gain_filter gain;
-    struct clamp_filter clamp;
-    struct convolution_filter convolution;
-    struct diags diags;
-    struct lfr_pipe<W> pipe;
-    line audio_signal;
-    struct mailbox<W, H> mailbox;
-    mutable std::vector<float> audio_data;
-    line pipe_pressure;
-    std::mutex swap_mutex;
+    struct P<W> pistons = {};
+    struct C<W> inlet_cam = {};
+    struct C<W> outlet_cam = {};
+    struct S<W> sparkplugs = {};
+    std::array<struct flow<H, PY>, W> flows = {};
+    struct limiter limiter = {};
+    struct throttle throttle = {};
+    struct crankshaft crankshaft = {};
+    struct flywheel flywheel = {};
+    struct dc_filter dc = {};
+    struct gain_filter pregain = {};
+    struct gain_filter gain = {};
+    struct clamp_filter clamp = {};
+    struct convolution_filter convolution = {};
+    struct diags diags = {};
+    struct lfr_pipe<W> pipe = {};
+    line audio_signal = {};
+    struct mailbox<W, H> mailbox = {};
+    mutable std::vector<float> audio_data = {};
+    line pipe_pressure = {};
+    std::mutex swap_mutex = {};
 
     void log_step(const size_t x, const size_t y)
     {
@@ -359,7 +360,7 @@ struct as_engine : engine
         return mailbox.port_open_ratios[y][x];
     }
 
-    const trip& get_panic(const size_t x, const size_t y) const override
+    const std::atomic<bool>& get_panic(const size_t x, const size_t y) const override
     {
         return mailbox.panics[y][x];
     }

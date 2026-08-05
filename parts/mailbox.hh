@@ -1,3 +1,5 @@
+#pragma once
+
 template<size_t W, size_t H>
 struct alignas(std::hardware_destructive_interference_size) mailbox
 {

@@ -5,26 +5,25 @@
 #include <numbers>
 #include <cmath>
 #include <mutex>
-#include <string>
 
 namespace ensim {
 
-#include "const.hh"
-#include "mathematics.hh"
-#include "flow.hh"
-#include "sparkplugs.hh"
-#include "cam.hh"
-#include "flywheel.hh"
-#include "pistons.hh"
-#include "throttle.hh"
-#include "limiter.hh"
-#include "crankshaft.hh"
-#include "pipe.hh"
-#include "diags.hh"
-#include "filter.hh"
-#include "mailbox.hh"
-#include "as_engine.hh"
-#include "generic_atv.hh"
-#include "new_engine.hh"
+#include "parts/const.hh"
+#include "parts/mathematics.hh"
+#include "parts/flow.hh"
+#include "parts/sparkplugs.hh"
+#include "parts/cam.hh"
+#include "parts/flywheel.hh"
+#include "parts/pistons.hh"
+#include "parts/throttle.hh"
+#include "parts/limiter.hh"
+#include "parts/crankshaft.hh"
+#include "parts/pipe.hh"
+#include "parts/diags.hh"
+#include "parts/filter.hh"
+#include "parts/mailbox.hh"
+#include "parts/as_engine.hh"
+#include "parts/generic_atv.hh"
+#include "parts/new_engine.hh"
 
 } /* namespace ensim */
