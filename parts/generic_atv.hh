@@ -4,9 +4,9 @@ struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
 {
     generic_atv()
     {
-        this->dc.set_cutoff_frequency(1000.0_r);
-        this->pregain.ratio = 0.10_r;
-        this->gain.ratio = 0.000004_r;
+        this->dc.set_cutoff_frequency(100.0_r);
+        this->pregain.ratio = 0.40_r;
+        this->gain.ratio = 0.000001_r;
         this->limiter.max_angular_velocity_r_per_s = 900.0_r;
         this->limiter.limit_time_s = 0.1_r;
         this->flywheel.mass_kg = 20.0_r;
@@ -60,9 +60,9 @@ struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
         }
         this->throttle.table = {
             0.00000_r,
-            0.00015_r,
+            0.00001_r,
             0.00500_r,
-            0.20000_r,
+            0.30000_r,
         };
     }
 };
