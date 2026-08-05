@@ -26,6 +26,6 @@ namespace ensim
 #include "parts/filter.hh"
 #include "parts/mailbox.hh"
 #include "parts/as_engine.hh"
-#include "parts/generic_atv.hh"
+#include "parts/inline4.hh"
 #include "parts/new_engine.hh"
 }

@@ -58,7 +58,7 @@ namespace ensim
 
     enum class type : size_t
     {
-        generic_atv
+        inline4
     };
 
     std::unique_ptr<engine> new_engine(const type);

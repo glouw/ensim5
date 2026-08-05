@@ -930,11 +930,11 @@ int main(int argc, const char* const*)
 {
     if(argc == 2)
     {
-        ensim::new_engine(ensim::type::generic_atv)->run(ensim::g_sample_rate_hz);
+        ensim::new_engine(ensim::type::inline4)->run(ensim::g_sample_rate_hz);
         return 0;
     }
     std::atomic<bool> done = false;
-    auto engine = ensim::new_engine(ensim::type::generic_atv);
+    auto engine = ensim::new_engine(ensim::type::inline4);
     sdl sdl;
     std::jthread thread(
         [&done, &engine, &sdl]()

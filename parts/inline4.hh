@@ -1,10 +1,10 @@
 #pragma once
 
-struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs>
+struct inline4 : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs>
 {
-    generic_atv()
+    inline4()
     {
-        this->dc.set_cutoff_frequency(100.0_r);
+        this->dc.set_cutoff_frequency(500.0_r);
         this->pregain.ratio = 0.40_r;
         this->gain.ratio = 0.000001_r;
         this->limiter.max_angular_velocity_r_per_s = 900.0_r;
@@ -42,7 +42,7 @@ struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
                 0.00050_r, /* Throttle */
                 0.00025_r, /* Runner   */
                 0.00000_r, /* Piston   */
-                0.00040_r, /* Runner   */
+                0.00030_r, /* Runner   */
                 0.00040_r, /* Exhaust1 */
                 0.00050_r, /* Exhaust2 */
                 g_resevoir_volume_m3,
