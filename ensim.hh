@@ -1,5 +1,4 @@
-#ifndef __ENSIM_HH__
-#define __ENSIM_HH__
+#pragma once
 
 #include <cstddef>
 #include <memory>
@@ -13,11 +12,7 @@ namespace ensim
 
 static constexpr size_t g_sample_rate_hz = 48000;
 
-/*
- * Configure SIMD scheme depending on your platform.
- * Stability with floats not guaranteed.
- *
- */
+/* Configure SIMD scheme depending on your platform. */
 
 #if 0
 using real = float;
@@ -34,6 +29,9 @@ using trip = std::atomic<bool>;
 using atom = std::atomic<real>;
 using line = std::vector<real>;
 using grid = std::vector<line>;
+
+template<size_t N> using lane = std::array<real, N>;
+template<size_t N> using mask = std::array<bool, N>;
 
 enum class type : size_t
 {
@@ -79,5 +77,3 @@ struct engine
 std::unique_ptr<engine> new_engine(const type);
 
 } /* namespace ensim */
-
-#endif
