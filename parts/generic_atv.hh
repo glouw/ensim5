@@ -5,14 +5,14 @@ struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
     generic_atv()
     {
         this->dc.set_cutoff_frequency(1000.0_r);
-        this->pregain.ratio = 0.1_r;
-        this->gain.ratio = 0.00001_r;
+        this->pregain.ratio = 0.10_r;
+        this->gain.ratio = 0.000004_r;
         this->limiter.max_angular_velocity_r_per_s = 900.0_r;
         this->limiter.limit_time_s = 0.1_r;
-        this->flywheel.mass_kg = 3.0_r;
-        this->flywheel.radius_m = 0.60_r;
-        this->crankshaft.mass_kg = 7.3_r;
-        this->crankshaft.radius_m = 0.200_r;
+        this->flywheel.mass_kg = 20.0_r;
+        this->flywheel.radius_m = 0.2_r;
+        this->crankshaft.mass_kg = 17.3_r;
+        this->crankshaft.radius_m = 0.10_r;
         this->crankshaft.angular_velocity_r_per_s = 250.0_r;
         this->pistons.diameter_m.fill(0.089_r);
         this->pistons.crank_throw_length_m.fill(0.035_r);
@@ -42,9 +42,9 @@ struct generic_atv : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkp
                 0.00050_r, /* Throttle */
                 0.00025_r, /* Runner   */
                 0.00000_r, /* Piston   */
-                0.00065_r, /* Runner   */
-                0.00010_r, /* Exhaust1 */
-                0.00013_r, /* Exhaust2 */
+                0.00040_r, /* Runner   */
+                0.00040_r, /* Exhaust1 */
+                0.00050_r, /* Exhaust2 */
                 g_resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {

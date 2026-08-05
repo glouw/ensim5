@@ -29,6 +29,8 @@ static constexpr std::array<std::string_view, g_diags_size> g_signal_names = {
     #undef X
 };
 
+using grid = std::vector<line>;
+
 struct diags
 {
     grid front = grid(g_diags_size);

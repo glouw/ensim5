@@ -63,6 +63,29 @@ struct as_engine : engine
         }
     }
 
+    real calc_system_acceleration()
+    {
+        /*
+         *      t
+         * a = ---
+         *      I
+         */
+
+        real I = 0.0_r;
+        for(size_t x = 0; x < W; x++)
+        {
+            I += pistons.moment_of_inertia_kg_m2[x];
+        }
+        I += flywheel.moment_of_inertia_kg_m2;
+        I += crankshaft.moment_of_inertia_kg_m2;
+        real t = 0.0_r;
+        for(size_t x = 0; x < W; x++)
+        {
+            t += pistons.total_torque_n_m[x];
+        }
+        return t / I;
+    }
+
     fn void broadcast(const real throttle_open_ratio, const bool injection_enabled)
     {
         /*
@@ -112,27 +135,7 @@ struct as_engine : engine
             pistons.chamber_static_pressure_pa[x] = flows[x].chamber_static_pressure_pa[PY];
         }
 
-        /*
-         * System torque + inertia to system angular acceleration.
-         *
-         *      t
-         * a = ---
-         *      I
-         */
-
-        real I = 0.0_r;
-        for(size_t x = 0; x < W; x++)
-        {
-            I += pistons.moment_of_inertia_kg_m2[x];
-        }
-        I += flywheel.moment_of_inertia_kg_m2;
-        I += crankshaft.moment_of_inertia_kg_m2;
-        real t = 0.0_r;
-        for(size_t x = 0; x < W; x++)
-        {
-            t += pistons.total_torque_n_m[x];
-        }
-        crankshaft.angular_acceleration_r_per_s2 = t / I;
+        crankshaft.angular_acceleration_r_per_s2 = calc_system_acceleration();
         crankshaft.angular_velocity_r_per_s = fmax(crankshaft.angular_velocity_r_per_s, 0.0_r);
     }
 
@@ -174,8 +177,8 @@ struct as_engine : engine
             {
                 line.clear();
             }
-            pipe.calc_pipe_pressure();
-            std::swap(pipe_pressure, pipe.pipe_pressure);
+            pipe.gather_pipe_pressure_signal();
+            std::swap(pipe_pressure, pipe.pipe_pressure_signal);
             swap_mutex.unlock();
             return true;
         }
@@ -350,12 +353,12 @@ struct as_engine : engine
         return g_signal_names[index];
     }
 
-    const atom& get_angular_velocity_r_per_s() const override
+    const std::atomic<real>& get_angular_velocity_r_per_s() const override
     {
         return mailbox.engine_angular_velocity_r_per_s;
     }
 
-    const atom& get_port_open_ratio(const size_t x, const size_t y) const override
+    const std::atomic<real>& get_port_open_ratio(const size_t x, const size_t y) const override
     {
         return mailbox.port_open_ratios[y][x];
     }

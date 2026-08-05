@@ -6,7 +6,6 @@ struct simple_cam
     lane<W> engage_theta_r = {};
     lane<W> ramp_theta_r = {};
     lane<W> open_ratio = {};
-
     real crankshaft_theta_r = 0.0_r;
 
     /*      4            1      2      3

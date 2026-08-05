@@ -1,7 +1,5 @@
 #pragma once
 
-#define fn __attribute__((used))
-
 static constexpr real g_dt_s = 1.0_r / g_sample_rate_hz;
 static constexpr real g_pi_r = std::numbers::pi_v<real>;
 static constexpr real g_otto_cycle_r = 4.0_r * g_pi_r;

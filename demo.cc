@@ -474,7 +474,7 @@ struct port : cell
     {
         const int x_p = chamber::w_p * x + chamber::w_p / 2 - w_p / 2;
         const int y_p = chamber::h_p * y + chamber::h_p / 1 - h_p;
-        const ensim::atom& ratio = engine.get_port_open_ratio(x, y);
+        const std::atomic<ensim::real>& ratio = engine.get_port_open_ratio(x, y);
         const rect rect(x_p, y_p, w_p, h_p, fill_color, ratio);
         sdl.fill(rect);
     }
@@ -662,7 +662,7 @@ private:
 
 struct gauge_popup : popup
 {
-    gauge_popup(const int index, const std::string& name, const ensim::atom& value, const float max_value, const size_t needle_ticks)
+    gauge_popup(const int index, const std::string& name, const std::atomic<ensim::real>& value, const float max_value, const size_t needle_ticks)
         : popup(index)
         , name(name)
         , value(value)
@@ -733,7 +733,7 @@ private:
     }
 
     const std::string name;
-    const ensim::atom& value;
+    const std::atomic<ensim::real>& value;
     const float max_value;
     const size_t needle_ticks;
     static constexpr float start_theta_r = (4.0f / 3.0f) * std::numbers::pi_v<float>;
@@ -770,8 +770,9 @@ struct help_popup : popup
             name,
             "Q,E to cycle through these popups.",
             "W,A,S,D for chamber select.",
-            "AGPL V3.",
             "Render drops: " + std::to_string(engine.get_swap_drops()),
+            "Engine bytes: " + std::to_string(engine.get_bytes()),
+            "AGPL V3.",
         };
         sdl.fill(rect);
         sdl.write(point, strings);
@@ -813,7 +814,7 @@ struct ui
 
     std::unique_ptr<popup> make_popup()
     {
-        const ensim::atom& angular_velocity = engine.get_angular_velocity_r_per_s();
+        const std::atomic<ensim::real>& angular_velocity = engine.get_angular_velocity_r_per_s();
         const ensim::line& volume = engine.get_volume_signal_m3();
         const ensim::line& temperature = engine.get_static_temperature_signal_k();
         const ensim::line& pressure = engine.get_static_pressure_signal_pa();

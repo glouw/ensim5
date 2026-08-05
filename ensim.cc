@@ -6,8 +6,11 @@
 #include <cmath>
 #include <mutex>
 
-namespace ensim {
+#define fn __attribute__((used))
 
+namespace ensim
+{
+#include "parts/lane.hh"
 #include "parts/const.hh"
 #include "parts/mathematics.hh"
 #include "parts/flow.hh"
@@ -25,5 +28,4 @@ namespace ensim {
 #include "parts/as_engine.hh"
 #include "parts/generic_atv.hh"
 #include "parts/new_engine.hh"
-
-} /* namespace ensim */
+}

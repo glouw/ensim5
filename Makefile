@@ -5,8 +5,7 @@ CC = clang++ -std=c++20
 LDFLAGS = -lSDL3
 OUT = ensim
 ASM = ensim.asm
-OBJS = ensim.o main.o
-DEPS = parts/* ensim.hh Makefile
+OBJS = ensim.o demo.o
 PERF = perf stat -d -d -d -r 5
 DUMP = objdump -dr -C
 
@@ -19,10 +18,10 @@ perf: all
 all: $(OBJS)
 	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(LDFLAGS) $^ -o $(OUT)
 
-main.o: main.cc $(DEPS)
+demo.o: demo.cc ensim.hh Makefile
 	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $< -c
 
-ensim.o: ensim.cc $(DEPS)
+ensim.o: ensim.cc ensim.hh parts/* Makefile
 	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $< -c
 	$(DUMP) $@ > $(ASM)
 
