@@ -1,29 +1,24 @@
-ASANFLAGS =#-fsanitize=address,undefined
-CFLAGS = -O3 -ffast-math -march=native -g
-WFLAGS = -Wall -Wextra -Wpedantic
-CC = clang++ -std=c++20
+CC = clang++ -std=c++20 -O3 -ffast-math -march=native -g -Wall -Wextra -Wpedantic
+ifeq (0,1)
+CC += -fsanitize=address,undefined,thread
+endif
 LDFLAGS = -lSDL3
-OUT = ensim
-ASM = ensim.asm
-OBJS = ensim.o demo.o
-PERF = perf stat -d -d -d -r 5
-DUMP = objdump -dr -C
 
-run: all
-	./$(OUT)
+run: demo
+	./demo
 
-perf: all
-	$(PERF) ./$(OUT) --perf
+perf: demo
+	perf stat -d -d -d -r 5 ./demo --perf
 
-all: $(OBJS)
-	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $(LDFLAGS) $^ -o $(OUT)
+ensim.o: ensim/ensim.cc ensim/*.hh Makefile
+	$(CC) -c ensim/ensim.cc
+	objdump -dr -C ensim.o > ensim.asm
 
-demo.o: demo.cc ensim.hh Makefile
-	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $< -c
+demo.o: demo.cc Makefile
+	$(CC) -c demo.cc
 
-ensim.o: ensim.cc ensim.hh parts/* Makefile
-	$(CC) $(CFLAGS) $(WFLAGS) $(ASANFLAGS) $< -c
-	$(DUMP) $@ > $(ASM)
+demo: demo.o ensim.o Makefile
+	$(CC) $(LDFLAGS) demo.o ensim.o -o demo
 
 clean:
-	rm -f $(ASM) $(OUT) $(OBJS)
+	rm -f ensim.asm demo ensim.o

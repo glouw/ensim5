@@ -1,15 +1,16 @@
 #pragma once
 
-struct inline4 : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs>
+struct inline4 : as_engine<4, 9, 2, 4, 7, 192, inline_pistons, basic_cams, basic_sparkplugs, lfr_pipe>
 {
     inline4()
     {
-        this->dc.set_cutoff_frequency(500.0_r);
-        this->pregain.ratio = 0.40_r;
-        this->gain.ratio = 0.000001_r;
-        this->limiter.max_angular_velocity_r_per_s = 900.0_r;
-        this->limiter.limit_time_s = 0.1_r;
-        this->flywheel.mass_kg = 20.0_r;
+        this->pipe.configure(0.7_r, 0.008_r, 0.5_r, -0.66_r, 1000.0_r, 10);
+        this->dc.set_cutoff_frequency(10.0_r);
+        this->pregain.ratio = 1.00_r;
+        this->gain.ratio = 0.0000004_r;
+        this->limiter.max_angular_velocity_r_per_s = 1500.0_r;
+        this->limiter.limit_time_s = 0.025_r;
+        this->flywheel.mass_kg = 15.0_r;
         this->flywheel.radius_m = 0.2_r;
         this->crankshaft.mass_kg = 17.3_r;
         this->crankshaft.radius_m = 0.10_r;
@@ -42,9 +43,9 @@ struct inline4 : as_engine<4, 9, 2, 4, 5, inline_pistons, simple_cam, sparkplugs
                 0.00050_r, /* Throttle */
                 0.00025_r, /* Runner   */
                 0.00000_r, /* Piston   */
-                0.00030_r, /* Runner   */
-                0.00040_r, /* Exhaust1 */
-                0.00050_r, /* Exhaust2 */
+                0.00020_r, /* Runner   */
+                0.00030_r, /* Exhaust1 */
+                0.00040_r, /* Exhaust2 */
                 g_resevoir_volume_m3,
             };
             flow.chamber_nozzle_flow_area_m2 = {

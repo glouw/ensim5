@@ -5,7 +5,7 @@
  * [ ]  ...  [ | | <- Intake
  * [ ]  ...  [ ] | <- Intake Manifold
  * [ ]  ...  [ ] | <- Intake Runner
- * [ ]  ...  [ ] H <- Piston (PY)
+ * [ ]  ...  [ ] H <- Piston (PISTON_Y)
  * [ ]  ...  [ ] | <- Exhaust Runner
  * [ ]  ...  [ ] | <- Exhaust Manifold
  * [ ]  ...  [ ] | <- Exhaust
@@ -14,22 +14,26 @@
  *
  */
 
-template<
+template
+<
     size_t W,
     size_t H,
-    size_t TY,
-    size_t PY,
-    size_t AY,
-    template<size_t> class P,
-    template<size_t> class C,
-    template<size_t> class S>
+    size_t THROTTLE_Y,
+    size_t PISTON_Y,
+    size_t AUDIO_Y,
+    size_t PIPE_CELLS,
+    template<size_t> class PISTONS,
+    template<size_t> class CAMS,
+    template<size_t> class SPARKPLUGS,
+    template<size_t, size_t> class PIPE
+>
 struct as_engine : engine
 {
-    struct P<W> pistons = {};
-    struct C<W> inlet_cam = {};
-    struct C<W> outlet_cam = {};
-    struct S<W> sparkplugs = {};
-    std::array<struct flow<H, PY>, W> flows = {};
+    struct PISTONS<W> pistons = {};
+    struct CAMS<W> inlet_cam = {};
+    struct CAMS<W> outlet_cam = {};
+    struct SPARKPLUGS<W> sparkplugs = {};
+    std::array<struct flow<H, PISTON_Y>, W> flows = {};
     struct limiter limiter = {};
     struct throttle throttle = {};
     struct crankshaft crankshaft = {};
@@ -40,7 +44,7 @@ struct as_engine : engine
     struct clamp_filter clamp = {};
     struct convolution_filter convolution = {};
     struct diags diags = {};
-    struct lfr_pipe<W> pipe = {};
+    struct PIPE<W, PIPE_CELLS> pipe = {};
     line audio_signal = {};
     struct mailbox<W, H> mailbox = {};
     mutable std::vector<float> audio_data = {};
@@ -54,7 +58,7 @@ struct as_engine : engine
             #define X(name) diags.back[g_##name].push_back(flows[x].name[y]);
             FLUIDS(X)
             #undef X
-            if(y == PY)
+            if(y == PISTON_Y)
             {
                 #define X(name) diags.back[g_##name].push_back(pistons.name[x]);
                 PISTONS(X)
@@ -107,8 +111,8 @@ struct as_engine : engine
 
         for(size_t x = 0; x < W; x++)
         {
-            flows[x].chamber_nozzle_open_ratio[PY - 1] = inlet_cam.open_ratio[x];
-            flows[x].chamber_nozzle_open_ratio[PY + 0] = outlet_cam.open_ratio[x];
+            flows[x].chamber_nozzle_open_ratio[PISTON_Y - 1] = inlet_cam.open_ratio[x];
+            flows[x].chamber_nozzle_open_ratio[PISTON_Y + 0] = outlet_cam.open_ratio[x];
         }
 
         /*
@@ -119,7 +123,7 @@ struct as_engine : engine
         for(size_t x = 0; x < W; x++)
         {
             const real open_ratio = throttle.lookup(throttle_open_ratio);
-            flows[x].chamber_nozzle_open_ratio[TY] = open_ratio;
+            flows[x].chamber_nozzle_open_ratio[THROTTLE_Y] = open_ratio;
         }
 
         /*
@@ -131,8 +135,8 @@ struct as_engine : engine
         {
             flows[x].piston_injection_enabled = injection_enabled;
             flows[x].piston_chamber_radius_m = pistons.diameter_m[x] / 2.0_r;
-            flows[x].chamber_volume_m3[PY] = pistons.volumes_m3[x];
-            pistons.chamber_static_pressure_pa[x] = flows[x].chamber_static_pressure_pa[PY];
+            flows[x].chamber_volume_m3[PISTON_Y] = pistons.volumes_m3[x];
+            pistons.chamber_static_pressure_pa[x] = flows[x].chamber_static_pressure_pa[PISTON_Y];
         }
 
         crankshaft.angular_acceleration_r_per_s2 = calc_system_acceleration();
@@ -212,9 +216,9 @@ struct as_engine : engine
     {
         for(size_t x = 0; x < W; x++)
         {
-            pipe.in_mass_flow_rate_kg_per_s[x] = flows[x].nozzle_mass_flow_rate_kg_per_s[AY];
-            pipe.in_velocity_m_per_s[x] = flows[x].nozzle_velocity_m_per_s[AY];
-            pipe.in_static_temperature_k[x] = flows[x].parcel_static_temperature_k[AY];
+            pipe.in_mass_flow_rate_kg_per_s[x] = flows[x].nozzle_mass_flow_rate_kg_per_s[AUDIO_Y];
+            pipe.in_velocity_m_per_s[x] = flows[x].nozzle_velocity_m_per_s[AUDIO_Y];
+            pipe.in_static_temperature_k[x] = flows[x].parcel_static_temperature_k[AUDIO_Y];
         }
         pipe.update();
     }
@@ -330,17 +334,17 @@ struct as_engine : engine
 
     size_t get_piston_y() const override
     {
-        return PY;
+        return PISTON_Y;
     }
 
     size_t get_audio_y() const override
     {
-        return AY;
+        return AUDIO_Y;
     }
 
     size_t get_throttle_y() const override
     {
-        return TY;
+        return THROTTLE_Y;
     }
 
     size_t get_bytes() const override

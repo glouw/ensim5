@@ -1,4 +1,4 @@
-#include "ensim.hh"
+#include "ensim/ensim.hh"
 
 #include <SDL3/SDL.h>
 #include <algorithm>

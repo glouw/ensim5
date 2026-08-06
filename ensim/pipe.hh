@@ -1,45 +1,79 @@
 #pragma once
 
-template<size_t W>
+template<size_t W, size_t L>
 struct pipe
 {
-    static constexpr size_t L = 256 + 128 + 32;
     static constexpr size_t M = L - 1;
-    static constexpr size_t substeps = 6;
-    static constexpr real dt_s = g_dt_s / static_cast<real>(substeps);
-    const real length_m = 1.33_r;
-    const real radius_m = 0.01_r;
-    const real dx_m = length_m / static_cast<real>(L);
-    const real dx_volume_m3 = g_pi_r * radius_m * radius_m * dx_m;
-    const real max_wave_speed_m_per_s = 800.0_r;
-    const real cfl = max_wave_speed_m_per_s * dt_s / dx_m;
-    const real dx_dt = dx_m / dt_s;
-    const real dt_dx = dt_s / dx_m;
-    const real mic_position_ratio = 0.5_r;
-    const real reflective_ratio = -0.66_r;
+    size_t substeps = 0;
+    real dt_s = 0.0_r;
+    real length_m = 0.0_r;
+    real radius_m = 0.0_r;
+    real dx_m = 0.0_r;
+    real dx_volume_m3 = 0.0_r;
+    real max_wave_speed_m_per_s = 0.0_r;
+    real cfl = 0.0_r;
+    real dx_dt = 0.0_r;
+    real dt_dx = 0.0_r;
+    real mic_position_ratio = 0.0_r;
+    real reflective_ratio = 0.0_r;
     line pipe_pressure_signal = {};
 
-    virtual void calc_flux_faces() = 0;
-
-    pipe()
+    void configure(
+        const real length_m,
+        const real radius_m,
+        const real mic_position_ratio,
+        const real reflective_ratio,
+        const real max_wave_speed_m_per_s,
+        const size_t substeps)
     {
+        this->substeps = substeps;
+        dt_s = g_dt_s / static_cast<real>(substeps);
+        this->length_m = length_m;
+        this->radius_m = radius_m;
+        dx_m = length_m / static_cast<real>(L);
+        dx_volume_m3 = g_pi_r * radius_m * radius_m * dx_m;
+        cfl = max_wave_speed_m_per_s * dt_s / dx_m;
+        dx_dt = dx_m / dt_s;
+        dt_dx = dt_s / dx_m;
+        this->mic_position_ratio = mic_position_ratio;
+        this->reflective_ratio = reflective_ratio;
         reset();
     }
+
+    /*
+     * Pipe Junction - mix mass W flow rates, velocities, static temperatures streams.
+     *
+     * --- +-------+
+     *  |  |  0    | ---+
+     *  |  +-------+    |
+     *  |  +-------+    |
+     *  W  |  1    | ---+ --> U0 ... UL-1
+     *  |  +-------+    |
+     *  |     ...       |
+     *  |  +-------+    |
+     *  |  |  W-1  | ---+
+     * --- +-------+
+     */
 
     lane<W> in_mass_flow_rate_kg_per_s = {};
     lane<W> in_velocity_m_per_s = {};
     lane<W> in_static_temperature_k = {};
 
     /*
-     * +------+     +------+     +------+     +------+
-     * |  U0  |     |  U1  |     |  U2  | ... |  UL  |
-     * +------+     +------+     +------+     +------+
-     * +------+     +------+     +------+     +------+
-     * |  F0  |     |  F1  |     |  F2  | ... |  FL  |
-     * +------+     +------+     +------+     +------+
-     *        +-----+      +-----+      +-----+
-     *        | Ff0 |      | Ff1 |      | FfM | M == L - 1
-     *        +-----+      +-----+      +-----+
+     * Cells. U is Conserved state: F is flux state: Ff is flux face state.
+     *
+     * +------+     +------+     +------+       +--------+
+     * |  U0  |     |  U1  |     |  U2  | ..... |  UL-1  |
+     * +------+     +------+     +------+       +--------+
+     * +------+     +------+     +------+       +--------+
+     * |  F0  |     |  F1  |     |  F2  | ..... |  FL-1  |
+     * +------+     +------+     +------+       +--------+
+     *        +-----+      +-----+      +-------+
+     *        | Ff0 |      | Ff1 |      | FfM-1 | M = L-1
+     *        +-----+      +-----+      +-------+
+     *
+     * |---------------------- L ------------------------|
+     *
      */
 
     lane<L> U_r = {};
@@ -157,13 +191,13 @@ struct pipe
      *          dx
      */
 
-    void calc_cells()
+    void calc_conserved()
     {
         for(size_t i = 1; i < L - 1; i++)
         {
             const size_t j = i - 1;
-            U_r[i] -= dt_dx * (Ff_r [i] - Ff_r [j]);
-            U_ru[i] -= dt_dx * (Ff_ru[i] - Ff_ru[j]);
+            U_r  [i] -= dt_dx * (Ff_r  [i] - Ff_r  [j]);
+            U_ru [i] -= dt_dx * (Ff_ru [i] - Ff_ru [j]);
             U_rEs[i] -= dt_dx * (Ff_rEs[i] - Ff_rEs[j]);
         }
     }
@@ -194,15 +228,17 @@ struct pipe
         }
     }
 
+    virtual void calc_flux_faces() = 0;
+
     void update()
     {
         for(size_t i = 0; i < substeps; i++)
         {
-            calc_static_pressures();
             calc_boundary_conditions();
+            calc_static_pressures();
             calc_fluxes();
             calc_flux_faces();
-            calc_cells();
+            calc_conserved();
         }
     }
 
@@ -223,20 +259,20 @@ struct pipe
     }
 };
 
-template<size_t W>
-struct lf_pipe : pipe<W>
+template<size_t W, size_t L>
+struct lf_pipe : pipe<W, L>
 {
-    using pipe<W>::M;
-    using pipe<W>::dx_dt;
-    using pipe<W>::Ff_r;
-    using pipe<W>::Ff_ru;
-    using pipe<W>::Ff_rEs;
-    using pipe<W>::F_r;
-    using pipe<W>::F_ru;
-    using pipe<W>::F_rEs;
-    using pipe<W>::U_r;
-    using pipe<W>::U_ru;
-    using pipe<W>::U_rEs;
+    using pipe<W, L>::M;
+    using pipe<W, L>::dx_dt;
+    using pipe<W, L>::Ff_r;
+    using pipe<W, L>::Ff_ru;
+    using pipe<W, L>::Ff_rEs;
+    using pipe<W, L>::F_r;
+    using pipe<W, L>::F_ru;
+    using pipe<W, L>::F_rEs;
+    using pipe<W, L>::U_r;
+    using pipe<W, L>::U_ru;
+    using pipe<W, L>::U_rEs;
 
     /*
      *       1                 1
@@ -249,29 +285,28 @@ struct lf_pipe : pipe<W>
         for(size_t i = 0; i < M; i++)
         {
             const size_t j = i + 1;
-            Ff_r[i] = 0.5_r * ((F_r[i] + F_r[j]) - dx_dt * (U_r[j] - U_r[i]));
-            Ff_ru[i] = 0.5_r * ((F_ru[i] + F_ru[j]) - dx_dt * (U_ru[j] - U_ru[i]));
+            Ff_r  [i] = 0.5_r * ((F_r  [i] + F_r  [j]) - dx_dt * (U_r  [j] - U_r  [i]));
+            Ff_ru [i] = 0.5_r * ((F_ru [i] + F_ru [j]) - dx_dt * (U_ru [j] - U_ru [i]));
             Ff_rEs[i] = 0.5_r * ((F_rEs[i] + F_rEs[j]) - dx_dt * (U_rEs[j] - U_rEs[i]));
         }
     }
 };
 
-template<size_t W>
-struct lfr_pipe : pipe<W>
+template<size_t W, size_t L>
+struct lfr_pipe : pipe<W, L>
 {
-    using pipe<W>::M;
-    using pipe<W>::L;
-    using pipe<W>::dx_dt;
-    using pipe<W>::Ff_r;
-    using pipe<W>::Ff_ru;
-    using pipe<W>::Ff_rEs;
-    using pipe<W>::F_r;
-    using pipe<W>::F_ru;
-    using pipe<W>::F_rEs;
-    using pipe<W>::U_r;
-    using pipe<W>::U_ru;
-    using pipe<W>::U_rEs;
-    using pipe<W>::static_pressure_pa;
+    using pipe<W, L>::M;
+    using pipe<W, L>::dx_dt;
+    using pipe<W, L>::Ff_r;
+    using pipe<W, L>::Ff_ru;
+    using pipe<W, L>::Ff_rEs;
+    using pipe<W, L>::F_r;
+    using pipe<W, L>::F_ru;
+    using pipe<W, L>::F_rEs;
+    using pipe<W, L>::U_r;
+    using pipe<W, L>::U_ru;
+    using pipe<W, L>::U_rEs;
+    using pipe<W, L>::static_pressure_pa;
 
     lane<L> speed_of_sound_m_per_s = {};
     lane<L> local_speed_of_sound_m_per_s = {};
@@ -322,8 +357,8 @@ struct lfr_pipe : pipe<W>
             const real Al = absolute_speed_of_sound_m_per_s[i];
             const real Ar = absolute_speed_of_sound_m_per_s[j];
             const real alpha = fmax(Al, Ar);
-            Ff_r[i] = 0.5_r * ((F_r[i] + F_r[j]) - alpha * (U_r[j] - U_r[i]));
-            Ff_ru[i] = 0.5_r * ((F_ru[i] + F_ru[j]) - alpha * (U_ru[j] - U_ru[i]));
+            Ff_r  [i] = 0.5_r * ((F_r  [i] + F_r  [j]) - alpha * (U_r  [j] - U_r  [i]));
+            Ff_ru [i] = 0.5_r * ((F_ru [i] + F_ru [j]) - alpha * (U_ru [j] - U_ru [i]));
             Ff_rEs[i] = 0.5_r * ((F_rEs[i] + F_rEs[j]) - alpha * (U_rEs[j] - U_rEs[i]));
         }
     }

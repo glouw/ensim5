@@ -1,7 +1,7 @@
 #pragma once
 
 template<size_t W>
-struct sparkplugs
+struct basic_sparkplugs
 {
     static constexpr real fire_delay_theta_r = 1e-1_r;
     lane<W> engage_theta_r = {};

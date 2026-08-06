@@ -1,7 +1,7 @@
 #pragma once
 
 template<size_t W>
-struct simple_cam
+struct basic_cams
 {
     lane<W> engage_theta_r = {};
     lane<W> ramp_theta_r = {};
