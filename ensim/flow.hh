@@ -449,9 +449,11 @@ struct flow
              *
              */
 
+            const real randomness = 0.1_r;
             const real dh = S * g_dt_s;
+            const real drh = dh * (1.0_r + randomness * frand());
             const real h1 = piston_chamber_flame_height_m;
-            const real h2 = h1 + dh;
+            const real h2 = h1 + drh;
             const real r = piston_chamber_radius_m;
             const real Vb = (h2 - h1) * g_pi_r * r * r;
 
@@ -490,6 +492,12 @@ struct flow
             piston_chamber_flame_height_m = h2;
             piston_chamber_mass_burned_m3 = TMb;
         }
+    }
+
+    fn real frand()
+    {
+        const real random = 2.0_r * rand() / static_cast<real>(RAND_MAX);
+        return random - 1.0_r;
     }
 
     fn void calc_panics()

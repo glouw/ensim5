@@ -1,17 +1,17 @@
 #pragma once
 
-struct inline4 : as_engine<4, 9, 2, 4, 7, 192, inline_pistons, basic_cams, basic_sparkplugs, lfr_pipe>
+struct inline4 : as_engine<4, 9, 2, 4, 7, 128, inline_pistons, basic_cams, basic_sparkplugs, lfr_pipe>
 {
     inline4()
     {
-        this->pipe.configure(0.7_r, 0.008_r, 0.5_r, -0.66_r, 1000.0_r, 10);
-        this->dc.set_cutoff_frequency(10.0_r);
-        this->pregain.ratio = 1.00_r;
-        this->gain.ratio = 0.0000004_r;
+        this->pipe.configure(0.5_r, 0.0075_r, 0.33_r, -0.75_r, 1500.0_r, 10);
+        this->dc.set_cutoff_frequency(60.0_r);
+        this->pregain.ratio = 0.90_r;
+        this->gain.ratio = 0.00000025_r;
         this->limiter.max_angular_velocity_r_per_s = 1500.0_r;
         this->limiter.limit_time_s = 0.025_r;
-        this->flywheel.mass_kg = 15.0_r;
-        this->flywheel.radius_m = 0.2_r;
+        this->flywheel.mass_kg = 23.0_r;
+        this->flywheel.radius_m = 0.21_r;
         this->crankshaft.mass_kg = 17.3_r;
         this->crankshaft.radius_m = 0.10_r;
         this->crankshaft.angular_velocity_r_per_s = 250.0_r;
