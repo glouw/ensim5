@@ -1,7 +1,6 @@
 #include "ensim.hh"
 
 #include <array>
-#include <exception>
 #include <numbers>
 #include <cmath>
 #include <mutex>

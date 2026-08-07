@@ -10,7 +10,6 @@ struct pipe
     real radius_m = 0.0_r;
     real dx_m = 0.0_r;
     real dx_volume_m3 = 0.0_r;
-    real max_wave_speed_m_per_s = 0.0_r;
     real cfl = 0.0_r;
     real dx_dt = 0.0_r;
     real dt_dx = 0.0_r;
@@ -23,16 +22,14 @@ struct pipe
         const real radius_m,
         const real mic_position_ratio,
         const real reflective_ratio,
-        const real max_wave_speed_m_per_s,
         const size_t substeps)
     {
         this->substeps = substeps;
-        dt_s = g_dt_s / static_cast<real>(substeps);
+        dt_s = g_dt_s / substeps;
         this->length_m = length_m;
         this->radius_m = radius_m;
         dx_m = length_m / static_cast<real>(L);
         dx_volume_m3 = g_pi_r * radius_m * radius_m * dx_m;
-        cfl = max_wave_speed_m_per_s * dt_s / dx_m;
         dx_dt = dx_m / dt_s;
         dt_dx = dt_s / dx_m;
         this->mic_position_ratio = mic_position_ratio;

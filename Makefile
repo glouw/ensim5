@@ -1,7 +1,15 @@
 CC = clang++ -std=c++20 -O3 -ffast-math -march=native -g -Wall -Wextra -Wpedantic
-ifeq (0,1)
-CC += -fsanitize=address,undefined,thread
+
+SAN = 0
+
+ifeq ($(SAN),1)
+CC += -fsanitize=undefined,thread
 endif
+
+ifeq ($(SAN),2)
+CC += -fsanitize=undefined,address
+endif
+
 LDFLAGS = -lSDL3
 
 run: demo

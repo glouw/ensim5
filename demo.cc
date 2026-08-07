@@ -13,11 +13,7 @@ struct point
     SDL_FPoint self;
     uint32_t color;
 
-    point(const int x_p, const int y_p, const uint32_t color)
-        : self(x_p, y_p)
-        , color(color)
-        {
-        }
+    point(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p), color(color) {}
 };
 
 struct points
@@ -74,11 +70,7 @@ struct circle
     float radius;
     uint32_t color;
 
-    circle(const int x_p, const int y_p, const uint32_t color)
-        : self(x_p, y_p)
-        , color(color)
-        {
-        }
+    circle(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p), color(color) {}
 
     circle(const rect& rect, const uint32_t color, const float border_ratio = 1.0f)
     {
@@ -93,11 +85,7 @@ struct message : point
 {
     std::string string;
 
-    message(const int x_p, const int y_p, const uint32_t color, const std::string& string)
-        : point(x_p, y_p, color)
-        , string(string)
-        {
-        }
+    message(const int x_p, const int y_p, const uint32_t color, const std::string& string): point(x_p, y_p, color), string(string) {}
 };
 
 struct sdl
@@ -463,12 +451,7 @@ struct port : cell
     static constexpr int w_p = chamber::w_p / 4;
     static constexpr int h_p = chamber::w_p / 4;
 
-    port(const int x, const int y, ensim::engine& engine)
-        : x(x)
-        , y(y)
-        , engine(engine)
-        {
-        }
+    port(const int x, const int y, ensim::engine& engine): x(x), y(y), engine(engine) {}
 
     void draw(sdl& sdl) override
     {
@@ -491,11 +474,7 @@ struct plot : signals, cell
     static constexpr size_t max_points = sdl::w_p;
     static constexpr int h_p = sdl::h_p / signals::count;
 
-    plot(const int y, ensim::engine& engine)
-        : y(y)
-        , engine(engine)
-        {
-        }
+    plot(const int y, ensim::engine& engine): y(y), engine(engine) {}
 
     void draw(sdl& sdl) override
     {
@@ -545,10 +524,7 @@ struct popup : cell
     static constexpr int dw_p = 2 * sdl::line_p;
     static constexpr int dh_p = 2 * sdl::line_p;
 
-    popup(const int index)
-        : index(index)
-        {
-        }
+    popup(const int index): index(index) {}
 
 protected:
     std::pair<int, int> calc_position() const
