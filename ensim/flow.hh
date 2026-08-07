@@ -494,12 +494,6 @@ struct flow
         }
     }
 
-    fn real frand()
-    {
-        const real random = 2.0_r * rand() / static_cast<real>(RAND_MAX);
-        return random - 1.0_r;
-    }
-
     fn void calc_panics()
     {
         for(size_t i = 0; i < N; i++)

@@ -21,4 +21,4 @@ demo: demo.o ensim.o Makefile
 	$(CC) $(LDFLAGS) demo.o ensim.o -o demo
 
 clean:
-	rm -f ensim.asm demo ensim.o
+	rm -f ensim.asm demo ensim.o demo.o

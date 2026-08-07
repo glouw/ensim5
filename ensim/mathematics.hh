@@ -23,3 +23,9 @@ fn real cuberoot(const real x)
 {
     return exp(log(x) / 3.0_r);
 }
+
+fn real frand()
+{
+    const real random = 2.0_r * rand() / static_cast<real>(RAND_MAX);
+    return random - 1.0_r;
+}
