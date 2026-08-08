@@ -108,7 +108,7 @@ struct sdl
     sdl()
     {
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_BORDERLESS, &window, &renderer);
+        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
         SDL_SetRenderVSync(renderer, true);
         audio_spec.channels = 1;
         audio_spec.format = SDL_AUDIO_F32;
