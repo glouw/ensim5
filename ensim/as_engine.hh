@@ -39,7 +39,6 @@ struct as_engine : engine
     struct crankshaft crankshaft = {};
     struct flywheel flywheel = {};
     struct dc_filter dc = {};
-    struct gain_filter pregain = {};
     struct gain_filter gain = {};
     struct clamp_filter clamp = {};
     struct convolution_filter convolution = {};
@@ -205,7 +204,6 @@ struct as_engine : engine
     {
         real x0 = pipe.calc_audio_sample();
         x0 = dc.filter(x0);
-        x0 = pregain.filter(x0);
         x0 = convolution.filter(x0);
         x0 = gain.filter(x0);
         x0 = clamp.filter(x0);

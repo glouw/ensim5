@@ -17,7 +17,7 @@ struct inline4 : as_engine<
         this->limiter.max_angular_velocity_r_per_s = 1500.0_r;
         this->limiter.limit_time_s = 0.040_r;
         this->flywheel.mass_kg = 9.0_r;
-        this->flywheel.radius_m = 0.16_r;
+        this->flywheel.radius_m = 0.12_r;
         this->crankshaft.mass_kg = 12.5_r;
         this->crankshaft.radius_m = 0.045_r;
         this->crankshaft.angular_velocity_r_per_s = 500.0_r;
@@ -30,7 +30,7 @@ struct inline4 : as_engine<
         this->pistons.head_clearance_height_m.fill(0.007_r);
         this->pistons.friction_n_m_s2_per_r2.fill(0.000035_r);
         this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.8_r);
-        this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.33_r);
+        this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.53_r);
         real theta0_r = 0.0_r;
         for(size_t i = 0; i < get_width(); i++)
         {
@@ -54,26 +54,25 @@ struct inline4 : as_engine<
                 0.00300_r, /* CHAMBER2 -> ATMOSPHERIC SINK */
             };
         }
-        /*                             ATMOSPHERIC SOURCE    INTAKE     THROTTLE   RUNNER     PISTON     RUNNER     CHAMBER1   CHAMBER2    ATMOSPHERIC SINK     */
-        flows[0].chamber_volume_m3 = { g_resevoir_volume_m3, 0.00300_r, 0.00080_r, 0.00035_r, 0.00000_r, 0.00025_r, 0.00045_r, 0.00080_r, g_resevoir_volume_m3 };
-        flows[1].chamber_volume_m3 = { g_resevoir_volume_m3, 0.00300_r, 0.00080_r, 0.00035_r, 0.00000_r, 0.00025_r, 0.00045_r, 0.00080_r, g_resevoir_volume_m3 };
-        flows[2].chamber_volume_m3 = { g_resevoir_volume_m3, 0.00300_r, 0.00080_r, 0.00035_r, 0.00000_r, 0.00025_r, 0.00045_r, 0.00080_r, g_resevoir_volume_m3 };
-        flows[3].chamber_volume_m3 = { g_resevoir_volume_m3, 0.00300_r, 0.00080_r, 0.00035_r, 0.00000_r, 0.00025_r, 0.00045_r, 0.00080_r, g_resevoir_volume_m3 };
+        /*                             ATMOSPHERIC SOURCE    INTAKE   THROTTLE  RUNNER    PISTON     RUNNER    CHAMBER1  CHAMBER2  ATMOSPHERIC SINK     */
+        flows[0].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00020_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
+        flows[1].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00048_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
+        flows[2].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00043_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
+        flows[3].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00020_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
         this->throttle.table = {
-            0.00000_r,
-            0.00010_r,
-            0.00025_r,
+            0.00050_r,
+            0.01000_r,
+            0.10000_r,
             1.00000_r,
         };
         /* ALL CHAMBER2s CONNECT TO 1D CFD PIPE */
-        const real pipe_length_m = 2.0_r;
+        const real pipe_length_m = 1.5_r;
         const real pipe_radius_m = 0.005_r;
         const real pipe_mic_position_ratio = 0.66_r;
-        const real pipe_reflection_ratio = -0.75_r;
-        const size_t pipe_solver_substeps = 6;
+        const real pipe_reflection_ratio = -0.33_r;
+        const size_t pipe_solver_substeps = 12;
         this->pipe.configure(pipe_length_m, pipe_radius_m, pipe_mic_position_ratio, pipe_reflection_ratio, pipe_solver_substeps);
-        this->dc.set_cutoff_frequency(300.0_r);
-        this->pregain.ratio = 0.000001_r;
-        this->gain.ratio = 0.3000_r;
+        this->dc.set_cutoff_frequency(120.0_r);
+        this->gain.ratio = 0.0000002_r;
     }
 };

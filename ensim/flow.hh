@@ -105,7 +105,7 @@ struct flow
             static_assert(g_gamma == 3.0_r / 2.0_r);
             const real Y = cuberoot(Pt / Ps);
             const real M = direction * sqrt(X * (Y - 1.0_r));
-            nozzle_mach[i] = clamper(M, -1.0_r, 1.0_r);
+            nozzle_mach[i] = M;
         }
     }
 
@@ -449,7 +449,7 @@ struct flow
              *
              */
 
-            const real randomness = 0.1_r;
+            const real randomness = 0.2_r;
             const real dh = S * g_dt_s;
             const real drh = dh * (1.0_r + randomness * frand());
             const real h1 = piston_chamber_flame_height_m;

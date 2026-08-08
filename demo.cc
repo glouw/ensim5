@@ -108,7 +108,7 @@ struct sdl
     sdl()
     {
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_FULLSCREEN, &window, &renderer);
+        SDL_CreateWindowAndRenderer("ensim5", w_p, h_p, SDL_WINDOW_BORDERLESS, &window, &renderer);
         SDL_SetRenderVSync(renderer, true);
         audio_spec.channels = 1;
         audio_spec.format = SDL_AUDIO_F32;
@@ -860,17 +860,17 @@ struct ui
                 }
                 if(event.key.key == SDLK_1)
                 {
-                    engine.set_throttle_open_ratio(0.25_r);
+                    engine.set_throttle_open_ratio(0.00_r);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_2)
                 {
-                    engine.set_throttle_open_ratio(0.50_r);
+                    engine.set_throttle_open_ratio(0.33_r);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_3)
                 {
-                    engine.set_throttle_open_ratio(0.75_r);
+                    engine.set_throttle_open_ratio(0.66_r);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_4)
@@ -887,6 +887,28 @@ struct ui
                 engine.set_logger(x_select, y_select);
                 if(event.key.key == SDLK_E) pop_popup();
                 if(event.key.key == SDLK_Q) push_popup();
+            }
+            if(event.type == SDL_EVENT_KEY_UP)
+            {
+                if(event.key.key == SDLK_L)
+                {
+                    engine.set_swap_lock_on();
+                    const ensim::line& volume = engine.get_volume_signal_m3();
+                    const ensim::line& temperature = engine.get_static_temperature_signal_k();
+                    const ensim::line& pressure = engine.get_static_pressure_signal_pa();
+                    const size_t size = volume.size();
+                    puts("PV");
+                    for(size_t i = 0; i < size; i++)
+                    {
+                        printf("%f %f\n", volume[i], pressure[i]);
+                    }
+                    puts("TV");
+                    for(size_t i = 0; i < size; i++)
+                    {
+                        printf("%f %f\n", volume[i], temperature[i]);
+                    }
+                    engine.set_swap_lock_off();
+                }
             }
         }
     }
