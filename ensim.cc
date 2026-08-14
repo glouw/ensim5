@@ -453,7 +453,7 @@ namespace ensim
         /*         2
          *        u
          * Td = ------
-         *       2 Cp
+         *       2 Cv
          */
 
         fn void calc_chamber_dynamic_temperatures()
