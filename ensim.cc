@@ -453,7 +453,7 @@ namespace ensim
         /*         2
          *        u
          * Td = ------
-         *       2 Cv
+         *       2 Cp
          */
 
         fn void calc_chamber_dynamic_temperatures()
@@ -462,7 +462,8 @@ namespace ensim
             {
                 const real u = chamber_bulk_momentum_kg_m_per_s[i] / chamber_mass_kg[i];
                 const real Cv = g_cv_j_per_kg_k;
-                const real Td = 0.5_r * u * u / Cv;
+                const real Cp = g_gamma * Cv;
+                const real Td = 0.5_r * u * u / Cp;
                 chamber_dynamic_temperature_k[i] = Td;
             }
         }
@@ -572,10 +573,10 @@ namespace ensim
             calc_chamber_static_pressures();
             calc_chamber_total_pressures();
             calc_chamber_total_temperatures();
+            calc_nozzle_real_flow_areas();
             calc_nozzle_machs();
             calc_nozzle_velocities();
             calc_nozzle_static_densities();
-            calc_nozzle_real_flow_areas();
             calc_nozzle_mass_flow_rates();
             calc_nozzle_parcels();
             calc_compressions();
@@ -813,7 +814,6 @@ namespace ensim
         real radius_m = 0.0_r;
         real dx_m = 0.0_r;
         real dx_volume_m3 = 0.0_r;
-        real cfl = 0.0_r;
         real dx_dt = 0.0_r;
         real dt_dx = 0.0_r;
         real mic_position_ratio = 0.0_r;
@@ -903,10 +903,6 @@ namespace ensim
 
         void reset()
         {
-            if(cfl >= 1.0_r)
-            {
-                throw std::runtime_error("cfl condition unmet: " + std::to_string(cfl));
-            }
             for(size_t i = 0; i < L; i++)
             {
                 to_ambient(i);
@@ -1224,7 +1220,8 @@ namespace ensim
             for(size_t i = 0; i < W; i++)
             {
                 const real Pg = chamber_static_pressure_pa[i];
-                const real A = g_pi_r * diameter_m[i] * diameter_m[i];
+                const real ar = diameter_m[i] / 2.0_r;
+                const real A = g_pi_r * ar * ar;
                 const real r = crank_throw_length_m[i];
                 const real l = connecting_rod_length_m[i];
                 const real X = Pg * A * r * sint[i];
@@ -2033,7 +2030,7 @@ namespace ensim
             this->limiter.max_angular_velocity_r_per_s = 1500.0_r;
             this->limiter.limit_time_s = 0.040_r;
             this->flywheel.mass_kg = 9.0_r;
-            this->flywheel.radius_m = 0.12_r;
+            this->flywheel.radius_m = 0.1_r;
             this->crankshaft.mass_kg = 12.5_r;
             this->crankshaft.radius_m = 0.045_r;
             this->crankshaft.angular_velocity_r_per_s = 500.0_r;
@@ -2044,7 +2041,7 @@ namespace ensim
             this->pistons.head_mass_density_kg_per_m3.fill(2700.0_r);
             this->pistons.head_compression_height_m.fill(0.030_r);
             this->pistons.head_clearance_height_m.fill(0.007_r);
-            this->pistons.friction_n_m_s2_per_r2.fill(0.000035_r);
+            this->pistons.friction_n_m_s2_per_r2.fill(0.000005_r);
             this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.8_r);
             this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.53_r);
             real theta0_r = 0.0_r;
@@ -2085,10 +2082,10 @@ namespace ensim
             const real pipe_radius_m = 0.005_r;
             const real pipe_mic_position_ratio = 0.66_r;
             const real pipe_reflection_ratio = -0.33_r;
-            const size_t pipe_solver_substeps = 12;
+            const size_t pipe_solver_substeps = 15;
             this->pipe.configure(pipe_length_m, pipe_radius_m, pipe_mic_position_ratio, pipe_reflection_ratio, pipe_solver_substeps);
             this->dc.set_cutoff_frequency(120.0_r);
-            this->gain.ratio = 0.0000002_r;
+            this->gain.ratio = 0.00000035_r;
         }
     };
 
