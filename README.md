@@ -4,7 +4,7 @@
 
 Q,E to cycle popups.
 
-![]("img/img.png")
+![](img/img.png)
 
 Ensim5 improves on Ensim4 by exploring SIMD and cache locality for piston kinematics and isentropic flow.
 
@@ -21,3 +21,5 @@ Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz perf-stat.
 ```
 
 Unlike Ensim4, there is no bulk chamber resevoir to combine several SIMD lanes which does harm pipe audio fidelity.
+
+Ange Yaghi for inspiration and impulse convolution (https://github.com/ange-yaghi/engine-sim).
