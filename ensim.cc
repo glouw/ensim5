@@ -2085,7 +2085,7 @@ namespace ensim
             const size_t pipe_solver_substeps = 15;
             this->pipe.configure(pipe_length_m, pipe_radius_m, pipe_mic_position_ratio, pipe_reflection_ratio, pipe_solver_substeps);
             this->dc.set_cutoff_frequency(120.0_r);
-            this->gain.ratio = 0.00000035_r;
+            this->gain.ratio = 0.0000001_r;
         }
     };
 
