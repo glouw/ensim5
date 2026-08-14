@@ -2060,17 +2060,17 @@ namespace ensim
             {
                 flow.chamber_nozzle_open_ratio.fill(1.0_r);
                 flow.chamber_nozzle_flow_area_m2 = {
-                    0.00250_r, /* ATMOSPHERIC SOURCE -> INTAKE */
-                    0.00120_r, /* INTAKE -> THROTTLE           */
-                    0.00030_r, /* THROTTLE -> RUNNER           */
-                    0.00060_r, /* RUNNER -> PISTON             */
-                    0.00060_r, /* PISTON -> RUNNER             */
-                    0.00110_r, /* RUNNER -> CHAMBER1           */
-                    0.00180_r, /* CHAMBER1 -> CHAMBER2         */
-                    0.00300_r, /* CHAMBER2 -> ATMOSPHERIC SINK */
+                    0.00250_r, /* Atmospheric source -> Intake           */
+                    0.00120_r, /* Intake             -> Throttle         */
+                    0.00030_r, /* Throttle           -> Runner           */
+                    0.00060_r, /* Runner             -> Piston           */
+                    0.00060_r, /* Piston             -> Runner           */
+                    0.00110_r, /* Runner             -> Chamber1         */
+                    0.00180_r, /* Chamber1           -> Chamber2         */
+                    0.00300_r, /* Chamber2           -> Atmospheric Sink */
                 };
             }
-            /*                             ATMOSPHERIC SOURCE    INTAKE   THROTTLE  RUNNER    PISTON     RUNNER    CHAMBER1  CHAMBER2  ATMOSPHERIC SINK     */
+            /*                             Atmospheric Source    Intake   Throttle  Runner    Piston     Runner     Chamber1  Chamber2  Atmospheric Sink     */
             flows[0].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00020_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
             flows[1].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00048_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
             flows[2].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.00043_r, 0.0006_r, 0.0006_r, g_resevoir_volume_m3 };
@@ -2081,7 +2081,6 @@ namespace ensim
                 0.10000_r,
                 1.00000_r,
             };
-            /* ALL CHAMBER2s CONNECT TO 1D CFD PIPE */
             const real pipe_length_m = 1.5_r;
             const real pipe_radius_m = 0.005_r;
             const real pipe_mic_position_ratio = 0.66_r;
