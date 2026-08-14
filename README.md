@@ -3,6 +3,8 @@
 1,2,3,4 for throttle control.
 Q,E to cycle popups.
 
+<iframe width="720" height="405" src="https://www.youtube.com/embed/za0bQ6HqPRg" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+
 Ensim5 improves on Ensim4 by exploring SIMD and cache locality for piston kinematics and isentropic flow.
 
 Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz perf-stat.
@@ -16,7 +18,5 @@ Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz perf-stat.
 1,627,262,496  instructions:u           #  2.2    insn_per_cycle
   362,993,860  dTLB-loads:u             #  0.0 %  dtlb_miss_rate
 ```
-
-<iframe width="720" height="405" src="https://www.youtube.com/embed/za0bQ6HqPRg" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
 Unlike Ensim4, there is no bulk chamber resevoir to combine several SIMD lanes which does harm pipe audio fidelity.
