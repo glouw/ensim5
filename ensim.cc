@@ -16,7 +16,6 @@ namespace ensim
     static constexpr real g_pi_r = std::numbers::pi_v<real>;
     static constexpr real g_otto_cycle_r = 4.0_r * g_pi_r;
     static constexpr real g_otto_intake_cycle_r = 0.0_r * g_pi_r;
-    static constexpr real g_otto_compression_cycle_r = 1.0_r * g_pi_r;
     static constexpr real g_otto_combustion_cycle_r = 2.0_r * g_pi_r;
     static constexpr real g_otto_exhaust_cycle_r = 3.0_r * g_pi_r;
     static constexpr real g_resevoir_volume_m3 = 1e9_r;
