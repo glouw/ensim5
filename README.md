@@ -17,6 +17,6 @@ Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz perf-stat.
   362,993,860  dTLB-loads:u             #  0.0 %  dtlb_miss_rate
 ```
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/za0bQ6HqPRg?si=zRwH8Zd5OeZLQux_&amp;controls=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+<iframe width="720" height="405" src="https://www.youtube.com/embed/za0bQ6HqPRg" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
 Unlike Ensim4, there is no bulk chamber resevoir to combine several SIMD lanes which does harm pipe audio fidelity.
