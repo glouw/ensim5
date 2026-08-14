@@ -1,4 +1,4 @@
-### Ensim5
+## ENSIM5
 
 1,2,3,4 for throttle control.
 
@@ -8,7 +8,9 @@ Q,E to cycle popups.
 
 Ensim5 improves on Ensim4 by exploring SIMD and cache locality for piston kinematics and isentropic flow.
 
-Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz perf-stat.
+### PERFORMANCE
+
+`Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz`
 48000 audio samples of a 36-chamber 4-piston engine and one dimensional CFD pipe generated in 0.2 seconds:
 
 ```
@@ -21,5 +23,7 @@ Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz perf-stat.
 ```
 
 Unlike Ensim4, there is no bulk chamber resevoir to combine several SIMD lanes which does harm pipe audio fidelity.
+
+### ATTRIBUTION
 
 Ange Yaghi for inspiration and impulse convolution (https://github.com/ange-yaghi/engine-sim).
