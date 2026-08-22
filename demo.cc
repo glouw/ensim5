@@ -90,8 +90,8 @@ struct message : point
 
 struct sdl
 {
-    static constexpr int w_p = 1920;
-    static constexpr int h_p = 1080;
+    static constexpr int w_p = 1600;
+    static constexpr int h_p = 900;
     static constexpr uint32_t line_p = 16;
     static constexpr uint32_t font_p = 8;
 
@@ -800,7 +800,7 @@ struct ui
         const size_t next = popups.size() + 1;
         switch(next)
         {
-        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 2000.0, 20);
+        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 1100.0, 20);
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
         case 3: return std::make_unique<audio_popup>(next, "pipe pressure", pipe_pressure);
         case 4: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
@@ -939,7 +939,7 @@ int main(int argc, const char* const*)
         {
             while(!done)
             {
-                if(sdl.get_audio_buffer_size() < 4096)
+                if(sdl.get_audio_buffer_size() < 2048)
                 {
                     engine->run(200);
                     std::vector<float> data = engine->get_audio_data();
