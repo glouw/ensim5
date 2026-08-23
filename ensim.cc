@@ -1096,7 +1096,7 @@ namespace ensim
         static constexpr size_t M = L - 1;
         lane<W> piston_connect_ratio = {};
         real length_m = 0.0_r;
-        real mic_position_ratio = 0.0_r;
+        lane<2> mic_position_ratios = {};
         line pipe_pressure_signal = {};
 
         pipe()
@@ -1201,20 +1201,6 @@ namespace ensim
             U_rEs[L - 1] = g_ambient_pressure_pa / (g_gamma - 1.0_r) + 0.5_r * r * u * u;
         }
 
-        void calc_subsonic_inlet()
-        {
-            const real r = U_r[L - 2];
-            const real ru = U_ru[L - 2];
-            const real u = ru / r;
-            const real a = local_speed_of_sound_m_per_s[L - 2];
-            const real a_in = sqrt(g_gamma * g_ambient_pressure_pa / g_ambient_density_kg_per_m3);
-            const real da = a - a_in;
-            const real u_b = u + 2.0_r * da / (g_gamma - 1.0_r);
-            U_r[L - 1] = g_ambient_density_kg_per_m3;
-            U_ru[L - 1] = g_ambient_density_kg_per_m3 * u_b;
-            U_rEs[L - 1] = g_ambient_pressure_pa / (g_gamma - 1.0_r) + 0.5_r * g_ambient_density_kg_per_m3 * u_b * u_b;
-        }
-
         void calc_pipe_open_right()
         {
             const real r = U_r[L - 2];
@@ -1226,20 +1212,16 @@ namespace ensim
                 calc_supersonic_outlet();
             }
             else
-            if(u >= 0.0_r)
             {
                 calc_subsonic_outlet();
-            }
-            else
-            {
-                calc_subsonic_inlet();
             }
         }
 
         real calc_audio_sample()
         {
-            const size_t at = mic_position_ratio * (L - 1);
-            return static_pressure_pa[at];
+            const size_t x = mic_position_ratios[0] * (L - 1);
+            const size_t y = mic_position_ratios[1] * (L - 1);
+            return static_pressure_pa[x] + static_pressure_pa[y];
         }
 
         void inject()
@@ -1347,9 +1329,9 @@ namespace ensim
             calc_local_speed_of_sounds();
             calc_absolute_speed_of_sounds();
             calc_static_pressures();
-            calc_pipe_open_right();
             for(size_t i = 0; i < S; i++)
             {
+                calc_pipe_open_right();
                 calc_fluxes();
                 calc_flux_faces();
                 calc_conserved();
@@ -1751,9 +1733,12 @@ namespace ensim
         {
             for(size_t x = 0; x < W; x++)
             {
-                pipe.in_velocity_m_per_s[x] = flows[x].nozzle_velocity_m_per_s[AUDIO_Y];
-                pipe.in_static_temperature_k[x] = flows[x].nozzle_static_temperature_k[AUDIO_Y];
-                pipe.in_static_density_kg_per_m3[x] = flows[x].nozzle_static_density_kg_per_m3[AUDIO_Y];
+                const real u = flows[x].nozzle_velocity_m_per_s[AUDIO_Y];
+                const real Ts = flows[x].nozzle_static_temperature_k[AUDIO_Y];
+                const real r = flows[x].nozzle_static_density_kg_per_m3[AUDIO_Y];
+                pipe.in_velocity_m_per_s[x] = u;
+                pipe.in_static_temperature_k[x] = Ts;
+                pipe.in_static_density_kg_per_m3[x] = r;
             }
             pipe.update();
         }
@@ -1995,9 +1980,9 @@ namespace ensim
         /* H             */ 9,
         /* THROTTLE_Y    */ 2,
         /* PISTON_Y      */ 4,
-        /* AUDIO_Y       */ 5,
+        /* AUDIO_Y       */ 7,
         /* PIPE_CELLS    */ 256,
-        /* PIPE_SUBSTEPS */ 9,
+        /* PIPE_SUBSTEPS */ 10,
         inline_pistons,
         basic_cams,
         basic_sparkplugs,
@@ -2005,7 +1990,7 @@ namespace ensim
     {
         inline4()
         {
-            this->lumped_drag_torque_n_m = 17.2_r;
+            this->lumped_drag_torque_n_m = 13.2_r;
             this->limiter.max_angular_velocity_r_per_s = 800.0_r;
             this->limiter.limit_time_s = 0.020_r;
             this->flywheel.mass_kg = 12.0_r;
@@ -2057,10 +2042,10 @@ namespace ensim
                 0.25000_r,
                 0.50000_r,
             };
-            this->pipe.piston_connect_ratio = { 0.0_r, 0.1_r, 0.2_r, 0.3_r };
-            this->pipe.mic_position_ratio = 0.50_r;
-            this->pipe.length_m = 0.8_r;
-            this->dc.set_cutoff_frequency(10.0_r);
+            this->pipe.piston_connect_ratio = { 0.0_r, 0.38_r, 0.17_r, 0.63_r };
+            this->pipe.mic_position_ratios = { 0.72_r, 0.94_r };
+            this->pipe.length_m = 1.0_r;
+            this->dc.set_cutoff_frequency(5.0_r);
             this->gain.ratio = 0.0000005_r;
         }
     };
