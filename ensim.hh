@@ -48,11 +48,13 @@ namespace ensim
         virtual const line& get_pipe_pressure_signal() const = 0;
         virtual const std::vector<float>& get_audio_data() const = 0;
         virtual void set_throttle_open_ratio(const real open_ratio) = 0;
+        virtual void set_load_torque_n_m(const real load_torque_n_m) = 0;
         virtual void set_injection_on() = 0;
         virtual void set_injection_off() = 0;
         virtual void set_logger(const size_t x, const size_t y) = 0;
         virtual void set_swap_lock_on() = 0;
         virtual void set_swap_lock_off() = 0;
+
         virtual ~engine() = default;
     };
 

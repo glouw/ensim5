@@ -1096,7 +1096,8 @@ namespace ensim
         static constexpr size_t M = L - 1;
         lane<W> piston_connect_ratio = {};
         real length_m = 0.0_r;
-        lane<2> mic_position_ratios = {};
+        real mic_position0_ratio = 0.5_r;
+        real mic_position1_ratio = 0.5_r;
         line pipe_pressure_signal = {};
 
         pipe()
@@ -1156,24 +1157,57 @@ namespace ensim
         lane<L> static_pressure_pa = {};
 
         /*
-         *                1   2
-         *  Es = Cv Ts + --- u
-         *                2
+         *                1   2    r Rs         1     2
+         * rEs = Cv Ts + --- u  = ------- Ts + --- r u
+         *                2        y - 1        2
          */
 
-        void as_cell(const size_t i, const real r, const real u, const real Ts)
+        real calc_specific_energy_density_from_static_temperature(const real r, const real u, const real Ts)
         {
             const real ru = r * u;
             const real Rs = g_specific_gas_constant_j_per_kg_k;
             const real rEs = r * Rs * Ts / (g_gamma - 1.0_r) + ru * ru / (2.0_r * r);
+            return rEs;
+        }
+
+        /*
+         *                     2
+         *         Ps       r u
+         * rEs = ------- + -----
+         *        y - 1      2
+         */
+
+        real calc_specific_energy_density_from_static_pressure(const real r, const real u, const real Ps)
+        {
+            const real rEs = Ps / (g_gamma - 1.0_r) + 0.5_r * r * u * u;
+            return rEs;
+        }
+
+        /*
+         *                            1     2
+         * Ps = (y - 1) * r * [ Es - --- * u ]
+         *                            2
+         */
+
+        real calc_static_pressure_from_specific_energy(const real r, const real u, const real Es)
+        {
+            const real Ps = (g_gamma - 1.0_r) * r * (Es - 0.5_r * u * u);
+            return Ps;
+        }
+
+        void as_cell(const size_t i, const real r, const real u, const real Ts)
+        {
             U_r[i] = r;
-            U_ru[i] = ru;
-            U_rEs[i] = rEs;
+            U_ru[i] = r * u;
+            U_rEs[i] = calc_specific_energy_density_from_static_temperature(r, u, Ts);
         }
 
         void to_ambient(const size_t i)
         {
-            as_cell(i, g_ambient_density_kg_per_m3, 0.0_r, g_ambient_temperature_k);
+            const real r = g_ambient_density_kg_per_m3;
+            const real u = 0.0_r;
+            const real Ts = g_ambient_temperature_k;
+            as_cell(i, r, u, Ts);
         }
 
         void reset()
@@ -1184,43 +1218,63 @@ namespace ensim
             }
         }
 
-        void calc_supersonic_outlet()
-        {
-            U_r[L - 1] = U_r[L - 2];
-            U_ru[L - 1] = U_ru[L - 2];
-            U_rEs[L - 1] = U_rEs[L - 2];
-        }
-
-        void calc_subsonic_outlet()
-        {
-            const real r = U_r[L - 2];
-            const real ru = U_ru[L - 2];
-            const real u = ru / r;
-            U_r[L - 1] = r;
-            U_ru[L - 1] = ru;
-            U_rEs[L - 1] = g_ambient_pressure_pa / (g_gamma - 1.0_r) + 0.5_r * r * u * u;
-        }
+        /*
+         *                     Ghost
+         *                     Patm
+         * +---+     +-----+ +-----+
+         * |   |     |     | |     |
+         * | 0 | ... | L-2 | | L-1 |
+         * |   |     |  Y  | |  Z  |
+         * +---+     +-----+ +-----+
+         */
 
         void calc_pipe_open_right()
         {
-            const real r = U_r[L - 2];
-            const real ru = U_ru[L - 2];
+            const size_t Y = L - 2;
+            const size_t Z = L - 1;
+            const real r = U_r[Y];
+            const real ru = U_ru[Y];
             const real u = ru / r;
-            const real a = local_speed_of_sound_m_per_s[L - 2];
+            const real a = local_speed_of_sound_m_per_s[Y];
             if(u >= a)
             {
-                calc_supersonic_outlet();
+                /*
+                 * Sonic or Super Sonic exit.
+                 * Wave is so fast that next cell pressure value
+                 * is overrided with this cell pressure value.
+                 *
+                 */
+
+                U_r[Z] = r;
+                U_ru[Z] = ru;
+                U_rEs[Z] = U_rEs[Y];
             }
             else
             {
-                calc_subsonic_outlet();
+                /*
+                 * Subsonic exit.
+                 * Assume ambient conditions.
+                 *
+                 */
+
+                const real Ps = g_ambient_pressure_pa;
+                U_r[Z] = r;
+                U_ru[Z] = ru;
+                U_rEs[Z] = calc_specific_energy_density_from_static_pressure(r, u, Ps);
             }
         }
 
+        /*
+         * Sample two pipe positions to cancel noise,
+         * kind of like a Stratocaster's single coil pickup selector
+         * when in position 2 and 4.
+         */
+
         real calc_audio_sample()
         {
-            const size_t x = mic_position_ratios[0] * (L - 1);
-            const size_t y = mic_position_ratios[1] * (L - 1);
+            const size_t Z = L - 1;
+            const size_t x = Z * mic_position0_ratio;
+            const size_t y = Z * mic_position1_ratio;
             return static_pressure_pa[x] + static_pressure_pa[y];
         }
 
@@ -1249,7 +1303,7 @@ namespace ensim
                 const real rEs = U_rEs[i];
                 const real u = ru / r;
                 const real Es = rEs / r;
-                const real Ps = (g_gamma - 1.0_r) * r * (Es - 0.5_r * u * u);
+                const real Ps = calc_static_pressure_from_specific_energy(r, u, Es);
                 F_r[i] = ru;
                 F_ru[i] = ru * u + Ps;
                 F_rEs[i] = u * (rEs + Ps);
@@ -1277,9 +1331,9 @@ namespace ensim
         }
 
         /*
-         *                            1   2
-         * Ps = (y  - 1) * p * [ E - --- u ]
-         *                            2
+         *                           1   2
+         * Ps = (y - 1) * p * [ E - --- u ]
+         *                           2
          */
 
         real calc_static_pressure(const size_t i)
@@ -1289,7 +1343,7 @@ namespace ensim
             const real rEs = U_rEs[i];
             const real u = ru / r;
             const real Es = rEs / r;
-            const real Ps = (g_gamma - 1.0_r) * r * (Es - 0.5_r * u * u);
+            const real Ps = calc_static_pressure_from_specific_energy(r, u, Es);
             return Ps;
         }
 
@@ -1501,7 +1555,7 @@ namespace ensim
          * Recieve
          */
 
-        std::atomic<real> throttle_open_ratio = 0.5_r;
+        std::atomic<real> throttle_open_ratio = 0.0_r;
         std::atomic<size_t> log_x = -1;
         std::atomic<size_t> log_y = -1;
         std::atomic<bool> injection_enabled = true;
@@ -1512,6 +1566,7 @@ namespace ensim
 
         std::atomic<size_t> swap_drops = 0;
         std::atomic<real> engine_angular_velocity_r_per_s = 0.0_r;
+        std::atomic<real> engine_load_torque_n_m = 0.0_r;
         std::array<std::array<std::atomic<real>, W>, H> port_open_ratios = {};
         std::array<std::array<std::atomic<bool>, W>, H> panics = {};
     };
@@ -1530,8 +1585,7 @@ namespace ensim
      *
      */
 
-    template
-    <
+    template<
         size_t W,
         size_t H,
         size_t THROTTLE_Y,
@@ -1541,9 +1595,7 @@ namespace ensim
         size_t PIPE_SUBSTEPS,
         template<size_t> class PISTONS,
         template<size_t> class CAMS,
-        template<size_t> class SPARKPLUGS,
-        template<size_t, size_t, size_t> class PIPE
-    >
+        template<size_t> class SPARKPLUGS>
     struct as_engine : engine
     {
         real lumped_drag_torque_n_m = {};
@@ -1561,7 +1613,7 @@ namespace ensim
         struct clamp_filter clamp = {};
         struct convolution_filter convolution = {};
         struct diags diags = {};
-        struct PIPE<W, PIPE_CELLS, PIPE_SUBSTEPS> pipe = {};
+        struct pipe<W, PIPE_CELLS, PIPE_SUBSTEPS> pipe = {};
         line audio_signal = {};
         struct mailbox<W, H> mailbox = {};
         mutable std::vector<float> audio_data = {};
@@ -1584,7 +1636,7 @@ namespace ensim
             }
         }
 
-        real calc_system_acceleration()
+        real calc_system_acceleration(const real load_torque_n_m)
         {
             /*
              *      t
@@ -1605,10 +1657,11 @@ namespace ensim
                 t += pistons.total_torque_n_m[x];
             }
             t -= lumped_drag_torque_n_m;
+            t -= load_torque_n_m;
             return t / I;
         }
 
-        fn void broadcast(const real throttle_open_ratio, const bool injection_enabled)
+        fn void broadcast(const real throttle_open_ratio, const bool injection_enabled, const real load_torque_n_m)
         {
             /*
              * Crankshaft theta -> inlet/outlet cams + pistons + sparkplugs thetas.
@@ -1657,7 +1710,7 @@ namespace ensim
                 pistons.chamber_static_pressure_pa[x] = flows[x].chamber_static_pressure_pa[PISTON_Y];
             }
 
-            crankshaft.angular_acceleration_r_per_s2 = calc_system_acceleration();
+            crankshaft.angular_acceleration_r_per_s2 = calc_system_acceleration(load_torque_n_m);
             crankshaft.angular_velocity_r_per_s = fmax(crankshaft.angular_velocity_r_per_s, 0.0_r);
         }
 
@@ -1682,7 +1735,7 @@ namespace ensim
             flywheel.update();
             crankshaft.update();
             pistons.calc_volumetrics();
-            broadcast(0.0_r, false);
+            broadcast(0.0_r, false, 0.0_r);
             remember_volumes();
             reset_chambers();
         }
@@ -1813,6 +1866,7 @@ namespace ensim
         void run(const size_t steps) override
         {
             const real throttle_open_ratio = mailbox.throttle_open_ratio;
+            const real load_torque_n_m = mailbox.engine_load_torque_n_m;
             const size_t log_x = mailbox.log_x;
             const size_t log_y = mailbox.log_y;
             const bool injection_enabled = mailbox.injection_enabled;
@@ -1836,7 +1890,7 @@ namespace ensim
                 log_step(log_x, log_y);
                 remember_volumes();
                 const bool injection_overrided = injection_enabled && not limiter.limiting;
-                broadcast(throttle_open_ratio, injection_overrided);
+                broadcast(throttle_open_ratio, injection_overrided, load_torque_n_m);
                 sample_audio();
             }
             post_mailbox(swap_drops);
@@ -1973,6 +2027,11 @@ namespace ensim
         {
             swap_mutex.unlock();
         }
+
+        void set_load_torque_n_m(const real load_torque_n_m) override
+        {
+            mailbox.engine_load_torque_n_m = load_torque_n_m;
+        }
     };
 
     struct inline4 : as_engine<
@@ -1982,11 +2041,10 @@ namespace ensim
         /* PISTON_Y      */ 4,
         /* AUDIO_Y       */ 7,
         /* PIPE_CELLS    */ 256,
-        /* PIPE_SUBSTEPS */ 10,
+        /* PIPE_SUBSTEPS */ 8,
         inline_pistons,
         basic_cams,
-        basic_sparkplugs,
-        pipe>
+        basic_sparkplugs>
     {
         inline4()
         {
@@ -1997,7 +2055,7 @@ namespace ensim
             this->flywheel.radius_m = 0.15_r;
             this->crankshaft.mass_kg = 12.5_r;
             this->crankshaft.radius_m = 0.045_r;
-            this->crankshaft.angular_velocity_r_per_s = 200.0_r;
+            this->crankshaft.angular_velocity_r_per_s = 150.0_r;
             this->pistons.diameter_m.fill(0.086_r);
             this->pistons.crank_throw_length_m.fill(0.043_r);
             this->pistons.connecting_rod_length_m.fill(0.145_r);
@@ -2043,7 +2101,8 @@ namespace ensim
                 0.50000_r,
             };
             this->pipe.piston_connect_ratio = { 0.0_r, 0.38_r, 0.17_r, 0.63_r };
-            this->pipe.mic_position_ratios = { 0.72_r, 0.94_r };
+            this->pipe.mic_position0_ratio = 0.72_r;
+            this->pipe.mic_position1_ratio = 0.94_r;
             this->pipe.length_m = 1.0_r;
             this->dc.set_cutoff_frequency(5.0_r);
             this->gain.ratio = 0.0000005_r;

@@ -22,7 +22,7 @@ ensim.o: ensim.cc ensim.hh Makefile
 	$(CC) -c ensim.cc
 	objdump -dr -C ensim.o > ensim.asm
 
-demo.o: demo.cc Makefile
+demo.o: demo.cc ensim.hh Makefile
 	$(CC) -c demo.cc
 
 demo: demo.o ensim.o Makefile

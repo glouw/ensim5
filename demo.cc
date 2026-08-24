@@ -598,8 +598,8 @@ struct audio_popup : signals, popup
         const points data = project_1d(audio_signal, signal, max_points);
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [y_min, y_max] = minmax(audio_signal);
-        const float amplitude = push(y_max - y_min);
-        const bool clipping = y_min < -0.999f || y_max >= 0.999f;
+        const float amplitude = y_max - y_min;
+        const bool clipping = y_min <= 1.0f || y_max >= 1.0f;
         const std::vector<std::string> strings = {
             name,
             "max = " + std::to_string(y_max),
@@ -613,25 +613,48 @@ struct audio_popup : signals, popup
         sdl.write(font, strings);
     }
 
-    float push(const float amplitude)
+private:
+    std::list<float> amplitudes;
+    const std::string name;
+    const ensim::line& audio_signal;
+    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t text_color = sdl::white;
+};
+
+struct pipe_popup : signals, popup
+{
+    pipe_popup(const int index, const std::string& name, const ensim::engine& engine)
+        : popup(index)
+        , name(name)
+        , engine(engine)
+        {
+        }
+
+    void draw(sdl& sdl) override
     {
-        if(amplitudes.size() == 60)
-        {
-            amplitudes.pop_front();
-        }
-        amplitudes.push_back(amplitude);
-        float total = 0.0f;
-        for(auto& x : amplitudes)
-        {
-            total += x;
-        }
-        return total / amplitudes.size();
+        const ensim::line& pipe_signal = engine.get_pipe_pressure_signal();
+        const rect fill = calc_rect();
+        const rect signal(fill, signal_color);
+        const points data = project_1d(pipe_signal, signal, max_points);
+        const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
+        const auto [y_min, y_max] = minmax(pipe_signal);
+        const float amplitude = y_max - y_min;
+        const std::vector<std::string> strings = {
+            name,
+            "max = " + std::to_string(y_max),
+            "min = " + std::to_string(y_min),
+            "amplitude = " + std::to_string(amplitude),
+            "samples = " + std::to_string(pipe_signal.size()),
+        };
+        sdl.fill(fill);
+        sdl.draw_lines(data);
+        sdl.write(font, strings);
     }
 
 private:
     std::list<float> amplitudes;
     const std::string name;
-    const ensim::line& audio_signal;
+    const ensim::engine& engine;
     static constexpr uint32_t signal_color = sdl::red;
     static constexpr uint32_t text_color = sdl::white;
 };
@@ -796,13 +819,12 @@ struct ui
         const ensim::line& pressure = engine.get_static_pressure_signal_pa();
         const ensim::line& audio = engine.get_audio_signal();
         const ensim::line& impulse = engine.get_impulse_signal();
-        const ensim::line& pipe_pressure = engine.get_pipe_pressure_signal();
         const size_t next = popups.size() + 1;
         switch(next)
         {
         case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 1100.0, 20);
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
-        case 3: return std::make_unique<audio_popup>(next, "pipe pressure", pipe_pressure);
+        case 3: return std::make_unique<pipe_popup> (next, "pipe pressure", engine);
         case 4: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
         case 5: return std::make_unique<plot_popup> (next, "static temperature (k) volume (m3) diagram", volume, temperature);
         case 6: return std::make_unique<audio_popup>(next, "impulse signal", impulse);
@@ -939,7 +961,7 @@ int main(int argc, const char* const*)
         {
             while(!done)
             {
-                if(sdl.get_audio_buffer_size() < 2048)
+                if(sdl.get_audio_buffer_size() < 4096)
                 {
                     engine->run(200);
                     std::vector<float> data = engine->get_audio_data();
