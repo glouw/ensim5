@@ -2041,16 +2041,16 @@ namespace ensim
         /* PISTON_Y      */ 4,
         /* AUDIO_Y       */ 7,
         /* PIPE_CELLS    */ 256,
-        /* PIPE_SUBSTEPS */ 8,
+        /* PIPE_SUBSTEPS */ 10,
         inline_pistons,
         basic_cams,
         basic_sparkplugs>
     {
         inline4()
         {
-            this->lumped_drag_torque_n_m = 13.2_r;
-            this->limiter.max_angular_velocity_r_per_s = 800.0_r;
-            this->limiter.limit_time_s = 0.020_r;
+            this->lumped_drag_torque_n_m = 23.2_r;
+            this->limiter.max_angular_velocity_r_per_s = 900.0_r;
+            this->limiter.limit_time_s = 0.033_r;
             this->flywheel.mass_kg = 12.0_r;
             this->flywheel.radius_m = 0.15_r;
             this->crankshaft.mass_kg = 12.5_r;
@@ -2081,7 +2081,7 @@ namespace ensim
                 flow.chamber_nozzle_flow_area_m2 = {
                     0.00250_r, /* Atmospheric Source -> Intake           */
                     0.00120_r, /* Intake             -> Throttle         */
-                    0.00035_r, /* Throttle           -> Runner           */
+                    0.00085_r, /* Throttle           -> Runner           */
                     0.00090_r, /* Runner             -> Piston           */
                     0.00120_r, /* Piston             -> Runner           */
                     0.00110_r, /* Runner             -> Chamber1         */
@@ -2096,14 +2096,14 @@ namespace ensim
             flows[3].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.0003_r, 0.0003_r, 0.0003_r, g_resevoir_volume_m3 };
             this->throttle.table = {
                 0.00100_r,
-                0.05000_r,
+                0.02500_r,
                 0.25000_r,
-                0.50000_r,
+                1.00000_r,
             };
             this->pipe.piston_connect_ratio = { 0.0_r, 0.38_r, 0.17_r, 0.63_r };
             this->pipe.mic_position0_ratio = 0.72_r;
             this->pipe.mic_position1_ratio = 0.94_r;
-            this->pipe.length_m = 1.0_r;
+            this->pipe.length_m = 1.1_r;
             this->dc.set_cutoff_frequency(5.0_r);
             this->gain.ratio = 0.0000005_r;
         }

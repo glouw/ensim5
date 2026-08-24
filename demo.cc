@@ -599,7 +599,7 @@ struct audio_popup : signals, popup
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [y_min, y_max] = minmax(audio_signal);
         const float amplitude = y_max - y_min;
-        const bool clipping = y_min <= 1.0f || y_max >= 1.0f;
+        const bool clipping = y_min <= -1.0f || y_max >= 1.0f;
         const std::vector<std::string> strings = {
             name,
             "max = " + std::to_string(y_max),
