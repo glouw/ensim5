@@ -151,7 +151,7 @@ struct sdl
 
     void clear()
     {
-        set_color(0x0);
+        set_color(black);
         SDL_RenderClear(renderer);
     }
 
