@@ -30,9 +30,12 @@ struct points
         self.push_back(point);
     }
 
-    void append(const float x, const float y)
+    void append(const double x, const double y)
     {
-        append({x, y});
+        append({
+            static_cast<float>(x),
+            static_cast<float>(y),
+        });
     }
 };
 
@@ -40,9 +43,9 @@ struct rect
 {
     SDL_FRect self;
     uint32_t color;
-    float color_ratio;
+    double color_ratio;
 
-    rect(const int x_p, const int y_p, const int w_p, const int h_p, const uint32_t color, const float color_ratio = 1.0f)
+    rect(const int x_p, const int y_p, const int w_p, const int h_p, const uint32_t color, const double color_ratio = 1.0)
         : self(x_p, y_p, w_p, h_p)
         , color(color)
         , color_ratio(color_ratio)
@@ -55,11 +58,11 @@ struct rect
         this->color = color;
     }
 
-    SDL_FPoint project(const float x_ratio, const float y_ratio) const
+    SDL_FPoint project(const double x_ratio, const double y_ratio) const
     {
         SDL_FPoint out;
         out.x = self.x + x_ratio * self.w;
-        out.y = self.y + (1.0f - y_ratio) * self.h;
+        out.y = self.y + (1.0 - y_ratio) * self.h;
         return out;
     }
 };
@@ -67,16 +70,16 @@ struct rect
 struct circle
 {
     SDL_FPoint self;
-    float radius;
+    double radius;
     uint32_t color;
 
     circle(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p), color(color) {}
 
-    circle(const rect& rect, const uint32_t color, const float border_ratio = 1.0f)
+    circle(const rect& rect, const uint32_t color, const double border_ratio = 1.0)
     {
-        self.x = rect.self.x + rect.self.w * 0.5f;
-        self.y = rect.self.y + rect.self.h * 0.5f;
-        radius = std::min(rect.self.w, rect.self.h) * 0.5f * border_ratio;
+        self.x = rect.self.x + rect.self.w * 0.5;
+        self.y = rect.self.y + rect.self.h * 0.5;
+        radius = std::min(rect.self.w, rect.self.h) * 0.5 * border_ratio;
         this->color = color;
     }
 };
@@ -135,7 +138,7 @@ struct sdl
         return events;
     }
 
-    void set_color(const uint32_t hex, const float ratio = 1.0f)
+    void set_color(const uint32_t hex, const double ratio = 1.0)
     {
         const uint8_t a = uint8_t(hex >> 24) * ratio;
         const uint8_t r = uint8_t(hex >> 16) * ratio;
@@ -177,8 +180,8 @@ struct sdl
     void write(const message& message, const bool center = false)
     {
         set_color(message.color);
-        float x_p = message.self.x;
-        float y_p = message.self.y;
+        double x_p = message.self.x;
+        double y_p = message.self.y;
         if(center)
         {
             x_p -= sdl::font_p / 2 * message.string.size();
@@ -262,7 +265,7 @@ struct sdl
 
     int get_audio_buffer_size()
     {
-        return SDL_GetAudioStreamQueued(audio_stream) / sizeof(float);
+        return SDL_GetAudioStreamQueued(audio_stream) / sizeof(double);
     }
 
     void buffer_audio(const std::vector<float>& audio)
@@ -277,11 +280,12 @@ private:
     SDL_AudioSpec audio_spec;
 };
 
-std::pair<float, float> minmax(const ensim::line& line)
+template <typename T>
+std::pair<T, T> minmax(const std::vector<T>& line)
 {
     const auto [min_it, max_it] = std::minmax_element(line.begin(), line.end());
-    const float min = (min_it == line.end()) ? 0.0f : *min_it;
-    const float max = (max_it == line.end()) ? 0.0f : *max_it;
+    const double min = (min_it == line.end()) ? 0.0 : *min_it;
+    const double max = (max_it == line.end()) ? 0.0 : *max_it;
     return { min, max };
 }
 
@@ -289,9 +293,10 @@ struct signals
 {
     static constexpr int count = 9;
 
-    ensim::line lingen(const size_t size) const
+    template <typename T>
+    std::vector<T> lingen(const size_t size) const
     {
-        ensim::line linear;
+        std::vector<T> linear;
         for(size_t i = 0; i < size; i++)
         {
             linear.push_back(i);
@@ -299,35 +304,38 @@ struct signals
         return linear;
     }
 
-    ensim::line normalize(const ensim::line& line) const
+    template <typename T>
+    std::vector<T> normalize(const std::vector<T>& line) const
     {
         const auto [min, max] = minmax(line);
-        ensim::line out = line;
+        std::vector<T> out = line;
         for(auto& x : out)
         {
-            x = (max == 0.0f) ? 1.0f : x / max;
+            x = (max == 0.0) ? 1.0 : x / max;
         }
         return out;
     }
 
-    ensim::line downsample(const ensim::line& line, const size_t size) const
+    template <typename T>
+    std::vector<T> downsample(const std::vector<T>& line, const size_t size) const
     {
         if(line.empty())
         {
             return {};
         }
-        ensim::line out;
+        std::vector<T> out;
         out.reserve(size);
         for(size_t i = 0; i < size; i++)
         {
             const size_t j = i * line.size() / size;
-            const ensim::real value = line[j];
+            const double value = line[j];
             out.push_back(value);
         }
         return out;
     }
 
-    points project(const ensim::line& xx, const ensim::line& yy, const rect& rect) const
+    template <typename T>
+    points project(const std::vector<T>& xx, const std::vector<T>& yy, const rect& rect) const
     {
         const auto [x_min, x_max] = minmax(xx);
         const auto [y_min, y_max] = minmax(yy);
@@ -336,27 +344,29 @@ struct signals
         points.self.reserve(size);
         for(size_t i = 0; i < size; i++)
         {
-            const float dx = x_max - x_min;
-            const float dy = y_max - y_min;
-            const float x_ratio = dx == 0.0f ? 1.0f : ((xx[i] - x_min) / dx);
-            const float y_ratio = dy == 0.0f ? 1.0f : ((yy[i] - y_min) / dy);
+            const double dx = x_max - x_min;
+            const double dy = y_max - y_min;
+            const double x_ratio = dx == 0.0 ? 1.0 : ((xx[i] - x_min) / dx);
+            const double y_ratio = dy == 0.0 ? 1.0 : ((yy[i] - y_min) / dy);
             points.append(rect.project(x_ratio, y_ratio));
         }
         return points;
     }
 
-    points project_1d(const ensim::line& signal, const rect& rect, const size_t size) const
+    template <typename T>
+    points project_1d(const std::vector<T>& signal, const rect& rect, const size_t size) const
     {
-        const ensim::line temp = downsample(signal, size);
-        const ensim::line xx = lingen(std::min(size, temp.size()));
-        const ensim::line yy = normalize(temp);
+        const std::vector<T> temp = downsample(signal, size);
+        const std::vector<T> xx = lingen<T>(std::min(size, temp.size()));
+        const std::vector<T> yy = normalize(temp);
         return project(xx, yy, rect);
     }
 
-    points project_2d(const ensim::line& x_signal, const ensim::line& y_signal, const rect& rect, const size_t size) const
+    template <typename T>
+    points project_2d(const std::vector<T> & x_signal, const std::vector<T>& y_signal, const rect& rect, const size_t size) const
     {
-        const ensim::line xx = normalize(downsample(x_signal, size));
-        const ensim::line yy = normalize(downsample(y_signal, size));
+        const std::vector<T> xx = normalize(downsample(x_signal, size));
+        const std::vector<T> yy = normalize(downsample(y_signal, size));
         return project(xx, yy, rect);
     }
 };
@@ -457,7 +467,7 @@ struct port : cell
     {
         const int x_p = chamber::w_p * x + chamber::w_p / 2 - w_p / 2;
         const int y_p = chamber::h_p * y + chamber::h_p / 1 - h_p;
-        const std::atomic<ensim::real>& ratio = engine.get_port_open_ratio(x, y);
+        const std::atomic<double>& ratio = engine.get_port_open_ratio(x, y);
         const rect rect(x_p, y_p, w_p, h_p, fill_color, ratio);
         sdl.fill(rect);
     }
@@ -479,7 +489,7 @@ struct plot : signals, cell
     void draw(sdl& sdl) override
     {
         const std::string_view name = engine.get_signal_name(y);
-        const ensim::line& y_signal = engine.get_signal(y);
+        const std::vector<double>& y_signal = engine.get_signal(y);
         const int x_p = engine.get_width() * chamber::w_p;
         const int y_p = y * h_p;
         const rect fill(x_p, y_p, sdl::w_p - x_p, h_p, fill_color);
@@ -546,7 +556,7 @@ private:
 
 struct plot_popup : signals, popup
 {
-    plot_popup(const int index, const std::string& name, const ensim::line& x_signal, const ensim::line& y_signal)
+    plot_popup(const int index, const std::string& name, const std::vector<double>& x_signal, const std::vector<double>& y_signal)
         : popup(index)
         , name(name)
         , x_signal(x_signal)
@@ -576,15 +586,15 @@ struct plot_popup : signals, popup
 
 private:
     std::string name;
-    const ensim::line& x_signal;
-    const ensim::line& y_signal;
+    const std::vector<double>& x_signal;
+    const std::vector<double>& y_signal;
     static constexpr uint32_t signal_color = sdl::red;
     static constexpr uint32_t text_color = sdl::white;
 };
 
 struct audio_popup : signals, popup
 {
-    audio_popup(const int index, const std::string& name, const ensim::line& audio_signal)
+    audio_popup(const int index, const std::string& name, const std::vector<float>& audio_signal)
         : popup(index)
         , name(name)
         , audio_signal(audio_signal)
@@ -598,8 +608,8 @@ struct audio_popup : signals, popup
         const points data = project_1d(audio_signal, signal, max_points);
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [y_min, y_max] = minmax(audio_signal);
-        const float amplitude = y_max - y_min;
-        const bool clipping = y_min <= -1.0f || y_max >= 1.0f;
+        const double amplitude = y_max - y_min;
+        const bool clipping = y_min <= -1.0 || y_max >= 1.0;
         const std::vector<std::string> strings = {
             name,
             "max = " + std::to_string(y_max),
@@ -614,9 +624,8 @@ struct audio_popup : signals, popup
     }
 
 private:
-    std::list<float> amplitudes;
     const std::string name;
-    const ensim::line& audio_signal;
+    const std::vector<float>& audio_signal;
     static constexpr uint32_t signal_color = sdl::red;
     static constexpr uint32_t text_color = sdl::white;
 };
@@ -632,13 +641,13 @@ struct pipe_popup : signals, popup
 
     void draw(sdl& sdl) override
     {
-        const ensim::line& pipe_signal = engine.get_pipe_pressure_signal();
+        const std::vector<float>& pipe_signal = engine.get_pipe_pressure_signal();
         const rect fill = calc_rect();
         const rect signal(fill, signal_color);
         const points data = project_1d(pipe_signal, signal, max_points);
         const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
         const auto [y_min, y_max] = minmax(pipe_signal);
-        const float amplitude = y_max - y_min;
+        const double amplitude = y_max - y_min;
         const std::vector<std::string> strings = {
             name,
             "max = " + std::to_string(y_max),
@@ -652,7 +661,6 @@ struct pipe_popup : signals, popup
     }
 
 private:
-    std::list<float> amplitudes;
     const std::string name;
     const ensim::engine& engine;
     static constexpr uint32_t signal_color = sdl::red;
@@ -661,7 +669,7 @@ private:
 
 struct gauge_popup : popup
 {
-    gauge_popup(const int index, const std::string& name, const std::atomic<ensim::real>& value, const float max_value, const size_t needle_ticks)
+    gauge_popup(const int index, const std::string& name, const std::atomic<double>& value, const double max_value, const size_t needle_ticks)
         : popup(index)
         , name(name)
         , value(value)
@@ -678,7 +686,7 @@ struct gauge_popup : popup
             rect.self.y + sdl::line_p,
             text_color
         );
-        const float at = value;
+        const double at = value;
         const std::vector<std::string> strings = {
             name,
             std::to_string(at),
@@ -695,16 +703,16 @@ struct gauge_popup : popup
     }
 
 private:
-    float to_angle(const float at) const
+    double to_angle(const double at) const
     {
         return start_theta_r - (at / max_value) * sweep_theta_r;
     }
 
-    void draw_needle(sdl& sdl, const circle& outer, const float at) const
+    void draw_needle(sdl& sdl, const circle& outer, const double at) const
     {
         const point middle(outer.self.x, outer.self.y, needle_color);
-        const float angle_r = to_angle(at);
-        const float radius = needle_ratio * outer.radius;
+        const double angle_r = to_angle(at);
+        const double radius = needle_ratio * outer.radius;
         const point tip(
             middle.self.x + std::cos(angle_r) * radius,
             middle.self.y - std::sin(angle_r) * radius,
@@ -715,12 +723,12 @@ private:
 
     void draw_ticks(sdl& sdl, const circle& outer) const
     {
-        const float step = max_value / needle_ticks;
-        const float radius = outer.radius * ticks_ratio;
+        const double step = max_value / needle_ticks;
+        const double radius = outer.radius * ticks_ratio;
         for(size_t i = 0; i <= needle_ticks; i++)
         {
-            const float tick = i * step;
-            const float angle_r = to_angle(tick);
+            const double tick = i * step;
+            const double angle_r = to_angle(tick);
             const message message(
                 outer.self.x + std::cos(angle_r) * radius,
                 outer.self.y - std::sin(angle_r) * radius,
@@ -732,15 +740,15 @@ private:
     }
 
     const std::string name;
-    const std::atomic<ensim::real>& value;
-    const float max_value;
+    const std::atomic<double>& value;
+    const double max_value;
     const size_t needle_ticks;
-    static constexpr float start_theta_r = (4.0f / 3.0f) * std::numbers::pi_v<float>;
-    static constexpr float sweep_theta_r = (5.0f / 3.0f) * std::numbers::pi_v<float>;
-    static constexpr float outer_ratio = 0.75f;
-    static constexpr float inner_ratio = 0.05f;
-    static constexpr float ticks_ratio = 0.82f;
-    static constexpr float needle_ratio = 0.85f;
+    static constexpr double start_theta_r = (4.0 / 3.0) * std::numbers::pi_v<double>;
+    static constexpr double sweep_theta_r = (5.0 / 3.0) * std::numbers::pi_v<double>;
+    static constexpr double outer_ratio = 0.75;
+    static constexpr double inner_ratio = 0.05;
+    static constexpr double ticks_ratio = 0.82;
+    static constexpr double needle_ratio = 0.85;
     static constexpr uint32_t needle_color = sdl::red;
     static constexpr uint32_t inner_color = sdl::grey;
     static constexpr uint32_t outer_color = sdl::grey;
@@ -813,12 +821,12 @@ struct ui
 
     std::unique_ptr<popup> make_popup()
     {
-        const std::atomic<ensim::real>& angular_velocity = engine.get_angular_velocity_r_per_s();
-        const ensim::line& volume = engine.get_volume_signal_m3();
-        const ensim::line& temperature = engine.get_static_temperature_signal_k();
-        const ensim::line& pressure = engine.get_static_pressure_signal_pa();
-        const ensim::line& audio = engine.get_audio_signal();
-        const ensim::line& impulse = engine.get_impulse_signal();
+        const std::atomic<double>& angular_velocity = engine.get_angular_velocity_r_per_s();
+        const std::vector<double>& volume = engine.get_volume_signal_m3();
+        const std::vector<double>& temperature = engine.get_static_temperature_signal_k();
+        const std::vector<double>& pressure = engine.get_static_pressure_signal_pa();
+        const std::vector<float>& audio = engine.get_audio_signal();
+        const std::vector<float>& impulse = engine.get_impulse_signal();
         const size_t next = popups.size() + 1;
         switch(next)
         {
@@ -874,30 +882,29 @@ struct ui
             }
             if(event.type == SDL_EVENT_KEY_DOWN)
             {
-                using ensim::operator""_r;
                 if(event.key.key == SDLK_0)
                 {
-                    engine.set_throttle_open_ratio(0.00_r);
+                    engine.set_throttle_open_ratio(0.00);
                     engine.set_injection_off();
                 }
                 if(event.key.key == SDLK_1)
                 {
-                    engine.set_throttle_open_ratio(0.00_r);
+                    engine.set_throttle_open_ratio(0.00);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_2)
                 {
-                    engine.set_throttle_open_ratio(0.33_r);
+                    engine.set_throttle_open_ratio(0.33);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_3)
                 {
-                    engine.set_throttle_open_ratio(0.66_r);
+                    engine.set_throttle_open_ratio(0.66);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_4)
                 {
-                    engine.set_throttle_open_ratio(0.99_r);
+                    engine.set_throttle_open_ratio(0.99);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_W) y_select -= 1;
@@ -915,9 +922,9 @@ struct ui
                 if(event.key.key == SDLK_L)
                 {
                     engine.set_swap_lock_on();
-                    const ensim::line& volume = engine.get_volume_signal_m3();
-                    const ensim::line& temperature = engine.get_static_temperature_signal_k();
-                    const ensim::line& pressure = engine.get_static_pressure_signal_pa();
+                    const std::vector<double>& volume = engine.get_volume_signal_m3();
+                    const std::vector<double>& temperature = engine.get_static_temperature_signal_k();
+                    const std::vector<double>& pressure = engine.get_static_pressure_signal_pa();
                     const size_t size = volume.size();
                     puts("PV");
                     for(size_t i = 0; i < size; i++)
@@ -950,7 +957,9 @@ int main(int argc, const char* const*)
 {
     if(argc == 2)
     {
-        ensim::new_engine(ensim::type::inline4)->run(ensim::g_sample_rate_hz);
+        auto engine = ensim::new_engine(ensim::type::inline4);
+        engine->run(ensim::g_sample_rate_hz);
+        printf("%lu bytes\n", engine->get_bytes());
         return 0;
     }
     std::atomic<bool> done = false;
@@ -964,8 +973,7 @@ int main(int argc, const char* const*)
                 if(sdl.get_audio_buffer_size() < 4096)
                 {
                     engine->run(200);
-                    std::vector<float> data = engine->get_audio_data();
-                    sdl.buffer_audio(data);
+                    sdl.buffer_audio(engine->get_audio_signal());
                 }
                 using namespace std::chrono_literals;
                 std::this_thread::sleep_for(100us);

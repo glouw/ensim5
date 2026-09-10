@@ -19,7 +19,7 @@ perf: demo
 	perf stat -d -d -d -r 5 ./demo --perf
 
 ensim.o: ensim.cc ensim.hh Makefile
-	$(CC) -c ensim.cc
+	$(CC) -c ensim.cc -Wdouble-promotion
 	objdump -dr -C ensim.o > ensim.asm
 
 demo.o: demo.cc ensim.hh Makefile

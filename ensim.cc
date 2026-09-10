@@ -10,27 +10,28 @@
 
 namespace ensim
 {
-    template<size_t N> using lane = std::array<real, N>;
-    template<size_t N> using mask = std::array<bool, N>;
+    static constexpr double g_dt_s = 1.0 / g_sample_rate_hz;
+    static constexpr double g_pi_r = std::numbers::pi_v<double>;
+    static constexpr double g_otto_cycle_r = 4.0 * g_pi_r;
+    static constexpr double g_otto_intake_cycle_r = 0.0 * g_pi_r;
+    static constexpr double g_otto_combustion_cycle_r = 2.0 * g_pi_r;
+    static constexpr double g_otto_exhaust_cycle_r = 3.0 * g_pi_r;
+    static constexpr double g_resevoir_volume_m3 = 1e9;
+    static constexpr double g_ambient_temperature_k = 300.0;
+    static constexpr double g_ambient_pressure_pa = 132'800.0;
+    static constexpr double g_ambient_density_kg_per_m3 = 1.225;
+    static constexpr double g_gamma = 3.0 / 2.0;
+    static constexpr double g_universal_gas_constant_j_per_mol_k = 8.3144598;
+    static constexpr double g_cv_j_per_mol_k = g_universal_gas_constant_j_per_mol_k / (g_gamma - 1.0);
+    static constexpr double g_molar_mass_kg_per_mol = 0.023;
+    static constexpr double g_cv_j_per_kg_k = g_cv_j_per_mol_k / g_molar_mass_kg_per_mol;
+    static constexpr double g_specific_gas_constant_j_per_kg_k = g_universal_gas_constant_j_per_mol_k / g_molar_mass_kg_per_mol;
+    static constexpr double g_energy_octane_j_per_kg = 47.9e6;
+    static constexpr double g_stoich_air_fuel_ratio = 14.7;
 
-    static constexpr real g_dt_s = 1.0_r / g_sample_rate_hz;
-    static constexpr real g_pi_r = std::numbers::pi_v<real>;
-    static constexpr real g_otto_cycle_r = 4.0_r * g_pi_r;
-    static constexpr real g_otto_intake_cycle_r = 0.0_r * g_pi_r;
-    static constexpr real g_otto_combustion_cycle_r = 2.0_r * g_pi_r;
-    static constexpr real g_otto_exhaust_cycle_r = 3.0_r * g_pi_r;
-    static constexpr real g_resevoir_volume_m3 = 1e9_r;
-    static constexpr real g_ambient_temperature_k = 300.0_r;
-    static constexpr real g_ambient_pressure_pa = 132'800.0_r;
-    static constexpr real g_ambient_density_kg_per_m3 = 1.225_r;
-    static constexpr real g_gamma = 3.0_r / 2.0_r;
-    static constexpr real g_universal_gas_constant_j_per_mol_k = 8.3144598_r;
-    static constexpr real g_cv_j_per_mol_k = g_universal_gas_constant_j_per_mol_k / (g_gamma - 1.0_r);
-    static constexpr real g_molar_mass_kg_per_mol = 0.023_r;
-    static constexpr real g_cv_j_per_kg_k = g_cv_j_per_mol_k / g_molar_mass_kg_per_mol;
-    static constexpr real g_specific_gas_constant_j_per_kg_k = g_universal_gas_constant_j_per_mol_k / g_molar_mass_kg_per_mol;
-    static constexpr real g_energy_octane_j_per_kg = 47.9e6_r;
-    static constexpr real g_stoich_air_fuel_ratio = 14.7_r;
+    static constexpr float g_pi_r_f = g_pi_r;
+    static constexpr float g_gamma_f = g_gamma;
+    static constexpr float g_dt_s_f = g_dt_s;
 
     using std::sin;
     using std::cos;
@@ -40,26 +41,30 @@ namespace ensim
     using std::sqrt;
     using std::trunc;
     using std::exp;
+    using std::fabs;
 
-    fn constexpr real clamper(const real value, const real lower, const real upper)
+    template <typename T>
+    fn constexpr T clamper(const T value, const T lower, const T upper)
     {
         return fmax(fmin(value, upper), lower);
     }
 
-    fn constexpr real modulos(const real value, const real by)
+    template <typename T>
+    fn constexpr T modulos(const T value, const T by)
     {
         return value - trunc(value / by) * by;
     }
 
-    fn real cuberoot(const real x)
+    template <typename T>
+    fn T cuberoot(const T x)
     {
-        return exp(log(x) / 3.0_r);
+        return exp(log(x) / 3.0);
     }
 
-    fn real frand()
+    fn double frand()
     {
-        const real random = 2.0_r * rand() / static_cast<real>(RAND_MAX);
-        return random - 1.0_r;
+        const double random = 2.0 * rand() / RAND_MAX;
+        return random - 1.0;
     }
 
     template<size_t H, size_t PY>
@@ -68,31 +73,31 @@ namespace ensim
         static constexpr size_t N = H - 1;
         static_assert(N % 2 == 0);
 
-        lane<H> chamber_prev_volume_m3 = {};
-        lane<H> chamber_volume_m3 = {};
-        lane<H> chamber_nozzle_flow_area_m2 = {};
-        lane<H> chamber_nozzle_real_flow_area_m2 = {};
-        lane<H> chamber_nozzle_open_ratio = {};
-        lane<H> chamber_static_pressure_pa = {};
-        lane<H> chamber_dynamic_pressure_pa = {};
-        lane<H> chamber_total_pressure_pa = {};
-        lane<H> chamber_static_temperature_k = {};
-        lane<H> chamber_dynamic_temperature_k = {};
-        lane<H> chamber_total_temperature_k = {};
-        lane<H> chamber_mass_kg = {};
-        lane<H> chamber_bulk_momentum_kg_m_per_s = {};
-        lane<H> nozzle_mach = {};
-        lane<H> nozzle_velocity_m_per_s = {};
-        lane<H> nozzle_static_density_kg_per_m3 = {};
-        lane<H> nozzle_static_temperature_k = {};
-        lane<H> nozzle_mass_flow_rate_kg_per_s = {};
-        lane<H> parcel_mass_kg = {};
-        lane<H> parcel_static_temperature_k = {};
-        mask<H> panic = {};
-        real piston_injection_enabled = 0.0_r;
-        real piston_chamber_flame_height_m = 0.0_r;
-        real piston_chamber_mass_burned_m3 = 0.0_r;
-        real piston_chamber_radius_m = 0.0_r;
+        std::array<double, H> chamber_prev_volume_m3 = {};
+        std::array<double, H> chamber_volume_m3 = {};
+        std::array<double, H> chamber_nozzle_flow_area_m2 = {};
+        std::array<double, H> chamber_nozzle_real_flow_area_m2 = {};
+        std::array<double, H> chamber_nozzle_open_ratio = {};
+        std::array<double, H> chamber_static_pressure_pa = {};
+        std::array<double, H> chamber_dynamic_pressure_pa = {};
+        std::array<double, H> chamber_total_pressure_pa = {};
+        std::array<double, H> chamber_static_temperature_k = {};
+        std::array<double, H> chamber_dynamic_temperature_k = {};
+        std::array<double, H> chamber_total_temperature_k = {};
+        std::array<double, H> chamber_mass_kg = {};
+        std::array<double, H> chamber_bulk_momentum_kg_m_per_s = {};
+        std::array<double, H> nozzle_mach = {};
+        std::array<double, H> nozzle_velocity_m_per_s = {};
+        std::array<double, H> nozzle_static_density_kg_per_m3 = {};
+        std::array<double, H> nozzle_static_temperature_k = {};
+        std::array<double, H> nozzle_mass_flow_rate_kg_per_s = {};
+        std::array<double, H> parcel_mass_kg = {};
+        std::array<double, H> parcel_static_temperature_k = {};
+        std::array<bool, H> panic = {};
+        double piston_injection_enabled = 0.0;
+        double piston_chamber_flame_height_m = 0.0;
+        double piston_chamber_mass_burned_m3 = 0.0;
+        double piston_chamber_radius_m = 0.0;
         bool piston_chamber_on_fire = false;
 
         /*
@@ -110,10 +115,10 @@ namespace ensim
             }
             for(size_t i = 0; i < H; i++)
             {
-                const real Ps = chamber_static_pressure_pa[i];
-                const real V = chamber_volume_m3[i];
-                const real Rs = g_specific_gas_constant_j_per_kg_k;
-                const real Ts = chamber_static_temperature_k[i];
+                const double Ps = chamber_static_pressure_pa[i];
+                const double V = chamber_volume_m3[i];
+                const double Rs = g_specific_gas_constant_j_per_kg_k;
+                const double Ts = chamber_static_temperature_k[i];
                 chamber_mass_kg[i] = (Ps * V) / (Rs * Ts);
             }
         }
@@ -128,10 +133,10 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real m = chamber_mass_kg[i];
-                const real Rs = g_specific_gas_constant_j_per_kg_k;
-                const real Ts = chamber_static_temperature_k[i];
-                const real V = chamber_volume_m3[i];
+                const double m = chamber_mass_kg[i];
+                const double Rs = g_specific_gas_constant_j_per_kg_k;
+                const double Ts = chamber_static_temperature_k[i];
+                const double V = chamber_volume_m3[i];
                 chamber_static_pressure_pa[i] = m * Rs * Ts / V;
             }
         }
@@ -151,12 +156,12 @@ namespace ensim
             for(size_t i = 0; i < N; i++)
             {
                 const size_t j = i + 1;
-                const real X = (2.0_r / (g_gamma - 1.0_r));
-                const real Pi = chamber_total_pressure_pa[i];
-                const real Pj = chamber_total_pressure_pa[j];
-                const real Pt = fmax(Pi, Pj);
-                const real Ps = fmin(Pi, Pj);
-                const real direction = Pi > Pj ? 1.0_r : -1.0_r;
+                const double X = (2.0 / (g_gamma - 1.0));
+                const double Pi = chamber_total_pressure_pa[i];
+                const double Pj = chamber_total_pressure_pa[j];
+                const double Pt = fmax(Pi, Pj);
+                const double Ps = fmin(Pi, Pj);
+                const double direction = Pi > Pj ? 1.0 : -1.0;
 
                 /*
                  *      y - 1                        3
@@ -165,10 +170,10 @@ namespace ensim
                  * Term
                  */
 
-                static_assert(g_gamma == 3.0_r / 2.0_r);
-                const real Y = cuberoot(Pt / Ps);
-                const real M = direction * sqrt(X * (Y - 1.0_r));
-                nozzle_mach[i] = clamper(M, -1.0_r, 1.0_r);
+                static_assert(g_gamma == 3.0 / 2.0);
+                const double Y = cuberoot(Pt / Ps);
+                const double M = direction * sqrt(X * (Y - 1.0));
+                nozzle_mach[i] = clamper(M, -1.0, 1.0);
             }
         }
 
@@ -182,8 +187,8 @@ namespace ensim
         {
             for(size_t i = 0; i < H; i++)
             {
-                const real Ps = chamber_static_pressure_pa[i];
-                const real Pd = chamber_dynamic_pressure_pa[i];
+                const double Ps = chamber_static_pressure_pa[i];
+                const double Pd = chamber_dynamic_pressure_pa[i];
                 chamber_total_pressure_pa[i] = Ps + Pd;
             }
         }
@@ -198,8 +203,8 @@ namespace ensim
         {
             for(size_t i = 0; i < H; i++)
             {
-                const real Ts = chamber_static_temperature_k[i];
-                const real Td = chamber_dynamic_temperature_k[i];
+                const double Ts = chamber_static_temperature_k[i];
+                const double Td = chamber_dynamic_temperature_k[i];
                 chamber_total_temperature_k[i] = Ts + Td;
             }
         }
@@ -223,14 +228,14 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real Rs = g_specific_gas_constant_j_per_kg_k;
-                const real Tt = chamber_total_temperature_k[i];
-                const real M = nozzle_mach[i];
-                const real X = g_gamma * Rs * Tt;
-                const real Y = 0.5_r * (g_gamma - 1.0_r) * M * M;
-                const real u = M * sqrt(X / (1.0_r + Y));
-                const real A = chamber_nozzle_real_flow_area_m2[i];
-                const real mute = A == 0.0_r ? 0.0_r : 1.0_r;
+                const double Rs = g_specific_gas_constant_j_per_kg_k;
+                const double Tt = chamber_total_temperature_k[i];
+                const double M = nozzle_mach[i];
+                const double X = g_gamma * Rs * Tt;
+                const double Y = 0.5 * (g_gamma - 1.0) * M * M;
+                const double u = M * sqrt(X / (1.0 + Y));
+                const double A = chamber_nozzle_real_flow_area_m2[i];
+                const double mute = A == 0.0 ? 0.0 : 1.0;
                 nozzle_velocity_m_per_s[i] = u * mute;
             }
         }
@@ -250,11 +255,11 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real Pt = chamber_total_pressure_pa[i];
-                const real Rs = g_specific_gas_constant_j_per_kg_k;
-                const real Tt = chamber_total_temperature_k[i];
-                const real M = nozzle_mach[i];
-                const real pt = Pt / (Rs * Tt);
+                const double Pt = chamber_total_pressure_pa[i];
+                const double Rs = g_specific_gas_constant_j_per_kg_k;
+                const double Tt = chamber_total_temperature_k[i];
+                const double M = nozzle_mach[i];
+                const double pt = Pt / (Rs * Tt);
 
                 /*
                  *        1                  3
@@ -263,8 +268,8 @@ namespace ensim
                  * Term
                  */
 
-                static_assert(g_gamma == 3.0_r / 2.0_r);
-                const real C = 1.0_r + 0.5_r * (g_gamma - 1.0_r) * M * M;
+                static_assert(g_gamma == 3.0 / 2.0);
+                const double C = 1.0 + 0.5 * (g_gamma - 1.0) * M * M;
                 nozzle_static_density_kg_per_m3[i] = pt / (C * C);
             }
         }
@@ -282,9 +287,9 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real Tt = chamber_total_temperature_k[i];
-                const real M = nozzle_mach[i];
-                const real Tns = Tt / (1.0_r + 0.5_r * (g_gamma - 1.0_r) * M * M);
+                const double Tt = chamber_total_temperature_k[i];
+                const double M = nozzle_mach[i];
+                const double Tns = Tt / (1.0 + 0.5 * (g_gamma - 1.0) * M * M);
                 nozzle_static_temperature_k[i] = Tns;
             }
         }
@@ -293,8 +298,8 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real r = chamber_nozzle_open_ratio[i];
-                const real A = chamber_nozzle_flow_area_m2[i];
+                const double r = chamber_nozzle_open_ratio[i];
+                const double A = chamber_nozzle_flow_area_m2[i];
                 chamber_nozzle_real_flow_area_m2[i] = r * A;
             }
         }
@@ -308,10 +313,10 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real ps = nozzle_static_density_kg_per_m3[i];
-                const real A = chamber_nozzle_real_flow_area_m2[i];
-                const real u = nozzle_velocity_m_per_s[i];
-                const real mdot = ps * A * u;
+                const double ps = nozzle_static_density_kg_per_m3[i];
+                const double A = chamber_nozzle_real_flow_area_m2[i];
+                const double u = nozzle_velocity_m_per_s[i];
+                const double mdot = ps * A * u;
                 nozzle_mass_flow_rate_kg_per_s[i] = mdot;
             }
         }
@@ -328,12 +333,12 @@ namespace ensim
             for(size_t i = 0; i < N; i++)
             {
                 const size_t j = i + 1;
-                const real mdot = nozzle_mass_flow_rate_kg_per_s[i];
-                const real dm = mdot * g_dt_s;
+                const double mdot = nozzle_mass_flow_rate_kg_per_s[i];
+                const double dm = mdot * g_dt_s;
                 parcel_mass_kg[i] = dm;
-                const real Tsi = chamber_static_temperature_k[i];
-                const real Tsj = chamber_static_temperature_k[j];
-                const real Tsp = mdot > 0.0_r ? Tsi : Tsj;
+                const double Tsi = chamber_static_temperature_k[i];
+                const double Tsj = chamber_static_temperature_k[j];
+                const double Tsp = mdot > 0.0 ? Tsi : Tsj;
                 parcel_static_temperature_k[i] = Tsp;
             }
         }
@@ -348,10 +353,10 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real Ts1 = chamber_static_temperature_k[i];
-                const real V1 = chamber_prev_volume_m3[i];
-                const real V2 = chamber_volume_m3[i];
-                const real dv = V1 / V2;
+                const double Ts1 = chamber_static_temperature_k[i];
+                const double V1 = chamber_prev_volume_m3[i];
+                const double V2 = chamber_volume_m3[i];
+                const double dv = V1 / V2;
 
                 /*
                  *               1             3
@@ -360,7 +365,7 @@ namespace ensim
                  *
                  */
 
-                static_assert(g_gamma == 3.0_r / 2.0_r);
+                static_assert(g_gamma == 3.0 / 2.0);
                 chamber_static_temperature_k[i] = Ts1 * sqrt(dv);
             }
         }
@@ -376,12 +381,12 @@ namespace ensim
             for(size_t i = 0; i < N; i++)
             {
                 const size_t j = i + 1;
-                const real dm = parcel_mass_kg[i];
-                const real m = chamber_mass_kg[j];
-                const real Tsp = parcel_static_temperature_k[i];
-                const real Ts0 = chamber_static_temperature_k[j];
-                const real Ts1 = (Ts0 * m + Tsp * dm) / (m + dm);
-                chamber_static_temperature_k[j] = dm > 0.0_r ? Ts1 : Ts0;
+                const double dm = parcel_mass_kg[i];
+                const double m = chamber_mass_kg[j];
+                const double Tsp = parcel_static_temperature_k[i];
+                const double Ts0 = chamber_static_temperature_k[j];
+                const double Ts1 = (Ts0 * m + Tsp * dm) / (m + dm);
+                chamber_static_temperature_k[j] = dm > 0.0 ? Ts1 : Ts0;
             }
         }
 
@@ -389,12 +394,12 @@ namespace ensim
         {
             for(size_t i = N; i > 0; i--)
             {
-                const real dm = parcel_mass_kg[i];
-                const real m = chamber_mass_kg[i];
-                const real Tsp = parcel_static_temperature_k[i];
-                const real Ts0 = chamber_static_temperature_k[i];
-                const real Ts1 = (Ts0 * m - Tsp * dm) / (m - dm);
-                chamber_static_temperature_k[i] = dm < 0.0_r ? Ts1 : Ts0;
+                const double dm = parcel_mass_kg[i];
+                const double m = chamber_mass_kg[i];
+                const double Tsp = parcel_static_temperature_k[i];
+                const double Ts0 = chamber_static_temperature_k[i];
+                const double Ts1 = (Ts0 * m - Tsp * dm) / (m - dm);
+                chamber_static_temperature_k[i] = dm < 0.0 ? Ts1 : Ts0;
             }
         }
 
@@ -409,11 +414,11 @@ namespace ensim
             for(size_t i = 0; i < N; i++)
             {
                 const size_t j = i + 1;
-                const real mi = chamber_mass_kg[i];
-                const real mj = chamber_mass_kg[j];
-                const real dm = parcel_mass_kg[i];
-                const real m0 = mi - dm;
-                const real m1 = mj + dm;
+                const double mi = chamber_mass_kg[i];
+                const double mj = chamber_mass_kg[j];
+                const double dm = parcel_mass_kg[i];
+                const double m0 = mi - dm;
+                const double m1 = mj + dm;
 
                 /*
                  *               1             3
@@ -422,7 +427,7 @@ namespace ensim
                  *
                  */
 
-                static_assert(g_gamma == 3.0_r / 2.0_r);
+                static_assert(g_gamma == 3.0 / 2.0);
                 chamber_static_temperature_k[i] *= sqrt(m0 / mi);
                 chamber_static_temperature_k[j] *= sqrt(m1 / mj);
                 chamber_mass_kg[i] = m0;
@@ -432,9 +437,9 @@ namespace ensim
             for(size_t i = 0; i < N; i++)
             {
                 const size_t j = i + 1;
-                const real dm = parcel_mass_kg[i];
-                const real u = nozzle_velocity_m_per_s[i];
-                const real p = dm * u;
+                const double dm = parcel_mass_kg[i];
+                const double u = nozzle_velocity_m_per_s[i];
+                const double p = dm * u;
                 chamber_bulk_momentum_kg_m_per_s[i] -= p;
                 chamber_bulk_momentum_kg_m_per_s[j] += p;
             }
@@ -447,11 +452,11 @@ namespace ensim
 
             for(size_t i = 0; i < N; i++)
             {
-                const real Rs = g_specific_gas_constant_j_per_kg_k;
-                const real Ts = chamber_static_temperature_k[i];
-                const real m = chamber_mass_kg[i];
-                const real p = chamber_bulk_momentum_kg_m_per_s[i];
-                const real pmax = m * sqrt(g_gamma * Rs * Ts);
+                const double Rs = g_specific_gas_constant_j_per_kg_k;
+                const double Ts = chamber_static_temperature_k[i];
+                const double m = chamber_mass_kg[i];
+                const double p = chamber_bulk_momentum_kg_m_per_s[i];
+                const double pmax = m * sqrt(g_gamma * Rs * Ts);
                 chamber_bulk_momentum_kg_m_per_s[i] = clamper(p, -pmax, pmax);
             }
         }
@@ -466,9 +471,9 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real u = chamber_bulk_momentum_kg_m_per_s[i] / chamber_mass_kg[i];
-                const real p = chamber_mass_kg[i] / chamber_volume_m3[i];
-                const real q = 0.5_r * p * u * u;
+                const double u = chamber_bulk_momentum_kg_m_per_s[i] / chamber_mass_kg[i];
+                const double p = chamber_mass_kg[i] / chamber_volume_m3[i];
+                const double q = 0.5 * p * u * u;
                 chamber_dynamic_pressure_pa[i] = q;
             }
         }
@@ -483,18 +488,18 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                const real u = chamber_bulk_momentum_kg_m_per_s[i] / chamber_mass_kg[i];
-                const real Cv = g_cv_j_per_kg_k;
-                const real Cp = g_gamma * Cv;
-                const real Td = 0.5_r * u * u / Cp;
+                const double u = chamber_bulk_momentum_kg_m_per_s[i] / chamber_mass_kg[i];
+                const double Cv = g_cv_j_per_kg_k;
+                const double Cp = g_gamma * Cv;
+                const double Td = 0.5 * u * u / Cp;
                 chamber_dynamic_temperature_k[i] = Td;
             }
         }
 
         fn void ignite_piston_chamber()
         {
-            piston_chamber_flame_height_m = 0.0_r;
-            piston_chamber_mass_burned_m3 = 0.0_r;
+            piston_chamber_flame_height_m = 0.0;
+            piston_chamber_mass_burned_m3 = 0.0;
             piston_chamber_on_fire = true;
         }
 
@@ -507,8 +512,8 @@ namespace ensim
                     piston_chamber_on_fire = false;
                     return;
                 }
-                const real M = chamber_mass_kg[PY];
-                const real V = chamber_volume_m3[PY];
+                const double M = chamber_mass_kg[PY];
+                const double V = chamber_volume_m3[PY];
 
                 /*
                  *              Ts    2
@@ -520,13 +525,13 @@ namespace ensim
                  *             Ps0
                  */
 
-                const real Ts = chamber_static_temperature_k[PY];
-                const real Ts0 = g_ambient_temperature_k;
-                const real Ps = chamber_static_pressure_pa[PY];
-                const real Ps0 = g_ambient_pressure_pa;
-                const real Tr = Ts / Ts0;
-                const real Pr = Ps/ Ps0;
-                const real S = 0.4_r * Tr * Tr / sqrt(sqrt(sqrt(Pr)));
+                const double Ts = chamber_static_temperature_k[PY];
+                const double Ts0 = g_ambient_temperature_k;
+                const double Ps = chamber_static_pressure_pa[PY];
+                const double Ps0 = g_ambient_pressure_pa;
+                const double Tr = Ts / Ts0;
+                const double Pr = Ps/ Ps0;
+                const double S = 0.4 * Tr * Tr / sqrt(sqrt(sqrt(Pr)));
 
                 /*
                  *                 2
@@ -534,13 +539,13 @@ namespace ensim
                  *
                  */
 
-                const real randomness = 0.25_r;
-                const real dh = S * g_dt_s;
-                const real drh = dh * (1.0_r + randomness * frand());
-                const real h1 = piston_chamber_flame_height_m;
-                const real h2 = h1 + drh;
-                const real r = piston_chamber_radius_m;
-                const real Vb = (h2 - h1) * g_pi_r * r * r;
+                const double randomness = 0.25;
+                const double dh = S * g_dt_s;
+                const double drh = dh * (1.0 + randomness * frand());
+                const double h1 = piston_chamber_flame_height_m;
+                const double h2 = h1 + drh;
+                const double r = piston_chamber_radius_m;
+                const double Vb = (h2 - h1) * g_pi_r * r * r;
 
                 /*
                  *      M
@@ -551,8 +556,8 @@ namespace ensim
                  *
                  */
 
-                const real p = M / V;
-                const real Mb = Vb * p;
+                const double p = M / V;
+                const double Mb = Vb * p;
 
                 /*
                  *             Q
@@ -561,13 +566,13 @@ namespace ensim
                  *
                  */
 
-                const real TMb = piston_chamber_mass_burned_m3 + Mb;
-                if(TMb / M < 1.0_r)
+                const double TMb = piston_chamber_mass_burned_m3 + Mb;
+                if(TMb / M < 1.0)
                 {
-                    const real MFb = Mb / (1.0_r + g_stoich_air_fuel_ratio);
-                    const real Q = MFb * g_energy_octane_j_per_kg;
-                    const real Cv = g_cv_j_per_kg_k;
-                    const real dTs = Q / (M * Cv);
+                    const double MFb = Mb / (1.0 + g_stoich_air_fuel_ratio);
+                    const double Q = MFb * g_energy_octane_j_per_kg;
+                    const double Cv = g_cv_j_per_kg_k;
+                    const double dTs = Q / (M * Cv);
                     chamber_static_temperature_k[PY] += dTs;
                 }
                 else
@@ -583,9 +588,9 @@ namespace ensim
         {
             for(size_t i = 0; i < N; i++)
             {
-                panic[i] |= chamber_mass_kg[i] <= 0.0_r;
-                panic[i] |= chamber_static_temperature_k[i] <= 0.0_r;
-                panic[i] |= chamber_static_pressure_pa[i] <= 0.0_r;
+                panic[i] |= chamber_mass_kg[i] <= 0.0;
+                panic[i] |= chamber_static_temperature_k[i] <= 0.0;
+                panic[i] |= chamber_static_pressure_pa[i] <= 0.0;
             }
         }
 
@@ -615,20 +620,20 @@ namespace ensim
     template<size_t W>
     struct basic_sparkplugs
     {
-        static constexpr real fire_delay_theta_r = 1e-1_r;
-        lane<W> engage_theta_r = {};
-        mask<W> prev_fired = {};
-        mask<W> fired = {};
-        mask<W> rising_edge = {};
-        real crankshaft_theta_r = 0.0_r;
+        static constexpr double fire_delay_theta_r = 1e-1;
+        std::array<double, W> engage_theta_r = {};
+        std::array<bool, W> prev_fired = {};
+        std::array<bool, W> fired = {};
+        std::array<bool, W> rising_edge = {};
+        double crankshaft_theta_r = 0.0;
 
         fn void calc_fired()
         {
             for(size_t i = 0; i < W; i++)
             {
                 prev_fired[i] = fired[i];
-                const real theta0_r = modulos(crankshaft_theta_r, g_otto_cycle_r);
-                const real theta1_r = engage_theta_r[i] >= g_otto_cycle_r ? (engage_theta_r[i] - g_otto_cycle_r) : engage_theta_r[i];
+                const double theta0_r = modulos(crankshaft_theta_r, g_otto_cycle_r);
+                const double theta1_r = engage_theta_r[i] >= g_otto_cycle_r ? (engage_theta_r[i] - g_otto_cycle_r) : engage_theta_r[i];
                 fired[i] = theta0_r > theta1_r + fire_delay_theta_r;
             }
         }
@@ -651,10 +656,12 @@ namespace ensim
     template<size_t W>
     struct basic_cams
     {
-        lane<W> engage_theta_r = {};
-        lane<W> ramp_theta_r = {};
-        lane<W> open_ratio = {};
-        real crankshaft_theta_r = 0.0_r;
+        std::array<double, W> engage_theta_r = {};
+        std::array<double, W> ramp_theta_r = {};
+        std::array<double, W> temp_open_ratio = {};
+        std::array<double, W> open_ratio = {};
+        double crankshaft_theta_r = 0.0;
+        double crankshaft_angular_velocity_r_per_s = 0.0;
 
         /*      4            1      2      3
          * r = t  [ 35 - 84 t + 70 t - 20 t ]
@@ -665,42 +672,71 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                real theta0_r = modulos(engage_theta_r[i], g_otto_cycle_r);
-                if(theta0_r < 0.0_r)
+                double theta0_r = modulos(engage_theta_r[i], g_otto_cycle_r);
+                if(theta0_r < 0.0)
                 {
                     theta0_r += g_otto_cycle_r;
                 }
-                real theta1_r = modulos(crankshaft_theta_r, g_otto_cycle_r);
+                double theta1_r = modulos(crankshaft_theta_r, g_otto_cycle_r);
                 if(theta1_r < theta0_r)
                 {
                     theta1_r += g_otto_cycle_r;
                 }
-                const real open_r = theta1_r - theta0_r;
-                const real t = open_r / ramp_theta_r[i];
-                const real a = t * t * t * t;
-                const real b = t * a;
-                const real c = t * b;
-                const real d = t * c;
-                const real A = 35.0_r * a;
-                const real B = 84.0_r * b;
-                const real C = 70.0_r * c;
-                const real D = 20.0_r * d;
-                const real R = clamper(A - B + C - D, 0.0_r, 1.0_r);
-                open_ratio[i] = theta1_r < theta0_r ? 0.0_r : R;
+                const double open_r = theta1_r - theta0_r;
+                const double t = open_r / ramp_theta_r[i];
+                const double a = t * t * t * t;
+                const double b = t * a;
+                const double c = t * b;
+                const double d = t * c;
+                const double A = 35.0 * a;
+                const double B = 84.0 * b;
+                const double C = 70.0 * c;
+                const double D = 20.0 * d;
+                const double R = clamper(A - B + C - D, 0.0, 1.0);
+                temp_open_ratio[i] = theta1_r < theta0_r ? 0.0 : R;
+            }
+        }
+
+        fn virtual void set_open_ratios()
+        {
+            for(size_t i = 0; i < W; i++)
+            {
+                open_ratio[i] = temp_open_ratio[i];
             }
         }
 
         void update()
         {
             calc_open_ratios();
+            set_open_ratios();
+        }
+    };
+
+    template<size_t W>
+    struct vtec_cams : basic_cams<W>
+    {
+        fn void set_open_ratios() override
+        {
+            for(size_t i = 0; i < W; i++)
+            {
+                if(this->crankshaft_angular_velocity_r_per_s > 400.0)
+                {
+                    const double boost = clamper(10.0 * this->temp_open_ratio[i], 0.0, 1.0);
+                    this->open_ratio[i] = boost;
+                }
+                else
+                {
+                    this->open_ratio[i] = this->temp_open_ratio[i];
+                }
+            }
         }
     };
 
     struct flywheel
     {
-        real mass_kg = 0.0_r;
-        real radius_m = 0.0_r;
-        real moment_of_inertia_kg_m2 = 0.0_r;
+        double mass_kg = 0.0;
+        double radius_m = 0.0;
+        double moment_of_inertia_kg_m2 = 0.0;
 
         /*
          *      1     2
@@ -711,7 +747,7 @@ namespace ensim
 
         fn void calc_moment_of_inertia()
         {
-            moment_of_inertia_kg_m2 = 0.5_r * mass_kg * radius_m * radius_m;
+            moment_of_inertia_kg_m2 = 0.5 * mass_kg * radius_m * radius_m;
         }
 
         void update()
@@ -723,26 +759,26 @@ namespace ensim
     struct throttle
     {
         static constexpr size_t size = 4;
-        std::array<real, size> table = {};
+        std::array<double, size> table = {};
 
-        real lookup(const real open_ratio)
+        double lookup(const double open_ratio)
         {
             const size_t last = size - 1;
-            const real at = last * open_ratio;
+            const double at = last * open_ratio;
             const size_t index = at;
-            const real ratio = at - index;
+            const double ratio = at - index;
             const size_t next = index + 1;
-            const real delta = table[next] - table[index];
+            const double delta = table[next] - table[index];
             return table[index] + delta * ratio;
         }
     };
 
     struct limiter
     {
-        real max_angular_velocity_r_per_s = 600.0_r;
-        real crankshaft_angular_velocity_r_per_s = 0.0_r;
-        real limit_time_s = 0.1;
-        real cycles = 0;
+        double max_angular_velocity_r_per_s = 600.0;
+        double crankshaft_angular_velocity_r_per_s = 0.0;
+        double limit_time_s = 0.1;
+        double cycles = 0;
         bool limiting = false;
 
         void update()
@@ -756,7 +792,7 @@ namespace ensim
             }
             if(limiting)
             {
-                const real time_s = g_dt_s * cycles;
+                const double time_s = g_dt_s * cycles;
                 if(time_s > limit_time_s)
                 {
                     limiting = false;
@@ -769,13 +805,13 @@ namespace ensim
 
     struct crankshaft
     {
-        real angular_velocity_r_per_s = 0.0_r;
-        real angular_acceleration_r_per_s2 = 0.0_r;
-        real mass_kg = 0.0_r;
-        real radius_m = 0.0_r;
-        real theta_r = 0.0_r;
-        real last_theta_r = 0.0_r;
-        real moment_of_inertia_kg_m2 = 0.0_r;
+        double angular_velocity_r_per_s = 0.0;
+        double angular_acceleration_r_per_s2 = 0.0;
+        double mass_kg = 0.0;
+        double radius_m = 0.0;
+        double theta_r = 0.0;
+        double last_theta_r = 0.0;
+        double moment_of_inertia_kg_m2 = 0.0;
 
         /*
          * dw = a * dt
@@ -784,7 +820,7 @@ namespace ensim
 
         fn void accelerate()
         {
-            const real a = angular_acceleration_r_per_s2;
+            const double a = angular_acceleration_r_per_s2;
             angular_velocity_r_per_s += a * g_dt_s;
         }
 
@@ -796,14 +832,14 @@ namespace ensim
         fn void turn()
         {
             last_theta_r = theta_r;
-            const real w = angular_velocity_r_per_s;
+            const double w = angular_velocity_r_per_s;
             theta_r += w * g_dt_s;
         }
 
         fn bool otto_cycled()
         {
-            const real t0 = modulos(last_theta_r, g_otto_cycle_r);
-            const real t1 = modulos(theta_r, g_otto_cycle_r);
+            const double t0 = modulos(last_theta_r, g_otto_cycle_r);
+            const double t1 = modulos(theta_r, g_otto_cycle_r);
             return t0 > t1;
         }
 
@@ -816,7 +852,7 @@ namespace ensim
 
         fn void calc_moment_of_inertia()
         {
-            moment_of_inertia_kg_m2 = 0.5_r * mass_kg * radius_m * radius_m;
+            moment_of_inertia_kg_m2 = 0.5 * mass_kg * radius_m * radius_m;
         }
 
         fn bool update()
@@ -828,54 +864,54 @@ namespace ensim
         }
     };
 
+    /* ------- + block_deck_surface_m
+     *         | head_clearance_height_m
+     * ------- +
+     * |     | | head_compression_height_m
+     * |  o  | + pin_x_m, pin_y_m
+     * |     | |
+     * |-----| |
+     *   | |   |
+     *   | |   | connecting_rod_length_m
+     *   | |   |
+     *   | |   |
+     *   | |   |
+     *   |o|   + bearing_x_m, bearing_y_m
+     *    |    |
+     *    |    | crank_throw_length_m
+     *    |    |
+     *    o    + origin
+     */
+
     template<size_t W>
     struct inline_pistons
     {
-        /* ------- + block_deck_surface_m
-         *         | head_clearance_height_m
-         * ------- +
-         * |     | | head_compression_height_m
-         * |  o  | + pin_x_m, pin_y_m
-         * |     | |
-         * |-----| |
-         *   | |   |
-         *   | |   | connecting_rod_length_m
-         *   | |   |
-         *   | |   |
-         *   | |   |
-         *   |o|   + bearing_x_m, bearing_y_m
-         *    |    |
-         *    |    | crank_throw_length_m
-         *    |    |
-         *    o    + origin
-         */
-
-        lane<W> diameter_m = {};
-        lane<W> crank_throw_length_m = {};
-        lane<W> connecting_rod_length_m = {};
-        lane<W> connecting_rod_mass_kg = {};
-        lane<W> head_mass_density_kg_per_m3 = {};
-        lane<W> head_compression_height_m = {};
-        lane<W> head_clearance_height_m = {};
-        lane<W> theta0_r = {};
-        lane<W> theta_r = {};
-        lane<W> sint = {};
-        lane<W> cost = {};
-        lane<W> pin_x_m = {};
-        lane<W> pin_y_m = {};
-        lane<W> bearing_x_m = {};
-        lane<W> bearing_y_m = {};
-        lane<W> volumes_m3 = {};
-        lane<W> head_mass_kg = {};
-        lane<W> moment_of_inertia_kg_m2 = {};
-        lane<W> gas_torque_n_m = {};
-        lane<W> inertia_torque_n_m = {};
-        lane<W> friction_torque_n_m = {};
-        lane<W> total_torque_n_m = {};
-        lane<W> chamber_static_pressure_pa = {};
-        lane<W> friction_n_m_s2_per_r2 = {};
-        real crankshaft_angular_velocity_r_per_s = 0.0_r;
-        real crankshaft_theta_r = 0.0_r;
+        std::array<double, W> diameter_m = {};
+        std::array<double, W> crank_throw_length_m = {};
+        std::array<double, W> connecting_rod_length_m = {};
+        std::array<double, W> connecting_rod_mass_kg = {};
+        std::array<double, W> head_mass_density_kg_per_m3 = {};
+        std::array<double, W> head_compression_height_m = {};
+        std::array<double, W> head_clearance_height_m = {};
+        std::array<double, W> theta0_r = {};
+        std::array<double, W> theta_r = {};
+        std::array<double, W> sint = {};
+        std::array<double, W> cost = {};
+        std::array<double, W> pin_x_m = {};
+        std::array<double, W> pin_y_m = {};
+        std::array<double, W> bearing_x_m = {};
+        std::array<double, W> bearing_y_m = {};
+        std::array<double, W> volumes_m3 = {};
+        std::array<double, W> head_mass_kg = {};
+        std::array<double, W> moment_of_inertia_kg_m2 = {};
+        std::array<double, W> gas_torque_n_m = {};
+        std::array<double, W> inertia_torque_n_m = {};
+        std::array<double, W> friction_torque_n_m = {};
+        std::array<double, W> total_torque_n_m = {};
+        std::array<double, W> chamber_static_pressure_pa = {};
+        std::array<double, W> friction_n_m_s2_per_r2 = {};
+        double crankshaft_angular_velocity_r_per_s = 0.0;
+        double crankshaft_theta_r = 0.0;
 
         /*
          * t = t0 + t1
@@ -893,7 +929,7 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real t = theta_r[i];
+                const double t = theta_r[i];
                 sint[i] = sin(t);
                 cost[i] = cos(t);
             }
@@ -914,13 +950,13 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real r = crank_throw_length_m[i];
-                const real l = connecting_rod_length_m[i];
-                const real x = r * sint[i];
-                const real y = r * cost[i];
+                const double r = crank_throw_length_m[i];
+                const double l = connecting_rod_length_m[i];
+                const double x = r * sint[i];
+                const double y = r * cost[i];
                 bearing_x_m[i] = x;
                 bearing_y_m[i] = y;
-                pin_x_m[i] = 0.0_r;
+                pin_x_m[i] = 0.0;
                 pin_y_m[i] = y + sqrt(l * l + x * x);
             }
         }
@@ -935,14 +971,14 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real r = crank_throw_length_m[i];
-                const real l = connecting_rod_length_m[i];
-                const real cm = head_compression_height_m[i];
-                const real cl = head_clearance_height_m[i];
-                const real block_deck_surface_m = r + l + cm + cl;
-                const real y = pin_y_m[i] + cm;
-                const real radius = diameter_m[i] / 2.0_r;
-                const real h = block_deck_surface_m - y;
+                const double r = crank_throw_length_m[i];
+                const double l = connecting_rod_length_m[i];
+                const double cm = head_compression_height_m[i];
+                const double cl = head_clearance_height_m[i];
+                const double block_deck_surface_m = r + l + cm + cl;
+                const double y = pin_y_m[i] + cm;
+                const double radius = diameter_m[i] / 2.0;
+                const double h = block_deck_surface_m - y;
                 volumes_m3[i] = g_pi_r * radius * radius * h;
             }
         }
@@ -956,9 +992,9 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real r = 0.5_r * diameter_m[i];
-                const real h = 2.0_r * head_compression_height_m[i];
-                const real p = head_mass_density_kg_per_m3[i];
+                const double r = 0.5 * diameter_m[i];
+                const double h = 2.0 * head_compression_height_m[i];
+                const double p = head_mass_density_kg_per_m3[i];
                 head_mass_kg[i] = g_pi_r * r * r * h * p;
             }
         }
@@ -972,10 +1008,10 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real r = crank_throw_length_m[i];
-                const real mp = head_mass_kg[i];
-                const real mr = connecting_rod_mass_kg[i];
-                moment_of_inertia_kg_m2[i] = (mp + (1.0_r / 3.0_r) * mr) * r * r;
+                const double r = crank_throw_length_m[i];
+                const double mp = head_mass_kg[i];
+                const double mr = connecting_rod_mass_kg[i];
+                moment_of_inertia_kg_m2[i] = (mp + (1.0 / 3.0) * mr) * r * r;
             }
         }
 
@@ -992,13 +1028,13 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real Pg = chamber_static_pressure_pa[i] - g_ambient_pressure_pa;
-                const real ar = diameter_m[i] / 2.0_r;
-                const real A = g_pi_r * ar * ar;
-                const real r = crank_throw_length_m[i];
-                const real l = connecting_rod_length_m[i];
-                const real X = Pg * A * r * sint[i];
-                const real Y = 1.0_r + (r / l) * cost[i];
+                const double Pg = chamber_static_pressure_pa[i] - g_ambient_pressure_pa;
+                const double ar = diameter_m[i] / 2.0;
+                const double A = g_pi_r * ar * ar;
+                const double r = crank_throw_length_m[i];
+                const double l = connecting_rod_length_m[i];
+                const double X = Pg * A * r * sint[i];
+                const double Y = 1.0 + (r / l) * cost[i];
                 gas_torque_n_m[i] = X * Y;
             }
         }
@@ -1024,16 +1060,16 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real r = crank_throw_length_m[i];
-                const real l = connecting_rod_length_m[i];
-                const real I = moment_of_inertia_kg_m2[i];
-                const real w = crankshaft_angular_velocity_r_per_s;
-                const real rl = r / l;
-                const real s = sint[i];
-                const real c = cost[i];
-                const real X = 0.25_r * rl * s;
-                const real Y = s * c;
-                const real Z = 0.75_r * rl * (3.0_r * s - 4.0_r * s * s * s);
+                const double r = crank_throw_length_m[i];
+                const double l = connecting_rod_length_m[i];
+                const double I = moment_of_inertia_kg_m2[i];
+                const double w = crankshaft_angular_velocity_r_per_s;
+                const double rl = r / l;
+                const double s = sint[i];
+                const double c = cost[i];
+                const double X = 0.25 * rl * s;
+                const double Y = s * c;
+                const double Z = 0.75 * rl * (3.0 * s - 4.0 * s * s * s);
                 inertia_torque_n_m[i] = I * w * w * (X - Y - Z);
             }
         }
@@ -1048,8 +1084,8 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real K = friction_n_m_s2_per_r2[i];
-                const real w = crankshaft_angular_velocity_r_per_s;
+                const double K = friction_n_m_s2_per_r2[i];
+                const double w = crankshaft_angular_velocity_r_per_s;
                 friction_torque_n_m[i] = -K * w * w;
             }
         }
@@ -1063,9 +1099,9 @@ namespace ensim
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real Tg = gas_torque_n_m[i];
-                const real Ti = inertia_torque_n_m[i];
-                const real Tf = friction_torque_n_m[i];
+                const double Tg = gas_torque_n_m[i];
+                const double Ti = inertia_torque_n_m[i];
+                const double Tf = friction_torque_n_m[i];
                 total_torque_n_m[i] = Tg + Ti + Tf;
             }
         }
@@ -1094,11 +1130,10 @@ namespace ensim
     struct pipe
     {
         static constexpr size_t M = L - 1;
-        lane<W> piston_connect_m = {};
-        real length_m = 0.0_r;
-        real mic_position0_m = 0.0_r;
-        real mic_position1_m = 0.0_r;
-        line pipe_pressure_signal = {};
+        std::array<float, W> piston_connect_m = {};
+        float length_m = 0.0f;
+        float mic_position0_m = 0.0f;
+        float mic_position1_m = 0.0f;
 
         pipe()
         {
@@ -1120,9 +1155,9 @@ namespace ensim
          * --- +-------+
          */
 
-        lane<W> in_velocity_m_per_s = {};
-        lane<W> in_static_density_kg_per_m3 = {};
-        lane<W> in_static_temperature_k = {};
+        std::array<float, W> in_velocity_m_per_s = {};
+        std::array<float, W> in_static_density_kg_per_m3 = {};
+        std::array<float, W> in_static_temperature_k = {};
 
         /*
          * Cells. U is Conserved state: F is flux state: Ff is flux face state.
@@ -1141,20 +1176,20 @@ namespace ensim
          *
          */
 
-        lane<L> U_r = {};
-        lane<L> U_ru = {};
-        lane<L> U_rEs = {};
-        lane<L> F_r = {};
-        lane<L> F_ru = {};
-        lane<L> F_rEs = {};
-        lane<M> Ff_r = {};
-        lane<M> Ff_ru = {};
-        lane<M> Ff_rEs = {};
+        std::array<float, L> U_r = {};
+        std::array<float, L> U_ru = {};
+        std::array<float, L> U_rEs = {};
+        std::array<float, L> F_r = {};
+        std::array<float, L> F_ru = {};
+        std::array<float, L> F_rEs = {};
+        std::array<float, M> Ff_r = {};
+        std::array<float, M> Ff_ru = {};
+        std::array<float, M> Ff_rEs = {};
 
-        lane<L> speed_of_sound_m_per_s = {};
-        lane<L> local_speed_of_sound_m_per_s = {};
-        lane<L> absolute_speed_of_sound_m_per_s = {};
-        lane<L> static_pressure_pa = {};
+        std::array<float, L> speed_of_sound_m_per_s = {};
+        std::array<float, L> local_speed_of_sound_m_per_s = {};
+        std::array<float, L> absolute_speed_of_sound_m_per_s = {};
+        std::array<float, L> static_pressure_pa = {};
 
         /*
          *                1   2    r Rs         1     2
@@ -1162,11 +1197,11 @@ namespace ensim
          *                2        y - 1        2
          */
 
-        real calc_specific_energy_density_from_static_temperature(const real r, const real u, const real Ts)
+        fn float calc_specific_energy_density_from_static_temperature(const float r, const float u, const float Ts)
         {
-            const real ru = r * u;
-            const real Rs = g_specific_gas_constant_j_per_kg_k;
-            const real rEs = r * Rs * Ts / (g_gamma - 1.0_r) + ru * ru / (2.0_r * r);
+            const float ru = r * u;
+            const float Rs = g_specific_gas_constant_j_per_kg_k;
+            const float rEs = r * Rs * Ts / (g_gamma_f - 1.0f) + ru * ru / (2.0f * r);
             return rEs;
         }
 
@@ -1177,9 +1212,9 @@ namespace ensim
          *        y - 1      2
          */
 
-        real calc_specific_energy_density_from_static_pressure(const real r, const real u, const real Ps)
+        fn float calc_specific_energy_density_from_static_pressure(const float r, const float u, const float Ps)
         {
-            const real rEs = Ps / (g_gamma - 1.0_r) + 0.5_r * r * u * u;
+            const float rEs = Ps / (g_gamma_f - 1.0f) + 0.5f * r * u * u;
             return rEs;
         }
 
@@ -1189,28 +1224,28 @@ namespace ensim
          *                            2
          */
 
-        real calc_static_pressure_from_specific_energy(const real r, const real u, const real Es)
+        fn float calc_static_pressure_from_specific_energy(const float r, const float u, const float Es)
         {
-            const real Ps = (g_gamma - 1.0_r) * r * (Es - 0.5_r * u * u);
+            const float Ps = (g_gamma_f - 1.0f) * r * (Es - 0.5f * u * u);
             return Ps;
         }
 
-        void as_cell(const size_t i, const real r, const real u, const real Ts)
+        fn void as_cell(const size_t i, const float r, const float u, const float Ts)
         {
             U_r[i] = r;
             U_ru[i] = r * u;
             U_rEs[i] = calc_specific_energy_density_from_static_temperature(r, u, Ts);
         }
 
-        void to_ambient(const size_t i)
+        fn void to_ambient(const size_t i)
         {
-            const real r = g_ambient_density_kg_per_m3;
-            const real u = 0.0_r;
-            const real Ts = g_ambient_temperature_k;
+            const float r = g_ambient_density_kg_per_m3;
+            const float u = 0.0f;
+            const float Ts = g_ambient_temperature_k;
             as_cell(i, r, u, Ts);
         }
 
-        void reset()
+        fn void reset()
         {
             for(size_t i = 0; i < L; i++)
             {
@@ -1228,14 +1263,14 @@ namespace ensim
          * +---+     +-----+ +-----+
          */
 
-        void calc_pipe_open_right()
+        fn void calc_pipe_open_right()
         {
             const size_t Y = L - 2;
             const size_t Z = L - 1;
-            const real r = U_r[Y];
-            const real ru = U_ru[Y];
-            const real u = ru / r;
-            const real a = local_speed_of_sound_m_per_s[Y];
+            const float r = U_r[Y];
+            const float ru = U_ru[Y];
+            const float u = ru / r;
+            const float a = local_speed_of_sound_m_per_s[Y];
             if(u >= a)
             {
                 /*
@@ -1257,7 +1292,7 @@ namespace ensim
                  *
                  */
 
-                const real Ps = g_ambient_pressure_pa;
+                const float Ps = g_ambient_pressure_pa;
                 U_r[Z] = r;
                 U_ru[Z] = ru;
                 U_rEs[Z] = calc_specific_energy_density_from_static_pressure(r, u, Ps);
@@ -1270,7 +1305,7 @@ namespace ensim
          * when in position 2 and 4.
          */
 
-        real calc_audio_sample()
+        fn float calc_audio_sample()
         {
             const size_t Z = L - 1;
             const size_t x = Z * mic_position0_m / length_m;
@@ -1278,14 +1313,14 @@ namespace ensim
             return static_pressure_pa[x] + static_pressure_pa[y];
         }
 
-        void inject()
+        fn void inject()
         {
             for(size_t i = 0; i < W; i++)
             {
-                const real r = in_static_density_kg_per_m3[i];
-                const real u = in_velocity_m_per_s[i];
-                const real Ts = in_static_temperature_k[i];
-                const real ratio = piston_connect_m[i] / length_m;
+                const float r = in_static_density_kg_per_m3[i];
+                const float u = in_velocity_m_per_s[i];
+                const float Ts = in_static_temperature_k[i];
+                const float ratio = piston_connect_m[i] / length_m;
                 as_cell(ratio * L, r, u, Ts);
             }
         }
@@ -1294,16 +1329,16 @@ namespace ensim
          *  F = [ rr \ ruu + Ps \ u(rEs + Ps) ]
          */
 
-        void calc_fluxes()
+        fn void calc_fluxes()
         {
             for(size_t i = 0; i < L; i++)
             {
-                const real r = U_r[i];
-                const real ru = U_ru[i];
-                const real rEs = U_rEs[i];
-                const real u = ru / r;
-                const real Es = rEs / r;
-                const real Ps = calc_static_pressure_from_specific_energy(r, u, Es);
+                const float r = U_r[i];
+                const float ru = U_ru[i];
+                const float rEs = U_rEs[i];
+                const float u = ru / r;
+                const float Es = rEs / r;
+                const float Ps = calc_static_pressure_from_specific_energy(r, u, Es);
                 F_r[i] = ru;
                 F_ru[i] = ru * u + Ps;
                 F_rEs[i] = u * (rEs + Ps);
@@ -1316,11 +1351,11 @@ namespace ensim
          *          dx
          */
 
-        void calc_conserved()
+        fn void calc_conserved()
         {
-            const real dx_m = length_m / static_cast<real>(L);
-            const real dt_s = g_dt_s / S;
-            const real dt_dx = dt_s / dx_m;
+            const float dx_m = length_m / L;
+            const float dt_s = g_dt_s / S;
+            const float dt_dx = dt_s / dx_m;
             for(size_t i = 1; i < L - 1; i++)
             {
                 const size_t j = i - 1;
@@ -1336,22 +1371,22 @@ namespace ensim
          *                           2
          */
 
-        real calc_static_pressure(const size_t i)
+        fn float calc_static_pressure(const size_t i)
         {
-            const real r = U_r[i];
-            const real ru = U_ru[i];
-            const real rEs = U_rEs[i];
-            const real u = ru / r;
-            const real Es = rEs / r;
-            const real Ps = calc_static_pressure_from_specific_energy(r, u, Es);
+            const float r = U_r[i];
+            const float ru = U_ru[i];
+            const float rEs = U_rEs[i];
+            const float u = ru / r;
+            const float Es = rEs / r;
+            const float Ps = calc_static_pressure_from_specific_energy(r, u, Es);
             return Ps;
         }
 
-        void calc_static_pressures()
+        fn void calc_static_pressures()
         {
             for(size_t i = 0; i < L; i++)
             {
-                const real Ps = calc_static_pressure(i);
+                const float Ps = calc_static_pressure(i);
                 static_pressure_pa[i] = Ps;
             }
         }
@@ -1367,16 +1402,16 @@ namespace ensim
             for(size_t i = 0; i < M; i++)
             {
                 const size_t j = i + 1;
-                const real Al = absolute_speed_of_sound_m_per_s[i];
-                const real Ar = absolute_speed_of_sound_m_per_s[j];
-                const real alpha = fmax(Al, Ar);
-                Ff_r  [i] = 0.5_r * ((F_r  [i] + F_r  [j]) - alpha * (U_r  [j] - U_r  [i]));
-                Ff_ru [i] = 0.5_r * ((F_ru [i] + F_ru [j]) - alpha * (U_ru [j] - U_ru [i]));
-                Ff_rEs[i] = 0.5_r * ((F_rEs[i] + F_rEs[j]) - alpha * (U_rEs[j] - U_rEs[i]));
+                const float Al = absolute_speed_of_sound_m_per_s[i];
+                const float Ar = absolute_speed_of_sound_m_per_s[j];
+                const float alpha = fmax(Al, Ar);
+                Ff_r  [i] = 0.5f * ((F_r  [i] + F_r  [j]) - alpha * (U_r  [j] - U_r  [i]));
+                Ff_ru [i] = 0.5f * ((F_ru [i] + F_ru [j]) - alpha * (U_ru [j] - U_ru [i]));
+                Ff_rEs[i] = 0.5f * ((F_rEs[i] + F_rEs[j]) - alpha * (U_rEs[j] - U_rEs[i]));
             }
         }
 
-        void update()
+        fn void update()
         {
             inject();
             calc_speed_of_sounds();
@@ -1392,22 +1427,12 @@ namespace ensim
             }
         }
 
-        void gather_pipe_pressure_signal()
-        {
-            pipe_pressure_signal.clear();
-            for(size_t i = 0; i < L; i++)
-            {
-                const real Ps = static_pressure_pa[i];
-                pipe_pressure_signal.push_back(Ps);
-            }
-        }
-
         fn void calc_speed_of_sounds()
         {
             for(size_t i = 0; i < L; i++)
             {
-                const real Ps = static_pressure_pa[i];
-                const real C = sqrt(g_gamma * Ps / U_r[i]);
+                const float Ps = static_pressure_pa[i];
+                const float C = sqrt(g_gamma_f * Ps / U_r[i]);
                 speed_of_sound_m_per_s[i] = C;
             }
         }
@@ -1416,7 +1441,7 @@ namespace ensim
         {
             for(size_t i = 0; i < L; i++)
             {
-                const real a = U_ru[i] / U_r[i];
+                const float a = U_ru[i] / U_r[i];
                 local_speed_of_sound_m_per_s[i] = a;
             }
         }
@@ -1425,8 +1450,8 @@ namespace ensim
         {
             for(size_t i = 0; i < L; i++)
             {
-                const real a = local_speed_of_sound_m_per_s[i];
-                const real c = speed_of_sound_m_per_s[i];
+                const float a = local_speed_of_sound_m_per_s[i];
+                const float c = speed_of_sound_m_per_s[i];
                 absolute_speed_of_sound_m_per_s[i] = fabs(a) + c;
             }
         }
@@ -1437,13 +1462,13 @@ namespace ensim
         X(chamber_nozzle_real_flow_area_m2) \
         X(chamber_static_pressure_pa) \
         X(chamber_static_temperature_k) \
+        X(chamber_mass_kg) \
         X(nozzle_static_temperature_k) \
         X(nozzle_static_density_kg_per_m3) \
         X(nozzle_velocity_m_per_s)
 
     #define PISTONS(X) \
-        X(gas_torque_n_m) \
-        X(inertia_torque_n_m)
+        X(total_torque_n_m)
 
     #define DIAGS(X) FLUIDS(X) PISTONS(X)
 
@@ -1461,34 +1486,38 @@ namespace ensim
         #undef X
     };
 
-    using grid = std::vector<line>;
-
     struct diags
     {
-        grid front = grid(g_diags_size);
-        grid back = grid(g_diags_size);
+        std::vector<std::vector<double>> front = {};
+        std::vector<std::vector<double>> back = {};
+
+        diags()
+        {
+            front.resize(g_diags_size);
+            back.resize(g_diags_size);
+        }
     };
 
     struct dc_filter
     {
-        real x_prev = 0.0_r;
-        real y_prev = 0.0_r;
-        real alpha = 0.0_r;
+        float x_prev = 0.0f;
+        float y_prev = 0.0f;
+        float alpha = 0.0f;
 
         dc_filter()
         {
-            set_cutoff_frequency(5.0_r);
+            set_cutoff_frequency(5.0f);
         }
 
-        void set_cutoff_frequency(const real cutoff_freq_hz)
+        void set_cutoff_frequency(const float cutoff_freq_hz)
         {
-            const real rc = 1.0_r / (2.0_r * g_pi_r * cutoff_freq_hz);
-            alpha = rc / (rc + g_dt_s);
+            const float rc = 1.0f / (2.0f * g_pi_r_f * cutoff_freq_hz);
+            alpha = rc / (rc + g_dt_s_f);
         }
 
-        real filter(const real x)
+        float filter(const float x)
         {
-            const real y = alpha * (y_prev + x - x_prev);
+            const float y = alpha * (y_prev + x - x_prev);
             x_prev = x;
             y_prev = y;
             return y;
@@ -1497,9 +1526,9 @@ namespace ensim
 
     struct gain_filter
     {
-        real ratio = 1.0_r;
+        float ratio = 1.0f;
 
-        real filter(const real x)
+        float filter(const float x)
         {
             return x * ratio;
         }
@@ -1507,26 +1536,22 @@ namespace ensim
 
     struct clamp_filter
     {
-        real filter(const real x)
+        float filter(const float x)
         {
-            return clamper(x, -1.0_r, 1.0_r);
+            return clamper(x, -1.0f, 1.0f);
         }
-    };
-
-    const line g_impulse = {
-        0.000028, -0.000030, 0.000031, -0.000033, 0.000034, -0.000036, 0.000037, -0.000039, 0.000040, -0.000042, 0.000044, -0.000046, 0.000048, -0.000050, 0.000052, -0.000054, 0.000056, -0.000058, 0.000060, -0.000063, 0.000065, -0.000068, 0.000070, -0.000073, 0.000076, -0.000079, 0.000081, -0.000084, 0.000087, -0.000090, 0.000093, -0.000097, 0.000100, -0.000103, 0.000107, -0.000110, 0.000114, -0.000118, 0.000121, -0.000125, 0.000129, -0.000133, 0.000137, -0.000142, 0.000146, -0.000151, 0.000155, -0.000160, 0.000164, -0.000169, 0.000174, -0.000179, 0.000184, -0.000190, 0.000195, -0.000201, 0.000206, -0.000212, 0.000218, -0.000224, 0.000230, -0.000237, 0.000243, -0.000250, 0.000257, -0.000264, 0.000271, -0.000279, 0.000286, -0.000294, 0.000302, -0.000311, 0.000319, -0.000328, 0.000337, -0.000346, 0.000355, -0.000365, 0.000375, -0.000386, 0.000396, -0.000407, 0.000418, -0.000430, 0.000442, -0.000455, 0.000468, -0.000481, 0.000495, -0.000509, 0.000524, -0.000539, 0.000555, -0.000572, 0.000589, -0.000607, 0.000626, -0.000646, 0.000667, -0.000688, 0.000711, -0.000735, 0.000761, -0.000788, 0.000816, -0.000847, 0.000880, -0.000915, 0.000953, -0.000995, 0.001040, -0.001090, 0.001146, -0.001210, 0.001282, -0.001367, 0.001469, -0.001596, 0.001760, -0.001988, 0.002339, -0.002983, 0.004715, -0.042354, -0.002361, 0.001148, 0.000734, -0.000083, 0.001500, -0.000687, 0.002051, -0.001261, 0.002699, -0.002077, 0.003822, -0.003869, 0.007416, -0.017900, -0.016933, 0.005648, -0.001045, 0.001214, 0.002679, -0.031037, -0.003070, 0.003451, 0.000024, 0.002112, 0.000893, -0.027258, 0.001503, 0.001761, 0.000655, -0.004511, 0.006395, -0.008128, -0.018708, 0.006919, -0.000971, 0.004604, -0.001652, 0.032017, 0.006589, -0.001354, 0.003117, -0.005089, -0.019754, 0.000085, 0.005485, -0.008882, 0.005540, -0.006535, 0.033626, 0.023457, -0.007225, 0.006971, -0.004153, -0.015464, 0.001900, 0.001695, -0.005079, 0.007834, 0.077609, -0.007658, 0.019889, 0.040200, -0.009383, 0.004776, -0.003616, 0.002796, 0.000172, -0.009220, 0.064130, -0.005378, 0.017512, 0.030225, -0.011337, 0.004208, -0.005386, 0.000937, 0.010359, 0.027093, -0.020046, 0.042271, -0.003561, -0.009258, -0.001443, -0.000920, -0.008932, -0.003845, 0.026366, -0.015544, 0.030439, 0.006740, -0.005165, -0.004578, 0.018473, 0.034563, 0.001170, -0.009770, -0.001490, -0.016098, -0.001502, -0.007095, 0.000313, 0.026248, -0.008325, -0.001226, -0.006186, -0.001429, -0.010045, -0.008117, 0.012246, 0.054544, -0.006552, 0.012291, 0.014317, -0.013106, 0.002000, -0.011357, 0.021270, 0.003192, 0.015892, -0.006928, -0.002986, -0.013948, -0.004157, -0.008491, 0.017516, -0.010183, 0.019686, 0.000857, -0.007068, -0.006245, -0.003001, -0.011510, 0.026341, 0.004819, 0.007867, 0.005143, -0.012173, 0.022885, -0.008110, -0.002458, -0.010060, -0.001940, -0.013048, -0.010728, -0.006681, -0.002614, 0.008533, -0.006177, 0.019049, -0.016950, 0.003738, 0.008432, -0.017701, -0.007873, -0.006520, -0.004633, -0.007691, -0.000939, 0.012690, -0.017515, -0.003993, -0.008311, 0.006906, -0.004823, -0.006944, -0.006136, -0.003983, -0.007931, 0.000571, 0.000225, 0.007747, 0.001041, -0.007989, -0.007824, 0.000282, 0.003374, -0.011752, -0.001102, -0.005296, -0.004511, -0.009493, 0.006481, 0.005848, -0.001000, -0.009805, -0.004208, -0.006704, -0.000827, -0.011124, -0.012471, -0.005354, -0.001618, -0.009595, 0.014062, 0.015609, 0.000767, 0.000044, -0.005640, -0.001751, -0.007264, 0.004812, -0.008666, 0.003176, -0.013457, 0.003746, 0.002956, 0.012041, -0.003489, 0.009181, -0.003203, 0.000144, 0.024732, 0.001496, -0.010815, 0.012227, 0.003479, 0.010618, 0.007356, -0.012405, 0.001724, -0.012615, 0.015259, 0.021565, 0.000751, 0.004400, 0.010718, 0.007126, 0.007662, -0.010993, -0.006237, -0.008336, -0.001683, -0.000668, 0.006280, 0.005320, -0.009571, -0.000256, -0.004064, -0.008022, -0.002748, -0.009062, 0.025445, 0.004798, -0.008833, -0.004323, -0.011360, 0.004305, 0.000291, -0.005710, -0.000090, -0.002090, 0.019034, -0.004474, -0.002704, -0.002225, -0.007578, 0.016369, -0.000132, -0.008842, -0.002406, -0.007930, 0.014106, -0.005687, 0.004570, -0.012783, 0.013067, 0.006546, -0.007353, -0.014336, -0.006662, 0.010711, -0.004512, 0.000894, -0.017394, -0.003741, -0.006117, -0.001286, -0.012649, -0.010578, -0.007275, -0.003622, -0.007935, -0.006393, 0.006080, -0.003476, -0.003305, 0.000295, 0.003925, -0.007214, -0.001899, -0.012098, 0.012259, 0.012686, 0.001892, -0.015533, -0.008929, 0.004046, 0.007281, -0.014267, -0.007037, 0.007636, 0.004458, -0.005500, -0.017130, -0.011762, 0.003731, -0.002683, 0.002465, -0.002635, 0.010446, 0.012180, -0.004249, -0.006332, 0.002608, 0.014221, -0.007337, -0.007619, -0.000967, 0.010992, 0.004491, -0.004385, 0.006785, 0.027559, 0.005183, -0.000944, -0.003772, 0.002375, -0.007481, -0.011809, 0.003082, 0.010495, 0.000595, 0.006033, 0.013446, 0.002164, -0.012010, 0.012015, 0.015480, -0.016132, 0.001995, 0.010585, 0.013128, 0.009227, 0.006187, 0.017670, 0.017940, 0.006794, -0.006721, -0.003508, -0.005932, -0.006328, -0.003950, -0.002625, -0.007048, 0.022957, 0.011088, 0.000936, -0.011364, 0.003926, -0.000834, -0.008998, 0.000029, -0.001838, 0.003735, 0.004813, -0.011387, -0.008588, 0.007559, -0.011257, -0.005499, 0.004117, -0.001786, -0.008627, 0.000321, 0.015385, -0.008028, 0.005479, 0.001247, -0.003476, -0.005572, -0.007028, 0.001932, 0.009971, -0.009676, -0.013539, 0.001157, -0.012627, 0.008205, 0.002315, 0.007738, 0.015599, -0.001137, 0.003014, 0.004595, 0.004709, -0.001101, 0.009723, 0.000550, -0.005890, 0.009097, 0.026656, -0.001995, 0.020619, 0.016080, -0.007802, -0.008138, -0.002976, 0.016189, 0.021692, 0.002129, 0.007870, -0.012752, -0.003675, -0.000874, 0.002367, 0.002676, 0.001830, -0.006161, 0.010657, 0.019326, 0.011089, 0.001951, 0.001021, -0.001462, -0.008302, 0.001716, 0.009993, 0.004689, -0.012809, 0.004198, 0.012816, -0.007857, 0.000273, 0.005943, 0.004763, 0.002727, -0.013666, 0.001755, 0.005166, -0.001333, -0.004083, -0.009399, -0.006290, -0.010574, -0.001481, 0.001727, -0.007428, 0.007894, 0.008605, -0.001526, 0.008424, 0.005009, -0.004754, -0.009622, 0.005821, 0.005437, -0.006389, -0.009236, 0.003698, -0.001899, -0.000695, 0.002327, -0.014142, -0.003515, -0.014891, 0.013596, 0.013225, -0.015671, 0.004976, -0.002388, 0.000993, 0.009753, 0.003775, -0.009225, 0.001139, 0.005715, -0.001035, 0.013704, -0.003493, -0.015305, -0.008611, -0.009169, -0.006208, -0.001168, -0.008042, -0.003358, -0.008876, 0.004285, 0.001899, -0.009948, 0.005889, -0.008215, 0.001398, 0.019472, -0.005671, 0.002683, -0.007034, -0.001902, 0.001078, -0.003905, -0.010639, 0.003795, -0.008638, -0.002902, 0.010712, -0.008659, -0.001424, -0.000144, 0.001393, -0.001118, -0.008715, 0.001355, -0.002856, 0.000570, -0.011979, -0.001916, 0.000831, -0.011840, 0.005797, 0.008447, -0.009099, -0.007433, -0.004530, -0.004309, -0.008694, -0.000067, -0.008419, 0.007291, -0.006405, 0.002545, -0.006404, 0.005718, -0.001300, 0.013341, 0.012583, -0.008146, -0.000108, -0.006187, -0.002298, 0.006656, -0.007448, -0.005107, 0.005730, 0.007275, 0.001850, -0.002865, -0.005645, 0.001764, 0.006782, -0.002215, -0.007274, -0.003299, -0.006687, 0.005860, -0.008756, -0.004494, -0.005297, 0.006909, 0.017144, -0.003487, -0.005140, -0.000364, -0.009167, -0.001891, -0.004166, -0.009338, -0.000059, -0.003003, -0.006797, 0.000240, -0.000011, -0.011692, 0.012666, -0.006014, -0.004438, -0.011118, -0.009013, 0.005562, -0.000812, -0.008446, 0.003696, 0.003774, 0.006935, -0.007500, 0.005827, 0.002108, -0.003650, -0.002037, 0.006334, -0.008364, 0.016108, 0.001676, -0.005525, 0.018551, 0.009582, -0.002962, 0.010244, -0.003249, -0.004792, -0.003174, -0.008605, -0.003636, 0.004748, 0.005890, 0.007994, 0.001957, 0.000805, -0.001771, 0.002413, 0.003451, 0.001584, 0.005515, -0.002981, 0.013681, -0.000508, 0.010366, 0.007760, 0.008924, 0.008849, -0.004575, -0.004285, -0.007625, -0.013232, -0.004544, 0.009821, 0.013647, 0.005163, 0.010273, -0.007456, 0.008278, 0.004717, -0.004808, -0.000603, -0.000049, 0.000160, 0.002857, -0.002875, 0.006816, 0.008237, 0.011990, -0.005719, 0.007491, 0.007628, -0.001277, 0.001540, -0.003474, 0.019355, 0.014981, 0.006842, -0.002513, -0.003795, 0.002570, -0.003646, -0.009801, -0.002846, 0.010389, -0.005025, 0.000685, -0.004954, 0.007485, 0.016762, -0.002610, -0.007114, -0.009003, 0.001042, -0.008555, 0.002861, 0.013629, 0.009105, 0.005973, -0.000329, 0.003793, -0.000469, -0.010915, -0.004875, -0.006968, -0.008699, -0.007380, 0.000796, -0.005672, 0.021732, -0.003480, -0.002589, -0.007001, -0.000170, 0.005000, -0.001027, 0.008756, 0.000872, 0.004062, 0.005132, 0.008560, 0.000265, -0.004206, -0.008084, -0.009419, 0.007280, -0.006490, -0.003531, -0.003278, 0.010964, 0.005905, -0.000782, -0.002341, -0.001657, -0.005804, -0.006557, -0.003278, 0.008041, 0.008133, -0.009808, 0.000547, 0.003384, -0.000500, -0.006111, 0.000464, -0.010957, -0.004618, -0.000100, -0.000389, 0.018872, -0.011684, -0.002546, 0.003824, -0.006857, -0.000960, -0.013718, 0.001649, -0.002181, 0.003584, 0.003807, -0.004214, 0.006284, -0.002678, -0.005112, -0.007607, -0.004347, -0.003473, 0.004039, -0.005875, 0.003083, 0.004838, 0.005444, 0.003299, -0.003266, -0.001775, -0.005123, -0.002473, 0.007584, -0.001069, 0.009626, 0.006708, -0.000700, 0.003408, -0.009925, 0.000068, 0.005402, -0.000763, -0.000931, 0.004407, 0.000484, 0.008775, 0.000713, -0.002148, -0.008497, -0.000602, -0.003338, -0.005218, 0.012799, -0.000081, 0.008283, -0.001640, -0.007877, -0.001693, -0.007095, -0.000561, 0.001443, -0.000846, 0.000456, 0.002948, 0.004224, 0.001219, 0.002343, 0.000780, -0.004726, 0.002618, 0.004762, 0.003060, -0.000436, 0.003437, -0.002970, -0.003983, -0.001902, -0.004594, -0.003705, -0.004485, 0.000457, -0.003812, -0.008437, -0.005239, -0.007058, -0.005846, -0.004513, -0.001485, 0.003381, 0.003841, 0.001932, 0.001882, -0.009028, 0.001453, 0.003522, -0.006369, -0.002707, -0.008987, -0.001262, -0.003135, -0.000354, -0.000161, 0.000687, -0.007104, 0.007536, 0.000511, 0.005322, 0.005379, -0.000808, -0.001048, -0.007882, 0.005948, -0.001071, -0.003045, -0.009942, -0.004985, 0.004284, -0.006173, 0.002945, 0.004817, -0.006915, -0.011947, -0.000536, 0.006772, -0.007153, -0.001947, -0.005916, -0.006169, 0.002785, 0.004848, -0.000615, -0.010406, -0.001483, 0.001662, -0.001078, -0.000763, -0.004468, -0.005091, -0.011554, 0.004065, -0.003695, 0.002615, -0.005821, 0.001475, -0.002898, 0.006145, 0.001395, -0.001932, -0.007915, 0.004505, -0.000501, 0.011306, 0.002712, -0.005316, -0.000413, 0.004963, 0.007920, 0.004059, -0.005346, -0.000610, -0.003154, 0.010990, 0.001415, 0.005220, -0.007521, 0.006702, 0.004887, -0.001635, 0.004616, -0.002906, -0.005021, 0.002469, 0.006896, 0.000765, -0.004993, -0.003440, -0.001791, 0.001993, 0.009013, 0.005992, -0.004943, 0.000638, 0.004751, -0.002706, 0.004622, 0.009585, -0.002796, 0.004107, 0.008902, 0.013084, -0.003251, -0.003643, 0.002809, 0.006900, 0.017828, 0.006467, -0.003326, -0.000888, 0.001690, 0.001113, 0.007078, -0.005468, 0.000859, -0.000589, -0.000352, -0.005251, -0.001302, -0.005137, 0.003568, 0.007628, 0.006126, 0.003825, -0.001229, -0.004009, -0.000939, 0.000340, 0.006169, 0.000850, -0.001195, 0.002038, 0.000018, -0.003623, 0.009340, 0.003990, 0.000022, 0.006188, -0.001638, -0.007370, -0.000872, 0.001918, 0.002743, 0.007154, -0.003769, 0.007022, -0.007463, 0.004649, -0.008075, -0.004564, -0.002233, -0.004946, -0.001526, 0.004024, -0.004408, 0.001343, 0.003890, 0.001929, 0.000332, -0.001527, -0.005337, -0.004202, -0.003300, 0.002647, 0.000710, -0.003735, -0.002194, 0.008999, -0.003155, 0.004098, -0.000401, 0.001246, -0.006768, 0.003672, 0.002099, -0.001225, -0.002354, -0.003797, 0.004293, 0.002271, -0.004114, -0.001825, 0.001816, -0.005224, -0.003434, 0.009547, -0.005731, -0.003293, 0.002694, 0.005269, 0.004385, -0.005526, -0.001797, -0.002096, 0.000838, -0.000205, -0.000330, -0.005445, 0.001414, -0.002917, 0.003097, -0.004458, 0.001948, 0.001792, -0.003040, 0.004139, 0.003422, -0.008233, 0.009180, -0.006827, 0.005709, -0.001700, -0.003866, 0.004720, 0.007054, -0.008376, 0.006992, 0.001758, -0.005291, -0.003283, 0.002263, 0.003268, -0.003710, 0.001865, -0.007430, 0.000351, -0.004260, -0.000760, 0.007190, -0.001973, -0.001574, -0.005340, -0.003178, 0.002234, -0.004614, 0.005684, 0.006128, -0.000080, -0.001981, 0.004522, -0.001962, -0.003947, -0.001769, -0.002310, 0.000850, -0.000664, 0.000755, 0.006598, 0.004347, -0.000831, 0.005646, 0.000596, -0.005116, 0.001871, -0.006592, -0.004944, 0.002574, -0.005874, 0.003209, -0.003640, -0.001465, -0.003556, -0.001386, -0.004404, 0.000697, -0.003157, 0.002678, 0.000423, -0.004376, 0.002956, 0.000160, -0.003149, 0.003601, 0.003124, -0.003927, 0.001553, 0.001331, 0.003659, -0.004849, 0.003385, 0.008925, -0.004068, -0.000781, 0.001521, 0.000314, -0.004763, -0.000104, -0.000624, -0.002277, 0.000461, 0.000033, 0.005734, -0.007491, -0.001233, 0.003517, -0.003491, 0.002166, -0.002954, -0.004071, -0.002714, -0.003335, -0.005182, 0.000938, -0.005685, -0.003632, -0.004651, -0.001200, -0.001380, -0.000430, -0.001371, 0.001853, -0.006408, 0.002217, -0.004181, 0.002138, 0.002109, -0.001975, -0.003660, -0.004048, 0.002079, 0.001651, -0.003307, -0.000603, -0.005880, -0.003595, -0.002189, -0.001791, -0.004620, -0.006983, 0.001717, -0.004827, -0.006534, 0.002373, 0.000868, -0.001635, -0.005562, -0.007534, -0.005132, 0.000286, -0.006468, -0.000294, -0.001935, 0.002704, 0.007276, -0.003285, 0.003865, 0.004129, -0.001479, -0.003637, -0.002152, -0.003527, 0.006384, -0.000419, -0.001905, 0.000356, 0.004432, 0.002230, -0.007377, 0.003018, 0.002195, -0.000849, -0.004433, 0.004405, 0.008600, -0.000784, 0.002244, 0.003413, 0.001565, 0.005959, 0.002269, 0.000345, -0.001464, 0.003051, 0.009309, 0.001797, -0.003390, 0.008670, 0.007661, -0.002750, 0.001126, 0.008079, 0.002343, -0.000856, 0.000163, 0.007256, -0.000343, 0.008646, -0.001365, -0.000770, 0.006435, 0.002558, 0.001325, -0.001782, -0.001496, 0.001169, -0.006298, 0.001338, 0.001325, 0.006268, 0.008084, -0.000978, 0.002487, 0.000606, -0.001855, -0.001803, 0.002697, 0.003134, 0.000626, -0.000985, 0.001919, 0.006352, -0.002269, 0.000807, -0.002226, -0.000930, -0.003021, 0.001089, -0.001006, 0.004952, -0.000622, 0.001862, 0.002628, 0.003628, 0.001614, -0.002264, -0.000484, -0.002710, -0.000460, 0.001877, 0.003398, 0.002368, 0.001511, 0.002515, -0.000936, 0.001260, 0.006288, 0.000088, -0.001192, -0.002195, -0.000899, 0.001400, -0.002186, 0.003264, -0.006819, 0.003807, -0.001342, -0.001433, -0.001670, 0.002133, -0.002073, 0.000807, 0.000613, 0.000703, 0.005178, -0.001569, 0.000899, 0.001724, -0.001224, 0.001321, -0.000470, 0.001631, 0.004887, -0.000743, 0.001850, -0.000139, 0.004881, -0.001500, 0.001688, 0.001427, -0.003767, -0.002179, -0.001610, -0.005879, 0.000978, 0.000885, 0.003224, -0.002615, 0.001217, -0.007824, 0.003341, -0.006325, -0.001257, -0.002658, -0.002997, 0.001599, -0.000747, 0.003948, -0.004759, -0.005593, -0.003647, -0.003751, -0.001053, -0.001865, 0.002831, -0.004731, -0.001043, 0.001928, -0.001419, -0.000643, -0.000320, -0.001942, -0.005545, 0.003291, -0.004703, 0.003490, -0.000043, -0.005034, -0.001518, -0.003970, -0.002179, -0.006363, 0.000621, -0.002599, -0.001645, 0.000889, -0.002816, 0.001957, -0.003145, 0.002031, -0.003342, -0.001213, -0.001955, -0.003311, 0.000895, -0.003139, -0.000695, -0.004227, -0.001171, 0.000797, -0.002253, 0.001104, 0.000535, -0.002357, 0.000477, -0.000426, 0.002687, -0.000815, 0.001515, 0.001208, -0.000456, 0.003938, 0.000561, 0.002303, -0.002019, 0.003943, 0.000070, 0.000831, 0.005919, 0.000097, 0.002662, -0.001255, -0.003167, 0.001549, -0.000846, -0.001726, 0.002844, 0.002905, 0.001481, -0.001842, 0.000883, 0.007083, -0.001367, 0.001208, -0.000879, 0.001847, -0.005688, 0.004857, -0.001543, 0.001455, -0.006834, -0.002292, 0.003316, -0.004939, 0.000323, -0.002436, 0.002228, -0.003709, 0.002876, -0.001397, -0.002688, -0.001812, -0.001784, -0.002800, -0.005007, 0.000610, -0.004325, -0.000532, -0.004665, -0.000294, -0.002979, -0.002282, -0.003109, 0.004470, -0.002725, -0.003679, 0.000887, 0.000710, -0.001003, -0.003082, 0.001062, -0.004754, 0.001186, -0.003502, -0.000056, 0.000934, -0.004934, 0.000733, 0.006257, -0.000988, -0.005551, -0.002315, 0.000034, -0.000480, -0.000428, 0.000241, -0.002646, -0.002267, -0.000022, -0.001060, -0.002774, -0.001437, -0.002961, 0.004788, 0.003490, 0.004627, 0.003710, 0.003419, -0.002239, -0.005269, 0.006444, 0.002722, -0.002245, 0.001917, -0.000816, -0.002699, 0.005199, -0.001839, -0.002204, -0.000840, -0.000016, 0.000979, -0.001088, -0.002114, -0.002498, 0.004001, 0.000877, 0.002384, 0.003149, 0.000829, 0.005661, 0.003714, 0.007295, 0.000409, 0.000599, 0.001703, 0.004112, -0.000348, 0.001029, -0.002441, 0.000381, 0.001514, 0.000954, 0.001165, -0.001512, 0.001568, -0.002065, 0.003040, 0.002838, 0.002496, 0.005364, -0.002563, 0.002161, 0.001782, 0.001292, 0.000133, -0.001201, 0.000738, 0.003138, -0.002321, 0.000875, -0.006310, 0.003550, 0.004216, 0.000392, -0.001824, -0.005148, -0.000118, 0.002088, 0.000748, 0.001400, -0.001264, -0.001023, 0.002417, 0.002380, 0.000013, -0.004789, 0.000686, 0.002343, 0.001272, 0.003569, -0.003026, 0.000289, -0.001195, 0.006555, 0.002622, -0.003652, -0.002263, -0.003133, -0.000431, 0.001323, -0.002832, 0.000477, 0.000019, 0.000924, 0.003987, -0.004366, -0.001458, -0.002665, 0.003212, 0.001485, 0.001454, 0.000317, 0.001822, 0.001409, 0.004940, 0.000362, -0.001985, -0.000031, -0.001590, -0.002275, -0.001643, -0.002825, -0.000587, 0.000659, -0.001943, 0.001854, -0.000213, -0.000248, -0.002240, -0.000031, 0.002157, -0.001704, 0.000231, 0.000602, 0.000718, 0.002275, 0.004326, -0.001738, 0.002944, -0.001802, -0.002526, -0.001972, -0.001475, 0.001654, 0.000466, -0.002778, 0.002064, -0.001113, 0.000227, 0.001737, -0.001606, 0.000023, -0.001258, 0.000955, -0.003851, -0.000994, 0.001530, 0.000325, 0.002076, 0.002712, -0.001099, 0.000156, 0.002579, 0.000887, -0.000630, 0.001444, -0.002754, -0.000546, -0.003047, 0.000077, -0.004066, -0.000813, 0.000097, -0.003356, -0.001022, -0.002792, -0.003070, 0.001148, -0.000160, 0.003923, -0.000785, 0.000169, 0.000266, 0.000532, 0.001350, -0.001271, -0.001383, 0.002430, 0.001062, -0.002678, 0.000654, 0.000144, 0.004143, -0.002713, -0.000851, -0.000937, 0.000834, 0.000009, 0.000368, -0.001103, 0.001740, -0.001520, -0.004279, 0.000607, 0.002565, 0.001822, 0.000909, -0.004223, -0.003670, -0.001719, -0.000392, -0.002047, 0.000473, -0.003278, -0.000779, -0.000000, -0.002592, -0.001575, -0.002276, 0.002112, -0.002087, 0.000229, -0.001624, -0.000379, 0.001001, 0.000325, 0.000579, -0.002234, -0.001549, -0.002968, 0.001163, -0.002942, -0.001162, -0.000582, -0.001660, 0.000419, -0.000249, -0.001369, -0.001515, 0.001266, -0.000003, -0.000293, -0.000719, 0.001073, -0.000341, -0.000474, 0.001133, -0.002919, -0.000805, -0.000400, -0.000373, -0.001870, 0.002041, -0.003684, -0.001337, 0.000377, -0.002291, -0.000042, 0.001559, -0.000586, -0.002546, 0.000779, -0.002939, 0.000546, -0.001175, -0.000106, -0.001277, 0.000275, -0.001816, -0.001779, 0.001964, -0.001323, 0.001896, -0.003010, -0.001604, -0.003333, -0.002017, -0.000726, -0.001022, -0.002804, -0.000796, -0.001144, 0.000657, -0.001944, -0.002255, 0.004951, -0.002044, 0.001448, -0.002522, -0.000728, 0.001244, 0.000605, 0.001477, -0.001692, 0.001708, 0.002538, -0.003131, -0.000508, 0.002523, 0.003566, 0.005046, -0.000476, -0.000213, -0.000105, 0.001689, -0.001502, -0.002221, 0.000164, -0.000609, -0.000986, -0.000105, -0.001453, -0.002010, 0.001793, 0.001330, 0.003503, 0.002832, 0.002424, -0.001017, -0.003701, 0.001437, 0.001816, 0.001490, 0.002494, 0.000601, 0.000199, -0.001388, -0.001473, -0.000537, -0.000079, 0.004673, -0.000025, 0.004096, 0.001548, 0.000300, 0.003678, -0.000032, 0.001289, 0.004907, 0.002014, -0.000396, -0.001960, 0.000675, 0.002383, -0.000127, 0.000465, -0.001928, 0.000434, 0.001493, -0.001676, -0.003801, 0.003279, 0.002445, 0.001476, 0.002716, 0.002861, 0.000625, 0.003614, -0.002944, -0.001905, -0.001032, 0.002978, -0.000325, 0.000586, 0.000895, 0.000678, 0.003505, -0.001843, -0.003512, -0.000963, 0.003621, 0.002131, -0.000797, 0.000934, 0.001138, 0.000239, -0.000811, 0.000424, 0.000622, 0.001822, 0.001044, -0.001556, 0.003268, -0.000318, 0.000407, -0.000325, 0.001895, 0.000017, -0.000735, 0.000935, -0.002407, -0.001919, 0.002802, 0.000397, -0.003034, -0.001451, -0.002653, -0.001774, 0.002551, -0.001601, 0.003027, -0.001262, -0.000033, 0.000120, -0.001955, -0.002323, -0.001005, -0.001653, -0.000860, -0.000531, 0.000766, -0.001775, 0.000114, 0.000643, 0.001455, 0.000286, 0.000828, 0.001293, -0.000967, 0.000061, 0.000561, -0.000142, -0.001509, 0.000603, 0.000488, 0.000919, 0.000588, 0.001702, -0.002230, -0.001705, 0.000575, -0.000028, -0.003011, -0.001721, 0.000296, -0.000054, -0.000472, 0.000291, 0.001432, 0.001352, 0.000779, 0.000744, -0.002029, 0.000936, -0.002919, 0.000397, 0.000425, -0.000856, -0.000285, -0.001732, -0.001336, -0.000062, 0.000942, -0.001234, -0.001789, -0.001840, -0.000004, 0.000947, 0.000376, 0.000898, 0.000175, -0.001524, -0.000361, -0.000576, -0.000854, -0.000938, -0.000270, 0.000632, -0.000130, -0.001109, 0.002542, 0.001614, 0.000630, 0.001218, -0.001060, -0.002644, -0.000021, -0.001244, 0.000123, -0.001701, -0.001431, -0.002126, 0.000426, -0.001136, -0.000106, -0.001108, -0.000557, 0.000816, 0.000040, -0.000357, -0.000667, 0.000245, 0.000242, -0.001206, -0.000203, -0.000202, -0.000633, -0.000279, -0.000374, -0.001235, -0.001536, -0.004277, 0.000402, -0.000274, 0.001264, -0.000034, -0.000603, 0.000285, -0.000569, -0.002066, 0.000209, -0.001147, -0.000221, -0.001981, -0.001415, -0.000088, -0.000943, 0.001159, -0.000476, 0.000379, -0.001988, -0.001336, -0.000096, -0.000636, 0.002485, -0.000120, -0.000135, -0.001751, 0.000983, -0.001840, -0.001416, -0.001546, -0.002486, 0.000534, -0.000337, -0.002546, -0.000350, -0.000443, -0.000037, -0.001545, -0.001531, 0.000679, -0.001636, -0.001676, -0.000118, 0.000171, -0.001154, -0.002750, -0.001927, -0.001026, 0.000167, -0.002853, 0.000365, -0.001717, -0.000626, -0.002624, -0.001132, 0.001335, -0.001836, 0.002590, -0.001620, 0.000526, -0.000748, 0.000312, -0.001733, -0.002365, -0.001571, 0.000767, -0.001767, 0.000521, -0.002301, -0.001562, 0.001914, -0.000390, 0.001466, 0.000107, -0.000361, 0.001463, 0.001485, 0.004321, -0.000303, 0.001796, 0.000797, 0.000286, 0.002185, -0.000690, -0.000437, -0.001733, -0.000667, 0.002220, 0.001072, -0.001330, 0.004855, -0.000271, 0.002775, -0.000151, 0.001913, 0.001513, -0.001375, 0.004159, 0.004960, 0.001749, -0.001393, 0.000042, 0.001933, -0.001878, 0.001902, 0.002162, 0.000205, -0.001841, -0.000131, 0.001716, 0.003703, -0.000554, 0.001422, 0.002636, 0.000279, 0.002313, -0.000241, 0.002286, -0.001127, 0.000125, 0.001903, 0.000267, -0.000736, -0.002807, 0.000195, 0.001522, 0.002499, 0.000116, -0.001078, 0.000993, 0.003802, 0.002846, 0.002009, 0.001429, 0.000069, -0.000642, 0.000648, -0.000028, -0.000064, -0.000728, -0.000779, -0.000428, -0.000487, 0.001329, 0.000501, 0.002361, 0.001088, -0.000698, 0.000405, 0.002052, -0.001293, -0.001243, 0.004841, -0.000383, -0.001148, -0.000909, -0.000733, -0.000595, -0.001170, -0.001817, -0.000328, -0.001765, 0.000432, -0.000168, 0.003785, -0.000816, -0.001830, 0.002111, 0.000792, -0.001147, -0.000744, -0.001316, -0.001756, -0.000753, -0.000933, -0.000909, -0.001391, -0.001338, -0.001197, 0.001563, -0.000468, -0.001678, -0.000662, -0.001490, 0.000303, 0.000453, 0.000726, -0.001726, 0.001212, -0.000758, -0.001091, -0.001402, 0.000959, 0.000633, 0.000381, -0.001176, 0.000822, -0.001558, -0.001108, -0.000031, 0.000479, 0.000364, -0.000473, -0.000752, -0.001868, -0.000937, -0.000244, -0.000075, -0.000841, -0.000202, 0.000005, -0.001193, 0.000366, -0.001923, -0.001501, 0.000199, 0.001580, -0.000826, -0.000504, 0.000895, 0.001701, -0.001011, -0.001735, -0.000915, -0.000741, 0.000699, 0.001681, 0.000561, 0.000780, -0.000112, -0.000284, 0.000165, -0.002178, -0.000388, -0.001104, -0.000168, 0.000485, -0.000021, 0.000263, 0.000076, -0.000884, -0.000616, 0.000094, 0.000632, -0.002247, -0.000655, -0.000508, 0.000532, -0.000119, -0.000428, -0.000061, -0.000177, 0.001702, 0.000607, -0.000929, 0.000278, -0.001550, 0.000901, 0.000482, 0.000128, -0.001296, -0.000840, 0.000535, -0.001074, -0.001900, -0.001165, -0.000194, -0.000431, 0.000127, 0.000715, -0.000621, 0.001117, 0.000528, 0.000440, 0.000687, 0.000674, 0.000951, -0.000423, 0.000785, -0.000532, -0.000308, 0.000184, -0.000591, 0.001856, -0.001147, 0.000455, -0.000930, -0.001027, 0.000475, 0.001247, -0.001864, -0.000505, 0.001021, 0.000335, -0.002368, -0.001135, 0.000313, -0.000725, -0.000064, 0.000046, -0.000808, -0.000233, -0.001801, 0.001117, -0.000074, -0.000017, 0.001685, -0.001164, -0.000956, -0.001481, -0.001300, -0.000843, -0.001761, -0.001603, -0.001498, -0.000919, -0.000491, -0.001988, 0.000807, -0.000605, -0.000821, -0.000171, -0.000790, -0.000560, -0.000625, 0.001073, -0.001280, -0.000512, -0.001711, -0.000580, -0.001444, -0.000838, -0.000766, -0.000650, -0.000355, -0.001280, -0.001013, -0.001053, -0.001857, -0.000630, 0.000032, 0.000304, -0.000600, -0.000780, -0.000381, -0.000177, -0.001162, -0.002172, -0.002708, -0.001812, 0.000205, 0.001706, 0.001502, -0.000835, 0.002914, 0.001675, 0.001661, -0.001715, 0.001932, -0.001521, -0.001056, -0.000508, -0.000968, 0.000462, -0.001552, 0.000150, -0.001076, 0.000461, 0.002104, -0.000660, -0.001273, -0.000394, 0.002948, 0.001166, 0.003562, 0.001018, -0.000105, 0.000479, 0.001949, 0.001220, 0.002541, 0.000683, -0.001553, 0.000877, 0.000929, 0.001499, 0.000691, -0.000422, 0.001850, 0.001761, 0.003208, 0.000637, -0.000576, 0.000188, 0.000491, -0.000616, 0.001336, -0.000074, -0.000094, 0.000935, 0.001768, 0.000961, 0.001555, 0.001789, -0.001271, 0.000154, 0.000032, 0.001574, -0.000740, -0.002183, 0.001505, 0.000526, 0.000360, -0.000908, -0.001016, 0.000090, 0.001063, 0.001277, -0.000168, -0.001852, -0.000390, 0.000243, 0.001648, 0.002210, 0.000549, -0.000494, -0.000979, 0.001478, 0.000861, 0.000311, -0.001468, -0.000750, 0.002504, 0.000497, -0.000671, 0.000048, 0.000894, -0.000089, 0.000477, 0.000207, -0.000949, -0.000499, -0.000821, 0.000280, 0.001488, 0.000361, 0.002116, -0.000260, -0.001443, 0.000682, -0.000678, 0.000213, -0.000348, 0.001916, 0.000434, 0.000624, -0.001294, -0.000156, -0.000249, -0.001001, -0.000503, -0.000278, 0.000793, -0.001050, 0.001298, 0.000410, -0.000589, -0.001200, -0.000938, 0.000573, 0.001563, 0.000732, -0.001068, -0.000873, -0.000301, 0.000645, -0.000321, -0.000146, -0.000500, 0.000732, -0.000969, -0.001779, 0.000181, 0.000516, -0.000411, -0.001037, 0.000303, 0.000132, 0.000120, -0.000415, -0.001293, -0.000501, -0.000481, -0.000002, -0.000449, -0.000534, -0.000727, -0.000941, 0.000175, 0.000594, 0.002355, -0.000718, 0.000154, 0.000213, -0.001315, 0.000122, -0.000998, -0.000025, -0.000961, 0.000121, 0.000564, 0.000577, -0.000160, -0.001340, -0.000224, -0.000684, 0.000160, 0.000230, -0.000958, -0.000716, 0.000305, 0.000139, -0.002319, 0.000496, 0.000082, -0.000966, -0.000721, -0.000570, -0.001259, 0.000237, -0.000414, -0.000939, 0.000484, 0.000960, -0.001586, 0.000144, -0.000813, -0.000996, -0.000145, -0.000412, -0.000845, -0.001899, 0.000413, -0.001808, -0.000536, -0.000937, 0.000054, 0.000628, 0.000284, 0.000930, -0.001006, -0.000013, -0.000232, -0.000338, -0.001757, -0.000672, -0.000091, -0.000596, -0.000416, -0.000844, 0.001635, 0.000026, 0.000082, -0.000102, -0.000133, 0.000233, -0.000438, -0.001260, -0.000084, -0.000363, 0.000100, -0.001473, 0.000158, -0.001020, 0.000212, -0.000109, 0.000564, -0.000498, 0.001306, -0.000340, 0.000578, -0.000289, -0.000078, 0.000477, 0.002033, -0.000841, -0.000840, -0.000845, -0.000303, -0.001651, -0.000591, -0.000197, -0.000476, -0.000080, -0.000753, -0.000911, -0.000418, -0.000803, -0.000847, -0.000503, -0.000559, -0.000788, -0.000807, 0.000226, 0.000540, -0.000302, 0.000005, -0.000530, -0.000701, 0.000238, -0.001297, -0.000469, -0.000229, 0.000409, -0.000387, -0.000439, -0.000423, -0.000697, -0.001821, 0.000619, -0.002651, -0.000911, -0.001162, -0.000017, 0.000098, 0.000040, -0.002669, -0.000067, -0.000542, -0.000150, -0.000082, 0.001787, -0.001332, -0.000263, 0.001421, 0.000856, -0.000257, 0.001572, -0.001451, 0.000025, -0.000258, -0.000512, -0.001528, 0.001213, 0.000531, 0.000386, 0.001717, 0.001149, -0.000574, -0.000041, 0.000207, 0.001104, 0.001789, 0.001397, 0.000047, 0.000687, 0.000254, 0.001793, -0.000202, 0.000820, -0.000317, -0.000234, 0.000501, -0.000344, 0.000313, 0.000117, 0.001953, 0.001599, 0.003341, -0.000235, 0.000435, 0.000402, 0.000161, 0.000217, 0.002963, 0.000214, -0.000778, 0.001522, -0.000259, 0.000961, -0.000176, 0.000066, 0.000321, 0.000049, 0.000851, -0.001382, 0.000929, 0.000068, -0.000361, 0.000237, 0.002253, -0.001549, 0.000167, 0.000751, 0.000001, 0.000226, 0.001725, 0.001772, -0.000682, 0.001251, -0.000915, 0.000089, 0.000760, 0.001175, 0.000474, -0.000025, 0.000245, -0.000231, 0.000159, 0.000172, -0.000220, 0.000702, 0.000726, -0.000470, -0.000769, -0.000975, 0.001127, 0.001666, -0.000043, -0.000549, -0.001056, 0.000374, -0.000089, 0.000465, 0.000034, 0.000319, 0.000527, -0.001154, -0.000376, 0.000473, 0.000042, -0.000317, 0.000013, 0.000159, -0.001925, 0.000687, -0.000665, 0.000386, 0.000492, 0.000593, -0.000879, 0.001305, -0.000410, -0.001061, -0.000347, -0.000336, -0.000452, -0.001465, -0.001483, -0.002013, -0.000124, -0.000250, -0.000115, -0.000253, 0.001744, 0.000433, -0.000962, 0.000273, 0.000102, -0.000106, -0.001235, -0.000737, -0.001289, 0.000773, -0.000369, -0.000303, -0.000715, 0.001472, -0.000029, -0.000919, -0.000826, -0.000053, -0.000007, -0.000091, 0.000492, -0.000538, 0.000452, -0.000343, 0.000166, 0.000101, 0.000064, -0.000865, -0.001064, -0.000854, -0.000213, -0.000570, 0.000812, -0.000237, 0.000338, -0.000167, -0.001123, -0.000261, 0.000013, 0.000748, -0.000338, 0.000384, 0.000904, -0.000028, -0.000050, 0.000108, 0.000317, -0.000368, -0.001076, -0.000135, -0.001399, 0.000396, -0.000937, -0.000284, 0.000170, 0.000148, -0.000058, -0.000189, -0.000128, -0.000212, -0.000547, -0.000593, -0.000372, 0.000323, -0.000210, -0.000202, 0.000449, -0.000157, -0.000305, -0.000676, 0.000275, -0.000625, -0.000488, -0.000886, -0.000597, -0.000488, -0.000417, -0.000905, -0.001312, -0.000650, -0.000267, 0.000021, 0.000457, 0.000095, -0.000148, 0.000127, 0.000672, 0.000114, -0.000410, 0.000130, -0.001211, 0.000264, -0.000563, -0.000689, 0.000072, -0.000088, -0.000519, 0.000049, -0.000383, -0.000725, 0.000418, -0.000903, -0.000688, -0.000155, 0.000466, 0.000833, 0.000497, 0.000549, 0.000277, -0.000895, 0.000499, -0.000744, -0.000293, -0.000991, 0.000242, -0.000960, -0.000126, 0.000004, -0.000559, -0.000477, -0.000583, -0.000416, -0.000103, -0.000936, 0.000482, -0.000586, 0.000185, -0.000560, -0.001098, -0.000970, 0.000111, -0.000669, -0.000159, -0.000307, -0.001890, 0.000078, -0.000086, -0.000946, -0.000774, -0.000968, -0.000881, -0.000684, -0.000192, -0.000706, 0.000495, -0.001450, -0.000192, 0.000280, -0.000799, -0.000133, 0.000375, -0.000947, 0.000180, 0.000028, 0.000074, -0.000177, 0.000609, -0.000138, -0.000402, -0.000348, 0.000320, -0.000231, 0.000878, 0.000132, 0.000898, 0.000544, 0.000496, 0.000171, 0.000476, -0.000189, 0.002449, 0.000583, 0.000523, -0.000407, 0.000196, 0.000576, 0.000335, -0.000653, 0.001437, 0.000864, 0.000959, 0.000698, 0.000796, 0.000697, 0.001191, -0.000469, 0.000236, 0.001178, 0.000483, 0.000103, 0.001200, -0.000236, 0.001965, 0.001267, -0.000844, 0.000262, 0.000964, 0.000056, 0.001730, -0.000039, -0.000728, 0.001576, 0.000741, -0.000209, -0.000343, -0.000146, -0.000177, 0.000321, -0.001103, 0.000714, 0.001285, -0.001165, -0.000302, -0.000844, -0.000609, 0.000256, -0.000135, 0.000532, 0.000210, 0.000144, -0.000454, 0.000446, 0.000077, 0.000807, -0.000458, 0.000025, -0.000223, 0.000242, 0.000092, -0.000227, -0.000503, 0.000753, -0.000136, 0.000513, 0.000434, -0.000734, 0.000350, -0.000079, -0.000546, -0.000005, -0.000043, 0.000343, -0.000914, -0.000491, 0.000468, 0.000459, 0.000398, 0.000217, 0.000154, 0.000019, -0.000941, 0.000877, -0.000684, 0.000048, 0.000643, 0.000403, 0.000113, 0.000464, -0.000416, -0.000684, -0.000050, 0.000207, 0.000060, -0.000402, -0.000575, -0.000405, -0.000335, -0.000883, 0.000517, -0.000261, 0.000520, 0.000487, -0.000036, -0.000038, 0.000201, 0.000080, -0.000456, 0.000424, 0.000175, 0.000868, -0.000870, -0.000069, 0.000084, 0.000360, -0.000752, 0.000725, -0.000120, -0.000314, 0.000016, -0.000885, 0.000311, -0.000110, -0.000558, -0.000307, -0.000283, -0.000260, -0.000127, -0.000803, 0.000157, 0.000860, -0.000177, 0.000063, -0.000229, -0.000305, -0.000124, -0.000024, -0.000003, 0.000261, -0.000407, 0.000110, -0.000388, -0.000174, 0.000601, -0.000294, -0.000631, -0.000559, -0.000059, -0.000710, -0.000492, -0.000021, 0.000188, -0.000187, -0.000156, 0.000081, 0.000206, 0.000037, -0.000974, -0.000294, 0.000181, -0.000151, -0.000570, -0.000565, 0.000292, 0.000240, -0.000406, -0.000157, -0.000068, 0.000161, -0.000122, -0.000113, 0.000172, -0.000058, 0.000090, 0.000012, -0.000092, -0.000594, -0.000813, -0.000054, -0.000404, 0.000307, 0.000334, -0.000528, -0.000676, -0.000039, 0.000176, -0.000142, -0.000358, 0.000168, 0.000544, -0.000071, 0.000134, -0.000434, -0.000551, 0.000120, -0.000336, -0.000130, -0.000399, -0.000450, -0.000204, -0.000151, -0.000428, 0.000074, -0.000060, -0.000089, -0.000620, 0.000173, 0.000159, -0.000559, -0.000333, -0.000635, -0.000300, -0.000149, -0.000342, -0.000289, 0.000308, -0.000320, 0.000452, 0.000391, 0.000081, -0.000741, -0.000501, -0.000488, -0.000605, -0.000516, -0.000626, -0.000397, -0.000057, -0.000901, 0.000238, -0.000906, -0.000424, -0.000443, -0.001067, -0.000139, -0.000420, -0.000866, -0.001008, -0.000732, 0.000062, 0.000003, -0.000118, -0.000207, -0.000250, -0.000207, -0.000596, -0.000809, -0.001359, -0.000432, 0.000279, -0.000239, -0.000352, -0.000178, -0.001078, -0.000011, -0.000463, -0.000225, -0.000689, -0.000897, -0.000283, -0.001073, -0.000357, -0.000143, -0.000016, -0.000473, -0.000664, -0.000113, 0.000851, 0.000367, -0.000427, 0.000851, 0.000562, 0.000258, -0.000371, -0.000124, 0.000818, -0.000461, 0.000655, 0.000863, 0.000587, 0.001020, -0.000410, 0.000896, -0.000378, 0.000312, 0.000777, -0.000580, 0.000255, 0.000298, 0.001228, 0.001243, -0.000119, 0.001623, 0.000833, 0.000182, 0.001150, -0.000678, 0.000212, 0.000399, -0.000308, 0.001147, 0.000226, 0.001643, 0.000859, -0.000054, 0.000720, 0.000115, 0.000926, -0.000003, -0.000316, 0.000780, 0.000979, 0.000614, -0.000158, 0.000533, -0.000286, 0.000260, -0.000190, -0.000348, -0.000900, 0.000382, 0.000304, 0.000216, 0.000245, 0.000170, 0.000520, 0.000499, 0.000714, 0.000911, 0.000052, 0.000474, 0.000117, 0.000127, 0.000628, 0.000012, -0.000483, 0.000666, -0.000109, 0.000641, 0.000365, 0.000166, -0.000361, -0.000516, 0.000355, 0.000007, 0.000118, 0.000169, -0.000125, -0.000555, 0.000164, 0.000535, 0.000436, 0.000699, 0.000365, -0.000307, -0.000343, 0.000680, -0.000764, 0.000068, -0.000194, 0.000347, 0.000381, 0.000433, 0.000546, 0.000447, -0.000484, -0.000064, -0.000406, -0.000368, -0.000161, -0.000228, 0.000287, -0.000156, -0.000444, 0.000551, -0.000430, -0.000768, -0.000460, 0.000325, 0.000076, -0.000207, 0.000015, -0.000113, -0.000742, 0.000047, 0.000084, -0.000183, 0.000091, -0.000570, -0.000710, -0.000366, -0.000210, -0.000374, -0.000287, -0.000692, -0.000049, -0.000135, -0.000357, 0.000121, 0.000085, 0.000372, -0.000839, -0.000680, -0.000200, -0.000527, -0.000359, -0.000086, -0.000426, 0.000597, 0.000499, -0.000640, 0.000328, -0.000128, 0.000107, -0.000379, -0.001162, 0.000061, -0.000357, -0.000403, -0.000524, 0.000019, -0.000081, -0.000413, 0.000216, -0.000250, 0.000059, -0.000131, 0.000082, -0.000455, -0.000276, -0.000004, -0.000120, 0.000468, -0.000002, -0.000142, -0.000122, -0.000563, -0.000125, -0.000175, -0.000159, -0.000042, -0.000283, 0.000562, -0.000229, 0.000430, -0.000011, -0.000247, -0.000463, -0.000865, 0.000130, -0.000071, -0.000067, -0.000427, -0.000256, 0.000032, -0.000145, -0.000399, 0.000381, 0.000086, -0.000321, -0.000122, -0.000397, -0.000152, -0.000074, 0.000315, 0.000093, 0.000199, -0.000205, -0.000091, -0.000162, 0.000115, -0.000168, -0.000032, -0.000016, -0.000246, 0.000182, 0.000190, -0.000324, -0.000134, 0.000512, -0.000178, -0.000424, -0.000028, -0.000085, -0.000147, 0.000197, -0.000834, 0.000030, -0.000530, -0.000258, -0.000505, 0.000061, -0.000222, -0.000487, -0.000309, -0.000388, 0.000232, 0.000085, -0.000025, 0.000409, 0.000037, 0.000024, -0.000663, -0.000107, -0.000619, -0.000708, -0.000213, -0.000624, -0.000049, 0.000239, -0.000044, 0.000003, -0.000198, 0.000154, -0.000248, -0.000249, -0.000588, -0.001104, -0.000401, -0.000593, 0.000129, 0.000136, -0.000093, -0.000126, -0.000373, -0.000359, -0.000267, -0.000401, -0.000360, -0.000283, -0.000097, -0.000031, -0.000688, 0.000186, -0.000578, 0.000036, -0.000596, -0.000221, -0.000672, -0.001273, -0.000191, -0.000500, 0.000238, -0.000796, -0.000691, 0.000024, 0.000215, 0.000847, 0.000125, 0.001043, 0.000075, 0.000085, 0.000715, 0.000065, 0.000371, -0.000519, -0.000063, 0.000177, 0.000358, 0.000051, -0.000651, 0.000138, -0.000180, 0.000637, -0.000281, -0.000376, 0.000380, 0.000537, 0.000218, 0.000735, 0.000697, -0.000098, 0.000416, 0.000142, 0.000709, 0.000191, 0.000341, 0.000105, 0.000067, 0.000278, 0.001575, 0.000926, 0.000596, 0.000272, 0.000405, 0.000964, 0.000357, 0.000330, 0.000415, -0.000082, 0.000366, -0.000020, 0.000787, -0.000281, -0.000360, 0.000563, 0.000434, 0.000527, -0.000412, 0.000033, 0.000479, -0.000768, 0.000787, 0.000912, 0.000505, 0.000089, 0.000144, 0.000870, -0.000662, 0.000115, 0.000262, 0.000097, 0.000070, 0.000118, 0.000339, -0.000126, -0.000129, 0.000136, 0.000564, 0.000566, -0.000274, 0.000202, -0.000295, -0.000050, 0.000090, 0.000559, 0.000066, -0.000200, -0.000170, -0.000164, -0.000138, -0.000332, -0.000197, -0.000403, -0.000042, 0.000333, 0.000258, -0.000564, -0.000785, -0.000299, -0.000082, -0.000354, -0.000056, 0.000008, 0.000291, 0.000100, -0.000074, -0.000110, -0.000463, 0.000180, 0.000172, 0.000290, -0.000335, -0.000065, -0.000535, -0.000094, -0.000085, 0.000295, -0.000204, -0.000244, -0.000151, -0.000368, 0.000153, -0.000100, 0.000507, -0.000058, -0.000180, 0.000084, -0.000080, -0.000273, -0.000345, 0.000531, 0.000169, 0.000021, -0.000148, 0.000038, -0.000141, 0.000197, -0.000021, 0.000175, 0.000139, -0.000493, 0.000075, -0.000736, -0.000113, -0.000241, -0.000381, -0.000390, -0.000083, 0.000087, -0.000059, -0.000080, -0.000318, -0.000238, -0.000150, 0.000276, 0.000315, -0.000005, -0.000239, 0.000105, -0.000309, 0.000068, -0.000252, 0.000036, -0.000005, -0.000532, -0.000201, -0.000104, 0.000049, 0.000019, 0.000150, 0.000255, -0.000171, -0.000313, -0.000192, 0.000210, -0.000260, 0.000202, -0.000168, -0.000124, -0.000234, -0.000346, -0.000190, 0.000169, 0.000057, -0.000356, 0.000151, -0.000042, 0.000170, -0.000499, 0.000010, -0.000090, -0.000198, -0.000048, -0.000364, -0.000029, -0.000463, -0.000067, -0.000141, -0.000298, -0.000217, -0.000109, -0.000315, -0.000099, 0.000055, -0.000111, 0.000021, -0.000206, -0.000319, -0.000209, -0.000037, -0.000524, -0.000117, -0.000303, 0.000054, -0.000232, -0.000058, -0.000460, -0.000194, -0.000260, -0.000107, -0.000266, 0.000074, -0.000296, -0.000002, 0.000145, -0.000211, -0.000160, 0.000163, 0.000451, -0.000373, -0.000004, -0.000032, 0.000057, 0.000304, -0.000061, 0.000058, -0.000154, -0.000382, -0.000271, 0.000002, -0.000048, -0.000048, -0.000044, -0.000134, -0.000412, -0.000038, -0.000501, -0.000026, -0.000409, 0.000225, -0.000182, 0.000259, -0.000105, -0.000395, -0.000488, -0.000119, 0.000176, -0.000255, -0.000199, -0.000132, -0.000048, -0.000131, -0.000305, -0.000283, 0.000191, -0.000519, -0.000381, -0.000343, 0.000187, -0.000422, -0.000436, 0.000186, -0.000276, -0.000384, -0.000336, -0.000208, -0.000485, -0.000812, -0.000018, -0.000534, 0.000162, -0.000851, 0.000041, -0.000366, -0.000256, -0.000061, 0.000339, 0.000041, 0.000082, 0.000208, -0.000236, -0.000178, 0.000273, 0.000076, 0.000072, 0.000210, 0.000451, 0.000042, -0.000307, 0.000283, 0.000080, 0.000495, -0.000437, 0.000411, 0.000129, 0.000045, -0.000617, 0.000309, 0.000511, 0.000079, 0.000888, 0.000309, 0.000247, -0.000108, 0.000374, -0.000236, 0.000390, 0.000322, 0.000470, 0.000844, 0.000013, 0.000855, 0.000259, 0.000859, -0.000019, 0.000238, 0.000373, 0.000269, -0.000080, 0.000027, 0.000198, 0.000241, 0.000517, -0.000299, 0.000523, -0.000083, 0.000013, -0.000028, 0.000538, 0.000265, -0.000001, 0.000437, 0.000292, 0.000248, 0.000121, 0.000462, 0.000321, 0.000212, -0.000131, 0.000020, 0.000033, 0.000092, -0.000118, 0.000306, 0.000187, -0.000116, 0.000094, 0.000264, 0.000194, 0.000133, 0.000141, -0.000201, 0.000088, -0.000363, -0.000073, -0.000137, -0.000173, -0.000042, 0.000031, -0.000154, 0.000023, -0.000112, 0.000077, 0.000255, 0.000368, 0.000104, -0.000051, -0.000022, -0.000133, -0.000118, 0.000350, 0.000387, -0.000114, -0.000131, 0.000094, -0.000103, 0.000004, -0.000129, -0.000064, 0.000095, 0.000151, -0.000128, -0.000020, -0.000037, -0.000096, 0.000078, 0.000062, -0.000170, -0.000201, 0.000136, -0.000162, -0.000129, 0.000168, 0.000594, 0.000205, -0.000047, -0.000131, 0.000319, -0.000077, 0.000008, 0.000165, -0.000082, -0.000439, 0.000025, -0.000120, -0.000347, -0.000388, -0.000250, -0.000240, -0.000340, 0.000103, -0.000125, 0.000111, -0.000155, 0.000048, -0.000506, -0.000131, -0.000297, -0.000298, -0.000021, -0.000339, -0.000062, -0.000139, 0.000206, -0.000329, 0.000098, -0.000035, -0.000117, 0.000057, -0.000224, -0.000132, -0.000225, 0.000252, -0.000037, -0.000073, -0.000286, -0.000233, -0.000433, -0.000130, -0.000066, -0.000136, 0.000059, -0.000590, 0.000041, -0.000148, -0.000107, -0.000215, 0.000085, 0.000276, 0.000110, -0.000087, -0.000248, -0.000331, -0.000306, -0.000041, -0.000134, -0.000138, 0.000043, 0.000215, -0.000056, -0.000221, 0.000099, 0.000011, -0.000227, -0.000264, -0.000140, -0.000191, 0.000108, -0.000182, -0.000000, -0.000001, -0.000397, -0.000206, -0.000230, 0.000008, -0.000291, -0.000124, -0.000127, -0.000219, 0.000055, 0.000182, -0.000166, -0.000049, 0.000210, -0.000125, -0.000007, 0.000044, 0.000140, -0.000168, -0.000138, -0.000120, -0.000405, -0.000150, -0.000015, -0.000082, -0.000174, 0.000038, -0.000152, -0.000209, -0.000107, -0.000130, -0.000454, -0.000084, 0.000398, 0.000116, -0.000072, 0.000122, 0.000042, -0.000051, 0.000092, -0.000279, -0.000021, -0.000289, -0.000398, -0.000296, -0.000035, -0.000175, -0.000077, -0.000387, -0.000216, -0.000330, -0.000223, -0.000206, -0.000480, -0.000223, -0.000063, -0.000067, -0.000204, -0.000174, 0.000244, -0.000529, -0.000007, -0.000144, -0.000045, -0.000335, -0.000357, -0.000777, -0.000006, -0.000484, -0.000224, -0.000383, -0.000082, -0.000360, -0.000209, -0.000299, -0.000537, -0.000440, -0.000090, -0.000219, -0.000259, -0.000197, 0.000133, -0.000019, -0.000367, 0.000077, 0.000643, -0.000194, 0.000328, 0.000225, 0.000332, 0.000187, 0.000177, 0.000036, 0.000010, -0.000200, 0.000361, 0.000405, -0.000139, 0.000118, 0.000450, 0.000227, 0.000079, 0.000527, 0.000274, 0.000192, 0.000114, 0.000144, 0.000531, 0.000765, -0.000040, 0.000621, 0.000284, 0.000389, 0.000019, 0.000541, -0.000119, 0.000613, 0.000334, 0.001127, 0.000264, 0.000530, 0.000131, 0.000494, -0.000266, 0.000707, 0.000290, -0.000298, -0.000425, 0.000797, 0.000017, 0.000336, 0.000096, 0.000044, -0.000163, 0.000369, -0.000284, 0.000399, 0.000109, 0.000056, -0.000091, 0.000176, 0.000172, 0.000199, -0.000074, 0.000127, 0.000160, 0.000311, 0.000181, -0.000385, -0.000385, 0.000313, 0.000208, 0.000059, 0.000298, 0.000110, -0.000326, 0.000200, -0.000114, 0.000119, -0.000132, -0.000343, -0.000179, 0.000072, -0.000216, -0.000035, -0.000051, -0.000010, 0.000014, 0.000228, -0.000077, -0.000185, -0.000183, -0.000150, -0.000103, 0.000204, 0.000229, 0.000109, 0.000010, -0.000088, -0.000087, 0.000011, -0.000010, -0.000408, -0.000268, 0.000323, -0.000372, -0.000463, -0.000073, 0.000042, -0.000285, 0.000433, 0.000018, -0.000160, -0.000123, 0.000005, -0.000194, 0.000152, -0.000076, 0.000032, 0.000005, 0.000045, 0.000004, -0.000033, -0.000082, 0.000000, -0.000026, -0.000225, -0.000098, -0.000238, -0.000100, 0.000079, 0.000292, 0.000100, -0.000053, 0.000011, -0.000161, -0.000261, 0.000043, -0.000027, 0.000067, -0.000157, 0.000038, -0.000070, -0.000015, 0.000059, -0.000016, -0.000080, -0.000070, -0.000169, -0.000092, -0.000211, -0.000241, -0.000075, 0.000189, -0.000064, -0.000171, 0.000026, -0.000327, 0.000014, 0.000182, -0.000092, -0.000098, -0.000014, -0.000145, 0.000116, -0.000125, -0.000002, 0.000002, -0.000027, -0.000060, -0.000264, -0.000091, -0.000185, -0.000067, -0.000107, -0.000087, 0.000160, 0.000021, -0.000097, -0.000088, -0.000072, 0.000011, -0.000242, -0.000099, -0.000107, -0.000082, -0.000020, -0.000015, 0.000037, -0.000008, -0.000344, -0.000066, -0.000207, -0.000219, -0.000149, 0.000113, -0.000302, 0.000026, -0.000110, -0.000142, 0.000099, 0.000246, -0.000273, 0.000183, -0.000136, -0.000143, -0.000079, -0.000205, -0.000010, 0.000070, 0.000110, -0.000015, -0.000050, -0.000091, -0.000025, -0.000047, -0.000048, -0.000321, -0.000020, 0.000005, 0.000005, -0.000164, 0.000274, 0.000004, -0.000160, -0.000088, -0.000210, -0.000163, -0.000231, -0.000226, 0.000088, -0.000005, -0.000036, 0.000143, 0.000128, -0.000048, 0.000044, -0.000148, -0.000152, -0.000025, -0.000172, -0.000097, -0.000013, -0.000513, -0.000186, -0.000183, -0.000088, 0.000047, -0.000114, -0.000259, -0.000411, -0.000125, -0.000378, -0.000387, -0.000030, -0.000021, -0.000285, 0.000016, -0.000170, -0.000377, -0.000073, -0.000019, -0.000299, 0.000192, -0.000115, -0.000061, 0.000068, -0.000094, -0.000077, -0.000348, -0.000489, -0.000151, -0.000183, -0.000157, -0.000356, -0.000194, -0.000170, -0.000256, -0.000217, -0.000063, -0.000163, -0.000189, -0.000076, -0.000030, -0.000035, 0.000386, -0.000034, 0.000320, 0.000321, 0.000015, -0.000076, 0.000004, 0.000239, 0.000029, 0.000240, 0.000169, -0.000181, -0.000086, 0.000265, -0.000080, 0.000054, 0.000241, -0.000030, 0.000004, 0.000208, -0.000342, -0.000005, 0.000101, 0.000204, 0.000288, 0.000515, 0.000147, 0.000507, 0.000122, 0.000277, 0.000005, 0.000529, 0.000400, 0.000219, 0.000125, 0.000203, 0.000061, 0.000148, -0.000014, 0.000297, 0.000147, 0.000253, -0.000087, 0.000151, -0.000178, 0.000184, 0.000142, 0.000307, 0.000162, 0.000159, 0.000075, 0.000312, -0.000011, 0.000271, 0.000167, 0.000091, 0.000010, 0.000136, 0.000212, 0.000265, -0.000021, 0.000050, 0.000176, 0.000182, 0.000096, 0.000020, -0.000263, 0.000261, 0.000311, 0.000081, 0.000017, 0.000015, 0.000152, -0.000162, -0.000102, 0.000028, 0.000026, 0.000107, 0.000003, 0.000148, 0.000208, -0.000041, -0.000067, 0.000122, 0.000121, 0.000049, 0.000182, -0.000198, -0.000074, 0.000011, 0.000063, 0.000023, -0.000193, 0.000031, 0.000168, -0.000198, -0.000118, -0.000217, -0.000008, 0.000122, -0.000082, 0.000015, 0.000082, -0.000147, -0.000085, 0.000068, -0.000069, 0.000062, -0.000048, -0.000199, -0.000018, -0.000144, 0.000187, -0.000149, -0.000025, -0.000028, -0.000170, -0.000169, 0.000080, -0.000087, -0.000123, 0.000014, -0.000143, -0.000037, 0.000045, 0.000070, -0.000014, -0.000166, 0.000111, -0.000084, -0.000021, -0.000041, -0.000105, 0.000184, -0.000026, -0.000223, -0.000046, -0.000074, -0.000069, -0.000088, -0.000113, -0.000215, -0.000211, -0.000211, 0.000109, -0.000075, -0.000017, -0.000004, -0.000218, -0.000052, 0.000090, -0.000131, -0.000082, 0.000043, 0.000086, -0.000092, -0.000108, -0.000217, -0.000153, -0.000021, 0.000056, -0.000171, -0.000019, -0.000095, -0.000110, -0.000093, -0.000017, -0.000084, 0.000047, -0.000161, 0.000052, -0.000128, -0.000101, -0.000069, -0.000117, -0.000083, -0.000004, 0.000010, -0.000179, 0.000035, -0.000012, -0.000012, 0.000109, -0.000025, -0.000088, -0.000048, -0.000030, -0.000160, -0.000095, -0.000160, 0.000071, 0.000145, -0.000004, -0.000141, -0.000076, -0.000150, -0.000123, 0.000027, -0.000010, -0.000084, -0.000117, -0.000200, -0.000109, 0.000003, 0.000036, -0.000010, -0.000085, -0.000062, -0.000103, -0.000066, -0.000078, 0.000147, 0.000064, -0.000083, -0.000037, -0.000092, -0.000088, -0.000069, -0.000080, -0.000027, -0.000094, -0.000112, -0.000003, -0.000079, 0.000075, 0.000057, -0.000050, -0.000072, -0.000008, -0.000018, -0.000086, -0.000058, -0.000177, -0.000012, -0.000062, -0.000027, 0.000016, -0.000034, -0.000303, -0.000274, -0.000282, -0.000022, -0.000050, -0.000235, -0.000076, -0.000019, -0.000196, -0.000356, -0.000108, -0.000167, -0.000057, -0.000253, -0.000127, -0.000259, -0.000131, 0.000098, -0.000123, -0.000149, -0.000118, -0.000193, -0.000105, -0.000016, -0.000126, -0.000153, -0.000261, -0.000242, -0.000121, -0.000139, -0.000340, -0.000366, -0.000116, -0.000102, -0.000300, -0.000182, 0.000087, 0.000016, -0.000145, -0.000055, -0.000170, 0.000057, 0.000320, 0.000020, 0.000262, 0.000254, 0.000022, -0.000020, 0.000128, 0.000019, 0.000177, 0.000262, -0.000091, 0.000145, 0.000040, -0.000036, -0.000103, 0.000102, 0.000067, 0.000022, -0.000065, 0.000092, 0.000103, -0.000131, 0.000297, 0.000129, 0.000256, 0.000438, 0.000241, 0.000298, 0.000382, 0.000267, 0.000177, 0.000345, 0.000053, 0.000104, 0.000303, 0.000077, -0.000097, 0.000296, 0.000329, 0.000014, 0.000260, -0.000140, 0.000228, 0.000080, -0.000009, 0.000123, 0.000023, 0.000391, 0.000240, 0.000363, 0.000279, 0.000284, 0.000068, 0.000128, 0.000186, 0.000062, 0.000150, 0.000158, -0.000050, 0.000170, 0.000262, -0.000151, 0.000107, -0.000093, 0.000039, 0.000140, -0.000172, 0.000206, 0.000128, -0.000088, -0.000148, -0.000037, 0.000140, 0.000025, 0.000006, -0.000005, 0.000056, -0.000136, 0.000060, 0.000011, 0.000039, -0.000016, 0.000107, -0.000135, 0.000047, 0.000050, -0.000076, 0.000099, -0.000191, 0.000118, 0.000087, -0.000242, -0.000042, -0.000002, -0.000103, 0.000017, -0.000131, -0.000028, -0.000075, -0.000176, 0.000163, 0.000044, 0.000149, -0.000059, -0.000030, 0.000044, -0.000100, -0.000090, 0.000064, -0.000030, -0.000212, -0.000006, -0.000129, -0.000220, 0.000054, 0.000010, -0.000149, -0.000023, -0.000030, -0.000006, -0.000122, -0.000046, 0.000086, 0.000044, 0.000089, 0.000159, -0.000052, -0.000039, -0.000139, -0.000066, -0.000052, -0.000198, -0.000138, -0.000070, -0.000165, 0.000006, -0.000126, -0.000106, -0.000097, 0.000042, -0.000114, -0.000094, 0.000011, 0.000016, -0.000076, -0.000145, 0.000071, 0.000092, 0.000015, -0.000048, 0.000098, 0.000043, -0.000139, -0.000099, -0.000144, -0.000150, -0.000076, 0.000022, -0.000142, 0.000021, -0.000075, -0.000209, -0.000128, -0.000071, 0.000081, -0.000006, -0.000066, -0.000120, -0.000083, -0.000178, -0.000022, -0.000063, 0.000114, 0.000055, 0.000012, -0.000011, -0.000125, -0.000120, -0.000072, 0.000047, 0.000026, 0.000067, -0.000079, -0.000160, -0.000102, -0.000041, -0.000045, -0.000126, -0.000073, -0.000105, -0.000077, -0.000130, -0.000051, -0.000027, 0.000036, -0.000003, 0.000023, -0.000025, -0.000085, -0.000000, -0.000074, -0.000036, 0.000045, 0.000077, -0.000024, -0.000109, -0.000163, 0.000033, -0.000191, -0.000040, -0.000042, -0.000051, -0.000117, 0.000012, -0.000015, -0.000117, -0.000049, -0.000131, -0.000112, -0.000080, 0.000064, -0.000058, -0.000123, 0.000076, -0.000089, 0.000015, 0.000111, -0.000020, 0.000157, -0.000006, -0.000099, -0.000046, -0.000073, -0.000107, -0.000012, 0.000102, -0.000016, -0.000148, -0.000239, -0.000214, -0.000172, -0.000099, -0.000060, -0.000060, -0.000016, 0.000010, -0.000150, -0.000018, -0.000070, -0.000077, 0.000004, -0.000071, -0.000175, -0.000047, -0.000122, -0.000119, 0.000026, -0.000085, -0.000057, -0.000124, -0.000218, -0.000186, -0.000210, -0.000218, -0.000078, -0.000122, -0.000128, 0.000015, -0.000197, -0.000059, -0.000145, -0.000137, -0.000025, -0.000000, -0.000160, -0.000056, -0.000101, -0.000107, -0.000125, 0.000121, 0.000314, 0.000136, 0.000192, 0.000061, -0.000001, 0.000001, -0.000058, 0.000079, 0.000356, 0.000009, 0.000068, 0.000258, -0.000037, 0.000013, 0.000195, -0.000033, 0.000166, -0.000013, -0.000045, 0.000009, -0.000016, -0.000015, 0.000128, 0.000279, 0.000405, 0.000204, 0.000105, 0.000046, 0.000134, 0.000076, 0.000257, 0.000196, 0.000150, 0.000032, 0.000052, 0.000143, 0.000230, 0.000060, -0.000013, 0.000049, 0.000191, 0.000079, -0.000051, 0.000002, -0.000087, 0.000048, 0.000154, 0.000196, 0.000099, 0.000067, 0.000019, 0.000176, 0.000053, 0.000017, 0.000142, 0.000073, -0.000037, 0.000057, 0.000092, 0.000119, -0.000056, -0.000034, 0.000034, 0.000040, 0.000061, -0.000085, -0.000086, -0.000103, 0.000126, 0.000142, 0.000118, -0.000074, -0.000041, 0.000185, -0.000013, 0.000018, -0.000073, -0.000049, 0.000196, 0.000112, 0.000046, 0.000111, 0.000057, 0.000009, -0.000045, 0.000041, -0.000041, 0.000018, -0.000131, 0.000042, -0.000008, 0.000022, 0.000020, -0.000078, 0.000013, 0.000019, 0.000075, 0.000031, -0.000177, -0.000093, -0.000025, 0.000034, 0.000033, -0.000086, 0.000054, -0.000026, -0.000032, 0.000065, 0.000037, 0.000018, 0.000086, -0.000006, -0.000033, 0.000033, -0.000061, -0.000065, 0.000098, 0.000132, 0.000118, 0.000024, -0.000185, -0.000177, -0.000116, -0.000083, -0.000013, -0.000079, -0.000111, 0.000101, -0.000009, -0.000159, -0.000151, -0.000097, -0.000014, -0.000022, 0.000009, 0.000035, -0.000019, -0.000137, -0.000062, 0.000055, 0.000097, -0.000043, -0.000004, -0.000056, -0.000081, -0.000043, -0.000042, -0.000102, -0.000114, 0.000018, -0.000011, -0.000159, -0.000109, -0.000103, 0.000023, 0.000133, 0.000024, 0.000039, -0.000083, -0.000233, -0.000049, -0.000048, -0.000003, 0.000074, 0.000049, -0.000048, -0.000052, -0.000032, -0.000204, -0.000023, 0.000034, -0.000075, -0.000090, -0.000077, -0.000125, -0.000054, -0.000053, -0.000004, 0.000023, -0.000145, -0.000091, -0.000039, -0.000053, -0.000024, 0.000124, 0.000008, -0.000064, 0.000012, -0.000005, -0.000108, -0.000054, 0.000018, 0.000018, 0.000034, -0.000097, -0.000077, -0.000100, -0.000067, -0.000036, 0.000026, -0.000033, 0.000029, -0.000010, -0.000062, -0.000080, -0.000037, -0.000064, -0.000041, -0.000068, -0.000003, -0.000001, -0.000089, -0.000041, -0.000006, -0.000027, 0.000031, -0.000044, -0.000015, -0.000115, -0.000022, 0.000001, 0.000052, 0.000090, 0.000003, 0.000032, -0.000164, -0.000105, -0.000060, -0.000097, 0.000017, 0.000014, -0.000057, 0.000035, -0.000098, -0.000114, -0.000082, 0.000025, -0.000095, -0.000201, -0.000073, -0.000091, -0.000061, -0.000055, -0.000056, -0.000005, -0.000223, -0.000141, -0.000087, -0.000151, -0.000072, 0.000023, -0.000153, -0.000138, -0.000050, -0.000012, -0.000093, -0.000090, 0.000017, -0.000052, -0.000105, -0.000190, -0.000215, -0.000124, -0.000203, -0.000087, -0.000142, -0.000013, -0.000088, -0.000242, -0.000079, -0.000080, -0.000149, -0.000129, -0.000124, -0.000101, -0.000076, -0.000192, 0.000049, -0.000126, 0.000127, 0.000134, 0.000084, 0.000039, -0.000011, 0.000004, -0.000002, -0.000034, 0.000266, 0.000253, 0.000070, 0.000041, -0.000025, 0.000072, 0.000180, -0.000011, 0.000160, 0.000028, 0.000156, -0.000050, -0.000019, 0.000190, 0.000063, 0.000386, 0.000263, 0.000167, 0.000233, 0.000094, 0.000144, -0.000021, 0.000142, 0.000347, -0.000035, -0.000006, 0.000221, -0.000026, 0.000201, 0.000005, 0.000114, 0.000165, 0.000011, 0.000177, -0.000035, 0.000101, 0.000102, 0.000189, 0.000215, 0.000087, 0.000107, 0.000166, 0.000054, 0.000023, -0.000020, 0.000228, 0.000135, -0.000098, 0.000108, 0.000012, 0.000036, 0.000007, 0.000073, 0.000277, -0.000027, 0.000084, -0.000064, 0.000070, 0.000031, 0.000072, 0.000061, -0.000064, -0.000028, 0.000036, -0.000050, 0.000019, -0.000000, 0.000117, 0.000119, -0.000015, -0.000053, 0.000029, -0.000105, -0.000006, -0.000064, 0.000144, -0.000032, 0.000010, -0.000042, -0.000009, 0.000026, -0.000009, 0.000014, 0.000002, -0.000070, -0.000000, -0.000094, -0.000085, -0.000058, 0.000033, 0.000045, -0.000055, 0.000024, 0.000004, -0.000197, -0.000047, -0.000054, 0.000038, 0.000041, -0.000087, -0.000078, -0.000070, -0.000062, 0.000091, 0.000114, 0.000039, -0.000046, -0.000078, -0.000098, -0.000033, -0.000110, -0.000012, -0.000106, -0.000063, 0.000025, -0.000083, -0.000092, -0.000123, -0.000063, 0.000070, -0.000016, -0.000051, -0.000044, 0.000008, -0.000012, 0.000095, 0.000071, 0.000095, -0.000024, -0.000081, -0.000052, -0.000088, -0.000094, -0.000041, -0.000105, 0.000016, 0.000081, -0.000106, -0.000026, -0.000030, -0.000010, 0.000043, -0.000024, -0.000060, -0.000106, -0.000021, 0.000046, 0.000131, -0.000004, 0.000085, -0.000017, -0.000052, -0.000058, 0.000008, 0.000009, -0.000028, -0.000050, -0.000060, -0.000000, -0.000067, -0.000008, 0.000046, -0.000047, -0.000094, -0.000057, -0.000145, -0.000093, 0.000001, 0.000019, 0.000014, -0.000088, -0.000040, -0.000100, -0.000106, -0.000062, -0.000024, -0.000027, -0.000063, -0.000042, -0.000115, 0.000000, -0.000042, 0.000028, 0.000035, -0.000046, -0.000078, -0.000075, -0.000076, -0.000054, -0.000003, -0.000015, -0.000066, -0.000098, -0.000021, -0.000080, 0.000030, -0.000055, 0.000037, -0.000075, -0.000020, -0.000061, -0.000053, -0.000044, 0.000068, 0.000057, -0.000056, -0.000013, -0.000119, -0.000017, -0.000044, 0.000002, 0.000031, -0.000028, -0.000046, 0.000040, -0.000075, -0.000019, -0.000018, -0.000011, 0.000005, -0.000020, -0.000028, -0.000110, -0.000035, -0.000037, 0.000056, 0.000006, 0.000001, -0.000057, -0.000012, -0.000043, -0.000146, -0.000043, -0.000082, -0.000036, -0.000029, -0.000039, -0.000129, -0.000168, -0.000003, -0.000065, -0.000133, 0.000011, -0.000118, -0.000069, -0.000039, -0.000005, -0.000018, -0.000126, -0.000025, -0.000087, -0.000066, -0.000101, -0.000094, -0.000044, -0.000118, -0.000047, -0.000030, -0.000075, -0.000089, -0.000133, -0.000037, -0.000055, -0.000100, -0.000029, -0.000113, -0.000078, -0.000061, -0.000064, -0.000016, -0.000026, 0.000014, 0.000060, 0.000082, 0.000108, 0.000100, -0.000042, 0.000018, 0.000002, 0.000077, 0.000182, -0.000051, 0.000011, 0.000122, -0.000034, 0.000109, 0.000007, 0.000045, 0.000049, 0.000009, 0.000090, 0.000056, 0.000017, 0.000034, 0.000153, 0.000213, 0.000149, 0.000123, 0.000078, 0.000070, 0.000027, 0.000151, 0.000189, -0.000036, 0.000107, 0.000190, 0.000083, 0.000082, 0.000107, 0.000113, 0.000050, 0.000064, 0.000095, -0.000005, 0.000113, 0.000091, 0.000129, 0.000043, 0.000129, 0.000077, -0.000003, 0.000035, 0.000057, 0.000110, 0.000057, -0.000113, 0.000003, 0.000112, -0.000030, 0.000055, 0.000028, 0.000034, -0.000029, 0.000036, 0.000103, -0.000010, 0.000028, -0.000025, 0.000030, 0.000059, 0.000087, 0.000047, -0.000046, 0.000130, 0.000100, 0.000047, -0.000020, -0.000104, 0.000032, 0.000024, 0.000011, 0.000089, -0.000013, -0.000080, -0.000021, 0.000017, 0.000028, 0.000024, -0.000039, -0.000059, -0.000067, 0.000026, -0.000027, -0.000067, 0.000041, 0.000067, 0.000031, -0.000000, -0.000084, -0.000010, -0.000048, -0.000043, 0.000046, 0.000022, -0.000059, 0.000034, -0.000044, 0.000008, 0.000006, 0.000014, 0.000019, -0.000052, -0.000016, -0.000061, -0.000035, -0.000038, 0.000007, -0.000026, -0.000011, -0.000040, -0.000049, -0.000026, -0.000020, 0.000025, -0.000007, -0.000023, -0.000049, -0.000033, -0.000020, -0.000026, 0.000067, 0.000012, -0.000086, -0.000063, -0.000030, 0.000036, -0.000056, 0.000021, -0.000082, -0.000007, 0.000012, -0.000094, -0.000004, -0.000049, -0.000034, -0.000018, -0.000049, -0.000003, -0.000001, -0.000001, -0.000033, -0.000013, -0.000033, -0.000064, -0.000101, 0.000006, 0.000024, -0.000049, -0.000049, -0.000109, -0.000021, -0.000052, -0.000077, -0.000063, -0.000052, -0.000025, -0.000021, -0.000076, 0.000000, -0.000020, -0.000004, -0.000017, 0.000050, 0.000009, -0.000005, -0.000040, -0.000051, 0.000024, -0.000055, -0.000020, -0.000058, 0.000008, 0.000019, -0.000043, 0.000015, -0.000010, -0.000085, 0.000007, -0.000042, -0.000019, 0.000016, -0.000020, -0.000031, -0.000035, -0.000032, -0.000018, -0.000035, -0.000023, -0.000022, -0.000037, -0.000039, -0.000016, -0.000066, 0.000015, 0.000025, -0.000029, -0.000016, 0.000001, -0.000019, -0.000029, -0.000016, 0.000044, 0.000036, 0.000029, 0.000016, -0.000029, 0.000018, 0.000029, 0.000012, -0.000016, 0.000001, -0.000019, -0.000033, -0.000032, 0.000009, -0.000011, -0.000023, -0.000035, -0.000045, -0.000045, -0.000036, -0.000012, -0.000012, 0.000005, -0.000003, -0.000007, -0.000095, 0.000027, -0.000048, -0.000036, -0.000092, -0.000068, -0.000074, -0.000121, -0.000067, -0.000068, -0.000036, -0.000149, -0.000061, -0.000032, -0.000051, -0.000016, -0.000079, -0.000079, -0.000021, -0.000050, -0.000039, -0.000086, -0.000013, -0.000082, -0.000076, -0.000074, -0.000090, -0.000165, -0.000104, -0.000083, -0.000010, -0.000079, -0.000056, -0.000108, -0.000098, -0.000053, -0.000073, -0.000062, -0.000016, -0.000128, -0.000035, -0.000075, -0.000002, -0.000108, 0.000033, -0.000103, 0.000073, 0.000025, 0.000019, 0.000061, 0.000046, 0.000056, 0.000002, 0.000138, 0.000073, -0.000019, 0.000137, -0.000081, 0.000122, 0.000020, 0.000053, 0.000000, 0.000046, -0.000008, 0.000009, 0.000091, 0.000034, 0.000042, 0.000079, 0.000212, 0.000069, 0.000188, 0.000023, 0.000023, 0.000131, 0.000025, 0.000224, 0.000091, 0.000152, 0.000033, 0.000057, 0.000145, 0.000024, 0.000120, 0.000038, 0.000092, -0.000026, 0.000095, 0.000040, 0.000157, 0.000083, 0.000060, 0.000062, 0.000061, 0.000105, -0.000008, 0.000100, 0.000015, 0.000040, 0.000091, -0.000038, 0.000100, -0.000066, 0.000068, -0.000010, 0.000043, -0.000075, -0.000009, 0.000021, 0.000114, 0.000013, -0.000003, 0.000049, 0.000018, 0.000021, 0.000013, 0.000062, 0.000044, -0.000048, 0.000037, -0.000037, 0.000043, -0.000014, 0.000055, -0.000011, -0.000018, -0.000037, 0.000070, -0.000016, 0.000033, -0.000054, -0.000032, 0.000023, 0.000009, 0.000011, -0.000014, 0.000052, -0.000030, -0.000042, 0.000019, -0.000034, 0.000045, -0.000030, 0.000050, -0.000006, -0.000022, -0.000009, 0.000073, 0.000012, 0.000015, -0.000007, -0.000007, -0.000006, -0.000049, -0.000043, -0.000065, 0.000039, -0.000090, 0.000012, -0.000008, -0.000021, 0.000016, 0.000010, 0.000001, -0.000024, -0.000044, -0.000025, -0.000030, 0.000058, 0.000043, -0.000019, -0.000020, -0.000056, -0.000029, -0.000050, -0.000013, -0.000015, -0.000075, -0.000007, 0.000011, -0.000021, -0.000029, -0.000024, -0.000033, -0.000031, -0.000005, -0.000024, -0.000053, -0.000008, -0.000058, -0.000009, -0.000045, 0.000027, -0.000024, -0.000034, -0.000045, -0.000020, -0.000026, -0.000051, -0.000013, -0.000061, -0.000005, -0.000011, -0.000079, -0.000058, -0.000039, -0.000055, -0.000002, 0.000012, -0.000034, -0.000006, -0.000032, -0.000023, -0.000022, 0.000046, -0.000008, -0.000029, -0.000026, 0.000002, -0.000011, 0.000026, -0.000019, -0.000050, -0.000032, -0.000039, 0.000003, -0.000030, -0.000053, -0.000054, -0.000025, -0.000018, -0.000010, -0.000003, 0.000001, -0.000007, -0.000015, -0.000039, -0.000018, 0.000028, 0.000003, -0.000036, -0.000017, -0.000003, -0.000033, -0.000006, -0.000039, -0.000001, -0.000042, -0.000049, -0.000038, -0.000045, -0.000044, -0.000005, 0.000005, -0.000049, -0.000033, -0.000029, -0.000041, -0.000019, 0.000017, -0.000032, -0.000030, -0.000060, -0.000033, -0.000051, 0.000002, 0.000017, -0.000012, -0.000007, -0.000056, 0.000003, -0.000053, -0.000035, 0.000000, -0.000022, 0.000006, -0.000016, -0.000022, -0.000011, 0.000003, -0.000011, -0.000031, 0.000010, -0.000012, -0.000089, -0.000048, -0.000034, -0.000027, 0.000000, -0.000048, -0.000055, -0.000105, -0.000022, -0.000063, -0.000040, -0.000023, -0.000070, 0.000024, -0.000054, -0.000027, -0.000039, -0.000033, -0.000030, -0.000039, -0.000037, -0.000036, -0.000087, -0.000047, -0.000082, -0.000038, -0.000041, -0.000034, -0.000008, -0.000140, -0.000066, -0.000034, -0.000014, -0.000042, -0.000076, -0.000003, -0.000044, -0.000038, -0.000063, -0.000063, -0.000037, -0.000023, 0.000062, 0.000037, 0.000071, 0.000037, 0.000038, 0.000068, 0.000076, 0.000110, 0.000019, 0.000092, -0.000044, 0.000014, 0.000106, 0.000042, 0.000011, 0.000030, 0.000016, 0.000016, 0.000047, -0.000009, 0.000077, 0.000014, 0.000105, 0.000092, 0.000130, 0.000072, 0.000100, 0.000060, -0.000020, 0.000203, 0.000073, 0.000055, 0.000073, 0.000052, 0.000104, 0.000084, 0.000004, 0.000011, 0.000058, 0.000067, 0.000051, 0.000031, 0.000074, 0.000053, 0.000077, 0.000064, 0.000093, -0.000001, 0.000045, 0.000052, -0.000048, 0.000020, 0.000056, 0.000006, -0.000027, -0.000020, 0.000042, 0.000011, -0.000019, -0.000041, 0.000044, 0.000087, 0.000023, 0.000016, 0.000025, 0.000046, -0.000011, 0.000051, 0.000022, -0.000042, -0.000011, 0.000010, 0.000048, -0.000050, 0.000057, -0.000016, -0.000034, -0.000018, 0.000058, 0.000045, -0.000001, -0.000051, -0.000022, 0.000052, -0.000002, -0.000004, 0.000007, 0.000018, -0.000010, 0.000012, -0.000027, 0.000006, -0.000012, -0.000001, 0.000028, -0.000025, 0.000042, 0.000056, -0.000016, 0.000003, 0.000014, 0.000005, -0.000007, -0.000042, -0.000035, -0.000000, 0.000001, -0.000039, -0.000016, -0.000020, 0.000001, -0.000008, -0.000006, -0.000063, -0.000021, -0.000035, 0.000012, -0.000009, 0.000040, 0.000016, -0.000070, -0.000031, -0.000042, -0.000014, -0.000026, -0.000052, -0.000054, 0.000031, -0.000041, -0.000038, -0.000057, -0.000009, 0.000010, 0.000027, 0.000007, -0.000022, 0.000012, -0.000036, -0.000003, 0.000026, -0.000000, -0.000018, -0.000068, -0.000044, -0.000028, -0.000012, -0.000009, -0.000043, -0.000013, -0.000005, -0.000024, -0.000026, -0.000039, -0.000047, 0.000042, 0.000027, -0.000004, -0.000009, -0.000033, -0.000033, -0.000052, 0.000008, -0.000010, -0.000015, -0.000033, -0.000007, 0.000012, -0.000017, -0.000005, -0.000056, -0.000001, -0.000014, -0.000023, -0.000032, -0.000019, -0.000013, 0.000012, -0.000003, -0.000025, -0.000040, -0.000010, -0.000042, -0.000018, -0.000017, -0.000029, -0.000022, -0.000018, 0.000012, 0.000004, -0.000019, -0.000029, -0.000023, -0.000006, -0.000019, -0.000006, -0.000013, -0.000051, 0.000018, -0.000020, 0.000000, -0.000059, -0.000009, -0.000025, -0.000014, -0.000013, 0.000017, -0.000055, -0.000036, -0.000013, -0.000021, 0.000017, 0.000017, -0.000014, -0.000009, -0.000005, -0.000052, -0.000010, 0.000008, -0.000013, 0.000024, 0.000005, -0.000024, -0.000024, -0.000008, -0.000018, 0.000009, 0.000014, -0.000017, -0.000029, -0.000007, -0.000014, -0.000018, -0.000001, 0.000003, -0.000023, -0.000012, -0.000018, -0.000030, -0.000073, -0.000047, -0.000015, 0.000014, -0.000031, -0.000030, -0.000080, -0.000048, -0.000027, 0.000010, -0.000017, -0.000045, -0.000023, -0.000023, -0.000021, -0.000051, -0.000016, 0.000006, -0.000038, -0.000083, -0.000014, -0.000037, -0.000092, -0.000067, -0.000048, -0.000087, -0.000022, -0.000056, -0.000066, -0.000106, -0.000012, -0.000064, -0.000053, -0.000045, -0.000028, -0.000006, -0.000045, -0.000068, -0.000041, -0.000007, -0.000062, -0.000022, 0.000069, 0.000039, 0.000047, 0.000024, 0.000021, -0.000007, 0.000107, 0.000078, -0.000024, 0.000048, -0.000005, 0.000057, -0.000037, 0.000046, 0.000016, 0.000045, -0.000046, -0.000002, 0.000016, 0.000074, 0.000005, 0.000049, 0.000097, 0.000119, 0.000051, 0.000138, -0.000018, 0.000051, 0.000108, 0.000138, -0.000032, 0.000135, 0.000024, 0.000055, 0.000014, 0.000039, 0.000067, 0.000117, 0.000009, 0.000035, 0.000074, 0.000070, 0.000052, 0.000074, 0.000071, 0.000028, 0.000022, 0.000055, -0.000012, -0.000026, 0.000080, -0.000047, 0.000001, 0.000054, 0.000054, -0.000002, -0.000009, 0.000002, 0.000063, 0.000040, 0.000044, 0.000030, 0.000067, -0.000019, 0.000038, 0.000005, 0.000077, -0.000014, 0.000032, -0.000008, -0.000033, -0.000003, 0.000032, -0.000043, 0.000021, 0.000029, 0.000011, -0.000015, -0.000005, -0.000026, 0.000052, -0.000036, 0.000042, 0.000011, 0.000027, -0.000049, -0.000000, -0.000031, -0.000008, 0.000003, 0.000014, 0.000013, 0.000008, 0.000004, -0.000026, -0.000012, 0.000025, -0.000002, -0.000028, -0.000049, -0.000005, -0.000036, 0.000012, -0.000048, 0.000045, -0.000012, -0.000028, -0.000028, -0.000036, -0.000001, -0.000029, 0.000010, -0.000015, -0.000008, 0.000019, -0.000021, -0.000048, -0.000027, 0.000009, -0.000023, -0.000043, -0.000006, 0.000020, -0.000027, -0.000038, -0.000024, 0.000009, 0.000034, 0.000010, -0.000001, -0.000019, -0.000022, 0.000002, 0.000030, 0.000006, -0.000027, -0.000007, -0.000043, -0.000026, -0.000016, -0.000016, -0.000025, -0.000021, -0.000016, -0.000005, -0.000023, -0.000051, 0.000000, 0.000023, 0.000030, 0.000018, -0.000005, -0.000013, -0.000037, -0.000009, -0.000011, 0.000020, 0.000008, -0.000010, -0.000018, -0.000049, -0.000030, -0.000021, -0.000002, -0.000020, -0.000023, 0.000000, -0.000022, -0.000007, 0.000004, -0.000001, -0.000013, 0.000008, -0.000037, -0.000023, -0.000003, -0.000031, -0.000030, 0.000008, -0.000006, -0.000004, -0.000026, -0.000031, -0.000008, -0.000027, -0.000005, -0.000013, -0.000006, -0.000026, 0.000008, -0.000012, -0.000027, -0.000005, 0.000000, -0.000006, -0.000019, -0.000016, -0.000012, -0.000043, -0.000012, -0.000033, 0.000002, -0.000018, -0.000014, -0.000012, -0.000015, -0.000031, -0.000008, -0.000005, -0.000001, 0.000002, -0.000032, -0.000023, -0.000039, -0.000015, -0.000021, -0.000003, -0.000022, 0.000002, -0.000013, -0.000024, -0.000023, -0.000016, 0.000002, -0.000001, -0.000028, -0.000017, 0.000006, -0.000042, 0.000004, -0.000005, 0.000011, -0.000012, -0.000018, -0.000034, -0.000016, 0.000005, -0.000015, -0.000021, -0.000019, -0.000032, -0.000024, -0.000045, -0.000037, -0.000068, -0.000002, -0.000059, -0.000015, -0.000044, -0.000039, -0.000045, -0.000019, -0.000037, -0.000005, -0.000022, -0.000036, -0.000037, -0.000032, -0.000039, -0.000015, -0.000017, -0.000022, -0.000073, -0.000021, -0.000042, -0.000051, -0.000049, -0.000040, -0.000043, 0.000005, -0.000032, -0.000017, -0.000025, -0.000046, -0.000017, 0.000000, -0.000026, -0.000025, -0.000027, -0.000036, 0.000044, 0.000055, 0.000043, 0.000014, 0.000016, 0.000018, 0.000097, -0.000002, 0.000061, -0.000011, 0.000033, 0.000027, 0.000051, 0.000021, 0.000008, -0.000012, 0.000025, 0.000018, 0.000046, 0.000021, 0.000038, 0.000021, 0.000076, 0.000053, 0.000101, 0.000016, 0.000061, 0.000035, 0.000084, 0.000039, 0.000092, 0.000036, 0.000022, 0.000066, 0.000041, 0.000063, 0.000015, 0.000022, 0.000031, 0.000028, 0.000053, 0.000064, 0.000060, 0.000023, 0.000019, 0.000013, 0.000031, 0.000019, 0.000020, 0.000001, 0.000010, 0.000029, 0.000052, 0.000023, -0.000010, 0.000035, 0.000013, 0.000036, 0.000041, 0.000017, 0.000039, 0.000002, 0.000010, 0.000019, 0.000025, 0.000005, -0.000006, 0.000008, 0.000020, -0.000011, 0.000025, -0.000004, -0.000008, 0.000014, 0.000002, -0.000014, -0.000014, 0.000003, 0.000039, -0.000005, -0.000020, 0.000013, 0.000003, -0.000004, 0.000007, -0.000020, -0.000026, -0.000007, 0.000038, -0.000001, -0.000008, -0.000012, 0.000014, 0.000014, -0.000005, -0.000012, 0.000021, -0.000043, 0.000012, -0.000012, -0.000001, 0.000013, -0.000023, -0.000026, -0.000014, 0.000007, 0.000004, 0.000017, -0.000033, -0.000005, 0.000022, -0.000003, -0.000012, 0.000011, -0.000011, -0.000020, -0.000023, -0.000000, 0.000001, -0.000039, -0.000034, -0.000005, 0.000024, 0.000008, -0.000010, -0.000031, -0.000039, 0.000004, 0.000018, 0.000000, -0.000031, -0.000006, -0.000026, -0.000001, -0.000003, -0.000016, -0.000022, -0.000045, -0.000003, -0.000012, -0.000024, -0.000032, -0.000029, 0.000011, 0.000003, -0.000014, -0.000024, -0.000020, -0.000036, -0.000002, 0.000007, -0.000001, -0.000025, -0.000032, -0.000021, -0.000029, -0.000023, -0.000019, -0.000019, -0.000028, -0.000013, -0.000015, -0.000015, -0.000001, 0.000006, -0.000023, -0.000023, -0.000003, -0.000011, -0.000025, -0.000022, -0.000008, 0.000001, 0.000001, -0.000015, -0.000001, -0.000014, -0.000026, 0.000024, -0.000016, -0.000007, -0.000016, -0.000012, 0.000013, 0.000005, -0.000018, -0.000015, -0.000009, -0.000016, -0.000007, -0.000008, -0.000020, -0.000011, -0.000010, -0.000011, -0.000017, -0.000010, -0.000000, 0.000000, 0.000001, 0.000011, -0.000008, -0.000013, -0.000009, 0.000005, -0.000017, -0.000001, 0.000002, -0.000001, -0.000023, 0.000001, -0.000019, -0.000009, -0.000016, 0.000006, -0.000003, -0.000016, -0.000009, -0.000002, -0.000021, 0.000009, -0.000015, -0.000004, -0.000005, 0.000004, -0.000004, -0.000000, -0.000008, 0.000007, -0.000001, -0.000011, -0.000001, -0.000000, -0.000015, -0.000019, -0.000006, -0.000007, -0.000020, -0.000052, -0.000046, -0.000030, -0.000018, -0.000007, -0.000042, -0.000036, -0.000024, -0.000020, -0.000017, -0.000019, -0.000018, -0.000023, -0.000035, -0.000000, -0.000003, -0.000020, -0.000036, -0.000031, -0.000016, -0.000013, -0.000004, -0.000051, -0.000051, -0.000026, -0.000028, -0.000037, -0.000034, -0.000062, -0.000038, -0.000040, -0.000011, -0.000036, -0.000030, -0.000045, -0.000026, -0.000021, -0.000002, -0.000027, -0.000016, -0.000057, 0.000016, 0.000049, 0.000041, 0.000036, 0.000008, 0.000022, 0.000066, 0.000039, 0.000002, 0.000026, -0.000013, 0.000051, -0.000003, 0.000022, 0.000016, -0.000020, -0.000009, 0.000019, 0.000052, 0.000046, 0.000014, 0.000008, 0.000000, 0.000082, 0.000067, 0.000026, 0.000056, 0.000011, 0.000032, 0.000102, 0.000036, 0.000043, 0.000003, 0.000040, 0.000060, 0.000052, 0.000029, 0.000049, 0.000004, 0.000024, 0.000069, 0.000059, 0.000029, 0.000024, 0.000000, -0.000001, 0.000057, -0.000006, -0.000018, 0.000030, 0.000031, 0.000022, 0.000028, 0.000013, 0.000043, 0.000005, 0.000012, 0.000049, 0.000022, 0.000012, 0.000006, -0.000015, 0.000005, 0.000032, 0.000014, -0.000010, 0.000004, 0.000003, 0.000030, 0.000025, -0.000006, 0.000003, 0.000016, 0.000002, 0.000005, -0.000027, 0.000028, -0.000019, -0.000008, -0.000015, 0.000030, -0.000005, -0.000010, -0.000030, 0.000003, 0.000025, 0.000033, -0.000024, 0.000012, 0.000008, -0.000004, -0.000008, 0.000005, -0.000001, -0.000016, -0.000024, 0.000003, 0.000004, -0.000005, -0.000019, -0.000024, -0.000017, 0.000007, 0.000018, -0.000020, -0.000015, -0.000006, 0.000012, 0.000004, -0.000008, -0.000018, -0.000009, 0.000004, -0.000018, -0.000019, -0.000001, -0.000013, 0.000021, 0.000008, 0.000012, 0.000001, -0.000019, -0.000028, 0.000012, 0.000007, 0.000003, -0.000029, -0.000015, -0.000015, -0.000008, -0.000010, -0.000002, -0.000006, -0.000018, -0.000001, -0.000018, -0.000004, -0.000026, -0.000015, 0.000002, -0.000004, -0.000005, -0.000016, -0.000026, 0.000004, 0.000020, -0.000006, -0.000021, -0.000028, -0.000006, -0.000016, 0.000001, -0.000017, -0.000014, -0.000020, 0.000007, -0.000003, -0.000011, -0.000010, -0.000008, -0.000018, 0.000016, -0.000002, -0.000017, -0.000016, -0.000007, 0.000004, 0.000000, 0.000000, 0.000001, -0.000025, -0.000014, -0.000013, -0.000008, -0.000016, -0.000032, -0.000019, -0.000002, 0.000002, 0.000001, -0.000014, -0.000011, -0.000020, -0.000000, -0.000002, -0.000012, 0.000002, -0.000011, -0.000013, -0.000000, -0.000009, -0.000001, -0.000007, -0.000008, 0.000006, -0.000013, -0.000015, -0.000019, -0.000018, -0.000006, 0.000010, -0.000011, -0.000011, -0.000013, -0.000019, -0.000020, -0.000005, -0.000013, -0.000015, -0.000020, -0.000015, -0.000001, -0.000006, 0.000003, -0.000006, -0.000004, -0.000001, -0.000007, -0.000003, -0.000016, -0.000003, 0.000005, -0.000004, -0.000009, -0.000014, -0.000021, 0.000000, -0.000013, 0.000004, -0.000012, -0.000023, -0.000013, -0.000012, 0.000001, 0.000003, -0.000006, -0.000017, -0.000003, -0.000023, -0.000028, -0.000020, -0.000016, -0.000012, -0.000022, -0.000040, -0.000025, -0.000023, -0.000016, -0.000014, -0.000017, -0.000007, -0.000021, -0.000019, -0.000000, -0.000017, -0.000026, -0.000032, -0.000023, -0.000016, -0.000004, -0.000015, -0.000038, -0.000004, -0.000043, -0.000024, -0.000009, -0.000031, -0.000042, -0.000016, -0.000019, 0.000007, -0.000049, -0.000019, -0.000023, -0.000014, -0.000007, -0.000004, -0.000048, -0.000019, -0.000029, 0.000019, 0.000047, 0.000033, -0.000003, 0.000027, 0.000000, 0.000044, 0.000017, 0.000021, 0.000004, 0.000010, 0.000026, 0.000014, -0.000004, -0.000011, 0.000008, 0.000016, 0.000041, 0.000028, 0.000002, 0.000022, 0.000016, 0.000030, 0.000076, 0.000008, 0.000037, 0.000036, 0.000038, 0.000076, 0.000053, 0.000014, 0.000042, -0.000003, 0.000072, 0.000029, 0.000029, 0.000014, 0.000020, 0.000026, 0.000064, 0.000016, 0.000011, 0.000032, 0.000019, 0.000019, 0.000031, -0.000029, 0.000024, 0.000025, 0.000010, 0.000016, 0.000025, 0.000007, 0.000028, 0.000010, 0.000050, 0.000013, -0.000001, 0.000011, 0.000013, 0.000014, 0.000040, -0.000014, -0.000007, 0.000014, 0.000009, 0.000014, 0.000014, -0.000020, 0.000000, 0.000006, 0.000018, -0.000013, 0.000000, 0.000004, 0.000013, -0.000001, 0.000015, -0.000009, -0.000000, -0.000012, 0.000006, 0.000018, 0.000014, -0.000008, -0.000001, 0.000002, -0.000005, 0.000011, 0.000013, -0.000019, 0.000001, -0.000007, 0.000011, -0.000003, -0.000013, -0.000014, -0.000007, -0.000004, 0.000004, -0.000016, 0.000005, 0.000003, 0.000000, 0.000016, 0.000006, -0.000022, -0.000001, 0.000004, -0.000015, -0.000023, -0.000005, -0.000006, 0.000012, -0.000023, 0.000004, -0.000003, -0.000021, 0.000006, -0.000002, -0.000008, -0.000002, -0.000015, -0.000002, -0.000002, -0.000014, -0.000003, -0.000015, 0.000004, -0.000011, -0.000009, -0.000003, -0.000007, -0.000010, -0.000005, -0.000001, -0.000012, -0.000012, -0.000012, -0.000004, 0.000006, 0.000003, -0.000019, -0.000030, -0.000008, 0.000007, -0.000008, -0.000015, -0.000011, -0.000008, -0.000003, -0.000016, -0.000010, -0.000008, -0.000014, -0.000004, -0.000007, -0.000019, -0.000015, -0.000014, -0.000006, 0.000006, 0.000004, -0.000004, -0.000017, -0.000000, -0.000012, -0.000013, -0.000017, -0.000016, -0.000010, 0.000003, -0.000003, -0.000009, -0.000017, -0.000014, -0.000016, 0.000002, -0.000001, -0.000012, -0.000011, 0.000002, -0.000001, -0.000007, -0.000001, -0.000010, -0.000000, -0.000002, -0.000013, 0.000001, -0.000022, -0.000010, -0.000001, -0.000010, -0.000009, -0.000012, -0.000015, -0.000014, -0.000020, -0.000008, -0.000010, -0.000003, -0.000009, -0.000007, 0.000004, 0.000004, -0.000006, -0.000001, 0.000003, -0.000009, 0.000000, -0.000008, -0.000007, 0.000007, 0.000009, -0.000001, -0.000005, -0.000001, -0.000007, -0.000010, -0.000001, -0.000017, -0.000015, -0.000003, -0.000020, -0.000006, -0.000002, -0.000011, -0.000007, -0.000009, -0.000004, 0.000004, 0.000003, -0.000006, 0.000004, -0.000001, -0.000005, -0.000001, -0.000017, -0.000011, -0.000018, -0.000008, -0.000005, -0.000032, -0.000038, -0.000023, -0.000025, -0.000009, -0.000033, -0.000017, -0.000017, -0.000023, -0.000005, -0.000006, -0.000014, -0.000018, -0.000014, -0.000014, -0.000011, -0.000001, -0.000011, -0.000014, -0.000028, -0.000018, -0.000018, -0.000011, -0.000033, -0.000026, -0.000016, -0.000018, -0.000030, -0.000016, -0.000022, -0.000015, -0.000008, -0.000016, -0.000020, -0.000025, -0.000010, -0.000015, 0.000017, 0.000031, 0.000022, 0.000026, 0.000003, 0.000022, 0.000054, 0.000011, 0.000003, 0.000009, 0.000036, 0.000012, 0.000010, 0.000002, -0.000002, 0.000009, 0.000024, 0.000018, 0.000013, 0.000011, 0.000017, 0.000001, 0.000021, 0.000008, 0.000066, 0.000048, 0.000012, 0.000027, 0.000057, 0.000025, 0.000020, 0.000025, 0.000053, 0.000017, 0.000028, 0.000010, 0.000015, 0.000026, 0.000032, 0.000027, 0.000028, 0.000026, 0.000020, 0.000016, -0.000000, -0.000010, 0.000036, 0.000030, -0.000010, 0.000016, 0.000029, 0.000010, 0.000012, 0.000017, 0.000019, 0.000004, 0.000006, 0.000017, 0.000005, 0.000007, 0.000006, 0.000006, 0.000009, 0.000010, 0.000005, 0.000021, -0.000025, -0.000013, 0.000025, -0.000003, -0.000002, -0.000007, 0.000012, 0.000001, 0.000003, 0.000003, 0.000000, 0.000001, 0.000005, 0.000020, 0.000003, 0.000007, -0.000011, 0.000019, -0.000012, 0.000001, 0.000012, 0.000000, -0.000005, -0.000008, 0.000003, -0.000005, -0.000013, -0.000003, -0.000016, -0.000000, 0.000006, -0.000004, -0.000012, -0.000006, -0.000005, 0.000022, -0.000020, -0.000011, -0.000003, -0.000007, -0.000014, -0.000012, 0.000004, 0.000006, -0.000003, 0.000003, -0.000006, -0.000003, -0.000003, -0.000007, -0.000011, 0.000006, -0.000002, -0.000001, -0.000016, -0.000011, -0.000006, -0.000001, -0.000016, -0.000016, 0.000005, -0.000006, -0.000008, -0.000012, -0.000005, 0.000005, -0.000002, -0.000002, -0.000008, -0.000004, 0.000002, -0.000017, -0.000019, -0.000005, -0.000011, -0.000006, -0.000014, -0.000007, -0.000005, -0.000004, -0.000003, -0.000008, -0.000001, 0.000004, -0.000002, -0.000011, -0.000008, -0.000010, -0.000000, -0.000006, 0.000002, 0.000007, -0.000008, -0.000009, -0.000016, -0.000001, -0.000005, -0.000015, -0.000002, -0.000004, -0.000003, -0.000002, -0.000015, -0.000014, -0.000012, 0.000000, 0.000009, -0.000010, -0.000008, -0.000004, -0.000006, -0.000003, 0.000001, 0.000003, -0.000005, -0.000006, -0.000007, -0.000007, -0.000001, -0.000003, -0.000002, -0.000003, -0.000008, -0.000010, -0.000009, -0.000008, -0.000006, -0.000009, 0.000007, -0.000009, 0.000001, 0.000001, -0.000012, -0.000004, -0.000010, 0.000006, -0.000000, -0.000009, -0.000004, -0.000006, 0.000003, -0.000001, -0.000009, -0.000002, -0.000008, -0.000009, -0.000009, -0.000013, -0.000010, -0.000014, -0.000002, -0.000003, -0.000002, -0.000003, -0.000005, -0.000007, 0.000004, 0.000003, -0.000008, -0.000012, -0.000001, -0.000002, -0.000002, -0.000007, -0.000001, -0.000001, -0.000002, -0.000006, -0.000002, -0.000004, -0.000010, -0.000011, -0.000015, -0.000029, -0.000020, -0.000017, -0.000008, -0.000026, -0.000019, -0.000014, -0.000017, -0.000015, -0.000024, -0.000010, -0.000014, -0.000007, -0.000007, -0.000010, -0.000016, -0.000011, -0.000006, -0.000010, -0.000008, -0.000013, -0.000011, -0.000027, -0.000021, -0.000014, -0.000016, -0.000015, -0.000023, -0.000007, -0.000019, -0.000021, -0.000019, -0.000014, -0.000010, -0.000012, -0.000014, -0.000010, -0.000012, -0.000013, -0.000009, -0.000014, 0.000029, 0.000027, 0.000015, 0.000010, -0.000003, 0.000043, 0.000014, 0.000010, 0.000014, 0.000017, 0.000016, 0.000002, 0.000011, -0.000003, 0.000008, 0.000013, 0.000021, 0.000005, 0.000018, -0.000007, 0.000011, 0.000010, 0.000010, 0.000057, 0.000024, 0.000022, 0.000025, 0.000031, 0.000034, 0.000016, 0.000037, 0.000019, 0.000022, 0.000022, -0.000001, 0.000015, 0.000020, 0.000015, 0.000028, 0.000026, 0.000017, 0.000017, -0.000007, 0.000014, 0.000010, 0.000017, 0.000013, 0.000008, 0.000026, 0.000002, 0.000011, 0.000013, 0.000010, 0.000020, 0.000007, 0.000014, -0.000001, 0.000007, 0.000021, 0.000018, 0.000007, 0.000025, 0.000006, -0.000006, -0.000008, -0.000009, 0.000009, 0.000003, -0.000002, -0.000004, 0.000013, 0.000007, 0.000004, 0.000003, 0.000008, 0.000010, 0.000018, -0.000004, 0.000002, 0.000007, -0.000004, -0.000006, 0.000002, 0.000017, -0.000001, -0.000008, -0.000003, -0.000002, -0.000008, -0.000005, -0.000003, -0.000001, 0.000008, 0.000001, -0.000006, -0.000005, 0.000003, 0.000002, 0.000007, -0.000012, -0.000002, 0.000002, -0.000012, -0.000013, 0.000008, 0.000010, -0.000002, -0.000005, -0.000003, -0.000008, -0.000002, -0.000013, -0.000010, 0.000004, 0.000006, -0.000002, -0.000011, -0.000006, -0.000005, -0.000003, -0.000010, -0.000005, -0.000001, -0.000005, -0.000011, -0.000017, 0.000001, -0.000000, 0.000001, 0.000002, -0.000003, -0.000006, -0.000003, -0.000006, -0.000008, 0.000005, -0.000006, -0.000012, -0.000003, -0.000003, -0.000010, -0.000002, -0.000009, -0.000007, 0.000004, -0.000005, -0.000008, -0.000015, -0.000007, -0.000010, -0.000001, 0.000005, -0.000004, -0.000001, -0.000019, -0.000008, -0.000005, -0.000007, -0.000012, -0.000009, -0.000003, -0.000001, -0.000007, -0.000009, -0.000007, -0.000005, 0.000009, -0.000006, -0.000014, -0.000007, -0.000007, -0.000002, -0.000002, 0.000001, -0.000010, -0.000003, -0.000009, -0.000004, 0.000001, -0.000006, -0.000004, -0.000002, -0.000009, -0.000012, -0.000005, -0.000009, -0.000006, -0.000003, -0.000003, -0.000003, -0.000004, -0.000009, -0.000008, -0.000004, 0.000002, 0.000003, -0.000009, 0.000000, -0.000007, 0.000003, 0.000000, -0.000007, -0.000006, -0.000008, -0.000003, -0.000004, -0.000009, -0.000006, -0.000008, -0.000000, -0.000007, -0.000004, -0.000002, -0.000008, -0.000000, -0.000005, -0.000005, -0.000002, -0.000005, 0.000003, -0.000003, 0.000002, 0.000001, 0.000002, -0.000002, -0.000007, 0.000003, -0.000009, -0.000005, -0.000009, -0.000008, -0.000000, -0.000004, -0.000006, -0.000001, -0.000004, 0.000003, -0.000001, -0.000023, -0.000016, -0.000015, -0.000004, -0.000009, -0.000019, -0.000002, -0.000010, -0.000002, -0.000013, -0.000005, -0.000009, -0.000013, -0.000007, -0.000010, -0.000015, -0.000013, -0.000012, 0.000001, -0.000010, -0.000018, -0.000004, -0.000019, -0.000022, -0.000017, -0.000017, -0.000010, -0.000018, -0.000012, -0.000018, -0.000012, -0.000010, -0.000008, -0.000006, -0.000018, -0.000011, -0.000008, -0.000015, -0.000012, -0.000006, -0.000006, -0.000000, 0.000012, 0.000020, 0.000013, 0.000005, 0.000007, 0.000028, 0.000009, 0.000008, -0.000001, 0.000012, 0.000007, 0.000016, 0.000004, 0.000003, 0.000009, 0.000011, 0.000015, 0.000006, 0.000012, 0.000008, 0.000018, -0.000007, 0.000028, 0.000024, 0.000018, 0.000038, 0.000008, 0.000030, 0.000023, 0.000028, 0.000012, 0.000015, 0.000019, 0.000014, 0.000023, 0.000013, 0.000014, 0.000028, 0.000014, 0.000016, 0.000017, -0.000006, 0.000022, 0.000010, 0.000013, 0.000013, 0.000010, 0.000013, 0.000015, 0.000014, 0.000010, 0.000008, 0.000010, 0.000000, 0.000013, 0.000000, 0.000007, 0.000020, 0.000003, 0.000015, -0.000004, 0.000001, 0.000008, -0.000007, -0.000000, 0.000015, 0.000004, -0.000004, 0.000009, 0.000002, 0.000001, 0.000012, 0.000009, 0.000015, -0.000003, -0.000006, 0.000003, -0.000002, -0.000011, 0.000010, 0.000003, -0.000002, -0.000002, 0.000001, -0.000008, -0.000005, -0.000006, -0.000003, 0.000003, -0.000004, -0.000004, -0.000003, -0.000004, -0.000002, -0.000000, 0.000007, 0.000001, -0.000005, -0.000010, -0.000006, -0.000005, 0.000007, 0.000001, -0.000004, -0.000007, -0.000003, 0.000004, -0.000011, -0.000006, -0.000001, 0.000004, 0.000000, -0.000010, -0.000008, -0.000006, 0.000000, -0.000001, -0.000004, -0.000004, -0.000004, -0.000009, -0.000008, -0.000004, 0.000000, 0.000003, 0.000001, -0.000007, -0.000008, 0.000001, -0.000002, -0.000008, -0.000008, -0.000001, -0.000007, -0.000003, -0.000003, -0.000004, -0.000001, -0.000003, 0.000003, -0.000010, -0.000010, -0.000008, -0.000003, -0.000005, -0.000002, -0.000001, -0.000005, 0.000002, -0.000003, -0.000007, -0.000005, -0.000001, -0.000005, -0.000006, -0.000004, -0.000002, -0.000005, -0.000003, -0.000002, 0.000000, -0.000004, -0.000003, -0.000005, -0.000010, -0.000000, -0.000003, 0.000005, -0.000008, -0.000005, -0.000007, -0.000003, 0.000003, -0.000009, -0.000006, -0.000008, -0.000004, -0.000008, -0.000006, -0.000007, -0.000003, -0.000005, 0.000001, 0.000001, -0.000003, -0.000007, -0.000006, -0.000004, 0.000000, -0.000002, -0.000005, -0.000004, -0.000008, -0.000002, -0.000002, -0.000003, -0.000006, -0.000006, -0.000009, -0.000005, -0.000002, -0.000006, 0.000002, -0.000008, 0.000002,
     };
 
     struct convolution_filter
     {
-        static constexpr size_t size = 8192;
+        static constexpr size_t size = 4096;
         static constexpr size_t buffer_size = 2 * size;
         static constexpr size_t mask = size - 1;
 
-        std::array<real, buffer_size> history = {};
+        std::array<float, buffer_size> history = {};
         size_t head = 0;
 
-        const line* impulse = nullptr;
+        const std::vector<float>* impulse = nullptr;
 
         /*
          *         N - 1
@@ -1536,11 +1561,11 @@ namespace ensim
          *         i = 0
          */
 
-        real filter(const real x)
+        fn float filter(const float x)
         {
             history[head] = x;
             history[head + size] = x;
-            real y = 0;
+            float y = 0.0f;
             for(size_t i = 0; i < size; i++)
             {
                 y += impulse->operator[](i) * history[i + head];
@@ -1549,8 +1574,9 @@ namespace ensim
             return y;
         }
 
-        void set_impulse(const line& impulse)
+        fn void set_impulse(const std::vector<float>& impulse)
         {
+            assert(impulse.size() == size);
             this->impulse = &impulse;
         }
     };
@@ -1562,7 +1588,7 @@ namespace ensim
          * Recieve
          */
 
-        std::atomic<real> throttle_open_ratio = 0.0_r;
+        std::atomic<double> throttle_open_ratio = 0.0;
         std::atomic<size_t> log_x = -1;
         std::atomic<size_t> log_y = -1;
         std::atomic<bool> injection_enabled = true;
@@ -1572,9 +1598,9 @@ namespace ensim
          */
 
         std::atomic<size_t> swap_drops = 0;
-        std::atomic<real> engine_angular_velocity_r_per_s = 0.0_r;
-        std::atomic<real> engine_load_torque_n_m = 0.0_r;
-        std::array<std::array<std::atomic<real>, W>, H> port_open_ratios = {};
+        std::atomic<double> engine_angular_velocity_r_per_s = 0.0;
+        std::atomic<double> engine_load_torque_n_m = 0.0;
+        std::array<std::array<std::atomic<double>, W>, H> port_open_ratios = {};
         std::array<std::array<std::atomic<bool>, W>, H> panics = {};
     };
 
@@ -1584,9 +1610,9 @@ namespace ensim
      * [ ]  ...  [ ] | <- Intake Manifold
      * [ ]  ...  [ ] | <- Intake Runner
      * [ ]  ...  [ ] H <- Piston (PISTON_Y)
-     * [ ]  ...  [ ] | <- Exhaust Runner
-     * [ ]  ...  [ ] | <- Exhaust Manifold
-     * [ ]  ...  [ ] | <- Exhaust
+     * [ ]  ...  [ ] | <- Chamber0 --+
+     * [ ]  ...  [ ] | <- Chamber1   |---- These three form an audio sampling division.
+     * [ ]  ...  [ ] | <- Chamber2 --+     Use AUDIO_Y to sample the best sounding one.
      * [ ]  ...  [ ] | <- Sink
      * +---- W ----+ +
      *
@@ -1605,7 +1631,7 @@ namespace ensim
         template<size_t> class SPARKPLUGS>
     struct as_engine : engine
     {
-        real lumped_drag_torque_n_m = {};
+        double lumped_drag_torque_n_m = {};
         struct PISTONS<W> pistons = {};
         struct CAMS<W> inlet_cam = {};
         struct CAMS<W> outlet_cam = {};
@@ -1621,10 +1647,9 @@ namespace ensim
         struct convolution_filter convolution = {};
         struct diags diags = {};
         struct pipe<W, PIPE_CELLS, PIPE_SUBSTEPS> pipe = {};
-        line audio_signal = {};
+        std::vector<float> audio_signal = {};
         struct mailbox<W, H> mailbox = {};
-        mutable std::vector<float> audio_data = {};
-        line pipe_pressure = {};
+        std::vector<float> pipe_static_pressure_pa = {};
         std::mutex swap_mutex = {};
 
         void log_step(const size_t x, const size_t y)
@@ -1643,7 +1668,7 @@ namespace ensim
             }
         }
 
-        real calc_system_acceleration(const real load_torque_n_m)
+        double calc_system_acceleration(const double load_torque_n_m)
         {
             /*
              *      t
@@ -1651,14 +1676,14 @@ namespace ensim
              *      I
              */
 
-            real I = 0.0_r;
+            double I = 0.0;
             for(size_t x = 0; x < W; x++)
             {
                 I += pistons.moment_of_inertia_kg_m2[x];
             }
             I += flywheel.moment_of_inertia_kg_m2;
             I += crankshaft.moment_of_inertia_kg_m2;
-            real t = 0.0_r;
+            double t = 0.0;
             for(size_t x = 0; x < W; x++)
             {
                 t += pistons.total_torque_n_m[x];
@@ -1668,7 +1693,7 @@ namespace ensim
             return t / I;
         }
 
-        fn void broadcast(const real throttle_open_ratio, const bool injection_enabled, const real load_torque_n_m)
+        fn void broadcast(const double throttle_open_ratio, const bool injection_enabled, const double load_torque_n_m)
         {
             /*
              * Crankshaft theta -> inlet/outlet cams + pistons + sparkplugs thetas.
@@ -1681,6 +1706,8 @@ namespace ensim
             sparkplugs.crankshaft_theta_r = crankshaft.theta_r;
             pistons.crankshaft_angular_velocity_r_per_s = crankshaft.angular_velocity_r_per_s;
             limiter.crankshaft_angular_velocity_r_per_s = crankshaft.angular_velocity_r_per_s;
+            inlet_cam.crankshaft_angular_velocity_r_per_s = crankshaft.angular_velocity_r_per_s;
+            outlet_cam.crankshaft_angular_velocity_r_per_s = crankshaft.angular_velocity_r_per_s;
 
             /*
              * Cam open ratios -> chamber open ratios.
@@ -1700,7 +1727,7 @@ namespace ensim
 
             for(size_t x = 0; x < W; x++)
             {
-                const real open_ratio = throttle.lookup(throttle_open_ratio);
+                const double open_ratio = throttle.lookup(throttle_open_ratio);
                 flows[x].chamber_nozzle_open_ratio[THROTTLE_Y] = open_ratio;
             }
 
@@ -1712,13 +1739,13 @@ namespace ensim
             for(size_t x = 0; x < W; x++)
             {
                 flows[x].piston_injection_enabled = injection_enabled;
-                flows[x].piston_chamber_radius_m = pistons.diameter_m[x] / 2.0_r;
+                flows[x].piston_chamber_radius_m = pistons.diameter_m[x] / 2.0;
                 flows[x].chamber_volume_m3[PISTON_Y] = pistons.volumes_m3[x];
                 pistons.chamber_static_pressure_pa[x] = flows[x].chamber_static_pressure_pa[PISTON_Y];
             }
 
             crankshaft.angular_acceleration_r_per_s2 = calc_system_acceleration(load_torque_n_m);
-            crankshaft.angular_velocity_r_per_s = fmax(crankshaft.angular_velocity_r_per_s, 0.0_r);
+            crankshaft.angular_velocity_r_per_s = fmax(crankshaft.angular_velocity_r_per_s, 0.0);
         }
 
         void remember_volumes()
@@ -1742,7 +1769,7 @@ namespace ensim
             flywheel.update();
             crankshaft.update();
             pistons.calc_volumetrics();
-            broadcast(0.0_r, false, 0.0_r);
+            broadcast(0.0, false, 0.0);
             remember_volumes();
             reset_chambers();
         }
@@ -1759,8 +1786,7 @@ namespace ensim
                 {
                     line.clear();
                 }
-                pipe.gather_pipe_pressure_signal();
-                std::swap(pipe_pressure, pipe.pipe_pressure_signal);
+                pipe_static_pressure_pa.assign(pipe.static_pressure_pa.begin(), pipe.static_pressure_pa.end());
                 swap_mutex.unlock();
                 return true;
             }
@@ -1779,23 +1805,13 @@ namespace ensim
             }
         }
 
-        void sample_audio()
-        {
-            real x0 = pipe.calc_audio_sample();
-            x0 = dc.filter(x0);
-            x0 = convolution.filter(x0);
-            x0 = gain.filter(x0);
-            x0 = clamp.filter(x0);
-            audio_signal.push_back(x0);
-        }
-
         void update_pipe()
         {
             for(size_t x = 0; x < W; x++)
             {
-                const real u = flows[x].nozzle_velocity_m_per_s[AUDIO_Y];
-                const real Ts = flows[x].nozzle_static_temperature_k[AUDIO_Y];
-                const real r = flows[x].nozzle_static_density_kg_per_m3[AUDIO_Y];
+                const double u = flows[x].nozzle_velocity_m_per_s[AUDIO_Y];
+                const double Ts = flows[x].nozzle_static_temperature_k[AUDIO_Y];
+                const double r = flows[x].nozzle_static_density_kg_per_m3[AUDIO_Y];
                 pipe.in_velocity_m_per_s[x] = u;
                 pipe.in_static_temperature_k[x] = Ts;
                 pipe.in_static_density_kg_per_m3[x] = r;
@@ -1872,13 +1888,12 @@ namespace ensim
 
         void run(const size_t steps) override
         {
-            const real throttle_open_ratio = mailbox.throttle_open_ratio;
-            const real load_torque_n_m = mailbox.engine_load_torque_n_m;
+            const double throttle_open_ratio = mailbox.throttle_open_ratio;
+            const double load_torque_n_m = mailbox.engine_load_torque_n_m;
             const size_t log_x = mailbox.log_x;
             const size_t log_y = mailbox.log_y;
             const bool injection_enabled = mailbox.injection_enabled;
             audio_signal.clear();
-            audio_signal.reserve(steps);
             size_t swap_drops = 0;
             for(size_t step = 0; step < steps; step++)
             {
@@ -1898,7 +1913,12 @@ namespace ensim
                 remember_volumes();
                 const bool injection_overrided = injection_enabled && not limiter.limiting;
                 broadcast(throttle_open_ratio, injection_overrided, load_torque_n_m);
-                sample_audio();
+                float x = pipe.calc_audio_sample();
+                x = dc.filter(x);
+                x = convolution.filter(x);
+                x = gain.filter(x);
+                x = clamp.filter(x);
+                audio_signal.push_back(x);
             }
             post_mailbox(swap_drops);
         }
@@ -1938,12 +1958,12 @@ namespace ensim
             return g_signal_names[index];
         }
 
-        const std::atomic<real>& get_angular_velocity_r_per_s() const override
+        const std::atomic<double>& get_angular_velocity_r_per_s() const override
         {
             return mailbox.engine_angular_velocity_r_per_s;
         }
 
-        const std::atomic<real>& get_port_open_ratio(const size_t x, const size_t y) const override
+        const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const override
         {
             return mailbox.port_open_ratios[y][x];
         }
@@ -1958,53 +1978,42 @@ namespace ensim
             return mailbox.swap_drops;
         }
 
-        const line& get_signal(const size_t index) const override
+        const std::vector<double>& get_signal(const size_t index) const override
         {
             return diags.front[index];
         }
 
-        const line& get_static_temperature_signal_k() const override
+        const std::vector<double>& get_static_temperature_signal_k() const override
         {
             return get_signal(g_chamber_static_temperature_k);
         }
 
-        const line& get_static_pressure_signal_pa() const override
+        const std::vector<double>& get_static_pressure_signal_pa() const override
         {
             return get_signal(g_chamber_static_pressure_pa);
         }
 
-        const line& get_volume_signal_m3() const override
+        const std::vector<double>& get_volume_signal_m3() const override
         {
             return get_signal(g_chamber_volume_m3);
         }
 
-        const line& get_audio_signal() const override
+        const std::vector<float>& get_audio_signal() const override
         {
             return audio_signal;
         }
 
-        const line& get_impulse_signal() const override
+        const std::vector<float>& get_impulse_signal() const override
         {
-            return g_impulse;
+            return *convolution.impulse;
         }
 
-        const std::vector<float>& get_audio_data() const override
+        const std::vector<float>& get_pipe_pressure_signal() const override
         {
-            audio_data.clear();
-            const line& audio_signal = get_audio_signal();
-            for(const real& x : audio_signal)
-            {
-                audio_data.push_back(static_cast<float>(x));
-            }
-            return audio_data;
+            return pipe_static_pressure_pa;
         }
 
-        const line& get_pipe_pressure_signal() const override
-        {
-            return pipe_pressure;
-        }
-
-        void set_throttle_open_ratio(const real open_ratio) override
+        void set_throttle_open_ratio(const double open_ratio) override
         {
             mailbox.throttle_open_ratio = open_ratio;
         }
@@ -2035,85 +2044,93 @@ namespace ensim
             swap_mutex.unlock();
         }
 
-        void set_load_torque_n_m(const real load_torque_n_m) override
+        void set_load_torque_n_m(const double load_torque_n_m) override
         {
             mailbox.engine_load_torque_n_m = load_torque_n_m;
         }
     };
+
+    const std::vector<float> g_impulse = { -0.001799f, 0.001870f, -0.001897f, 0.001972f, -0.002002f, 0.002081f, -0.002116f, 0.002199f, -0.002238f, 0.002326f, -0.002370f, 0.002463f, -0.002513f, 0.002611f, -0.002668f, 0.002773f, -0.002836f, 0.002949f, -0.003020f, 0.003141f, -0.003223f, 0.003353f, -0.003446f, 0.003588f, -0.003693f, 0.003848f, -0.003969f, 0.004140f, -0.004278f, 0.004468f, -0.004628f, 0.004842f, -0.005028f, 0.005270f, -0.005490f, 0.005769f, -0.006030f, 0.006356f, -0.006672f, 0.007061f, -0.007450f, 0.007923f, -0.008414f, 0.009007f, -0.009644f, 0.010418f, -0.011280f, 0.012338f, -0.013572f, 0.015125f, -0.017043f, 0.019576f, -0.022974f, 0.027908f, -0.035615f, 0.049615f, -0.083066f, 0.278194f, 0.186277f, -0.082104f, 0.245069f, 0.951810f, 0.079744f, -0.015058f, 0.771661f, 0.232401f, -0.053057f, -0.062631f, 0.060914f, 0.138221f, 0.264735f, 0.285731f, 0.495165f, 0.586556f, 0.347162f, 0.139050f, -0.097358f, -0.031730f, -0.123942f, 0.028056f, -0.001174f, 0.423864f, 0.054578f, 0.285723f, 0.172777f, 0.281736f, 0.301603f, 0.141729f, 0.361272f, -0.306274f, 0.093129f, -0.117172f, 0.176220f, 0.125096f, 0.357301f, -0.132178f, 0.130336f, -0.264050f, 0.340199f, -0.132581f, 0.155613f, 0.046111f, 0.083742f, 0.311026f, 0.089839f, 0.331934f, -0.161811f, 0.114417f, -0.028843f, -0.035006f, -0.034659f, -0.079416f, -0.066057f, -0.103561f, 0.041329f, 0.252538f, -0.096950f, 0.398147f, -0.280634f, 0.209116f, -0.014877f, 0.309493f, 0.081499f, 0.231043f, 0.145140f, 0.244074f, 0.234016f, -0.134282f, 0.208181f, 0.444186f, 0.454864f, 0.220934f, -0.043356f, -0.030735f, 0.256108f, 0.055381f, 0.154575f, 0.210247f, 0.250979f, 0.214179f, -0.168535f, 0.134936f, 0.241044f, 0.226504f, -0.003273f, 0.019007f, 0.028781f, 0.025961f, 0.013170f, 0.295959f, 0.098273f, 0.045917f, -0.023161f, -0.007438f, -0.041941f, -0.066265f, 0.005479f, 0.058636f, 0.191558f, 0.190543f, -0.027828f, 0.053463f, 0.113749f, 0.071644f, -0.373187f, -0.028434f, -0.100035f, 0.049823f, 0.056068f, 0.214854f, 0.015167f, 0.058959f, -0.110835f, -0.147336f, -0.148769f, -0.070717f, -0.013135f, 0.074031f, -0.040389f, -0.008819f, 0.105544f, -0.090028f, -0.127972f, -0.068276f, -0.034432f, -0.037090f, 0.025421f, -0.086912f, 0.027017f, -0.041168f, -0.164510f, -0.092424f, 0.028436f, -0.179778f, -0.116844f, 0.033783f, -0.146903f, -0.117936f, 0.087371f, -0.043601f, -0.055109f, 0.022780f, -0.075432f, -0.132115f, -0.108146f, -0.182503f, -0.023194f, 0.038661f, -0.185314f, -0.074016f, 0.027115f, -0.195624f, 0.022350f, -0.093809f, -0.054003f, -0.048363f, -0.142136f, -0.033996f, -0.254705f, -0.130017f, -0.024248f, -0.160407f, 0.004045f, -0.024259f, -0.027768f, 0.056496f, -0.039432f, -0.253253f, -0.035510f, -0.112600f, -0.066573f, -0.075646f, -0.145380f, -0.016447f, -0.212485f, -0.120460f, -0.115753f, 0.117897f, 0.371646f, -0.007276f, 0.184891f, 0.328140f, -0.165394f, -0.072129f, 0.171259f, 0.312006f, -0.053843f, 0.071113f, 0.128257f, -0.045530f, 0.077139f, 0.073022f, 0.128061f, -0.040720f, -0.049558f, -0.114468f, -0.103073f, 0.162806f, -0.048967f, 0.044881f, 0.037149f, -0.049956f, 0.037838f, 0.083957f, 0.111023f, 0.007305f, -0.017689f, -0.045348f, 0.011146f, -0.071549f, 0.015242f, -0.046898f, -0.110946f, -0.037606f, -0.085484f, -0.052864f, -0.125851f, -0.035586f, -0.098230f, 0.214256f, -0.071263f, -0.011016f, 0.019949f, -0.191426f, 0.098025f, 0.095547f, -0.032444f, -0.085893f, -0.180388f, -0.059316f, -0.076177f, -0.073012f, -0.050855f, -0.115151f, -0.069305f, -0.017748f, -0.063978f, -0.092078f, -0.128437f, 0.010558f, -0.116286f, 0.184267f, 0.306916f, 0.035686f, 0.301601f, -0.016923f, -0.005224f, 0.138499f, 0.119391f, 0.005878f, 0.069971f, -0.035157f, 0.051438f, 0.139140f, -0.029178f, -0.075146f, -0.141807f, 0.109912f, 0.060580f, 0.112749f, 0.148563f, 0.015495f, 0.062012f, 0.025774f, -0.008427f, -0.050441f, -0.002154f, -0.052169f, -0.033071f, -0.045143f, -0.061633f, 0.021944f, -0.082090f, 0.010580f, -0.113866f, 0.057723f, -0.040965f, -0.022256f, -0.033617f, -0.065203f, 0.170966f, -0.051701f, -0.059784f, -0.138424f, -0.040055f, -0.033097f, -0.066497f, -0.018655f, -0.084484f, 0.026938f, -0.054901f, -0.049185f, -0.106279f, -0.079742f, -0.096190f, -0.052624f, -0.012356f, -0.121906f, -0.031627f, -0.046556f, -0.104577f, 0.024599f, -0.025226f, -0.052790f, 0.036456f, -0.129811f, 0.006905f, -0.180176f, -0.074949f, -0.056450f, -0.048025f, -0.078997f, -0.069409f, -0.154249f, -0.041052f, -0.098004f, -0.087419f, -0.063104f, -0.053944f, 0.025238f, -0.024094f, 0.028460f, -0.119135f, -0.074987f, -0.043959f, -0.076860f, -0.077455f, -0.096753f, -0.092641f, -0.132838f, -0.115200f, -0.093733f, -0.032898f, -0.069305f, 0.013105f, -0.035825f, 0.019520f, -0.086144f, -0.017441f, -0.107220f, -0.075743f, -0.121200f, -0.079415f, -0.072979f, -0.077916f, -0.118618f, -0.001369f, -0.042012f, -0.008791f, -0.096152f, -0.003497f, -0.053085f, -0.068068f, -0.116905f, -0.034894f, -0.107631f, 0.100961f, 0.110643f, 0.163708f, -0.017788f, 0.173203f, 0.059587f, 0.083201f, 0.008253f, 0.105562f, 0.065965f, -0.015885f, -0.000265f, 0.112866f, 0.057698f, -0.028554f, -0.019836f, 0.045435f, 0.004447f, -0.023734f, 0.057474f, 0.095409f, -0.048049f, 0.006126f, -0.018996f, 0.029955f, -0.013183f, 0.004036f, -0.067787f, -0.027826f, 0.052216f, -0.025644f, -0.042664f, -0.000504f, 0.014166f, -0.015359f, 0.009294f, 0.010726f, -0.057498f, -0.068513f, -0.053842f, -0.000938f, 0.015332f, -0.045396f, -0.036732f, -0.009084f, -0.036910f, -0.081864f, -0.019490f, -0.022143f, -0.042810f, -0.049783f, 0.035754f, 0.008924f, -0.039359f, -0.034464f, -0.047786f, -0.074193f, -0.047534f, -0.091062f, -0.055740f, -0.002583f, -0.001429f, -0.040092f, -0.027285f, 0.056631f, 0.100438f, 0.136638f, 0.022592f, 0.098183f, 0.063429f, 0.054274f, 0.081574f, 0.098657f, 0.000860f, 0.056887f, 0.089501f, 0.004431f, -0.008686f, 0.025457f, 0.021082f, -0.031621f, 0.063403f, 0.031204f, 0.008351f, 0.016055f, 0.025403f, -0.009167f, 0.009595f, -0.037834f, -0.001617f, 0.049250f, -0.074994f, -0.026439f, 0.013793f, 0.004526f, 0.005848f, 0.009373f, -0.069093f, -0.035057f, -0.007151f, -0.005710f, -0.056450f, -0.020186f, -0.023126f, -0.041376f, -0.016612f, 0.015209f, -0.049768f, -0.046633f, -0.026051f, -0.014327f, -0.029718f, -0.047383f, -0.033838f, -0.061792f, -0.055610f, -0.051546f, -0.012590f, 0.007740f, -0.038688f, -0.038396f, -0.054453f, -0.034078f, -0.037464f, -0.064193f, -0.056282f, -0.026198f, -0.058646f, -0.026371f, -0.019380f, -0.035276f, -0.054687f, -0.041510f, -0.069640f, -0.041515f, -0.037090f, -0.042761f, -0.006467f, -0.049704f, -0.059538f, -0.049886f, -0.075691f, -0.032679f, -0.053022f, -0.025205f, -0.025477f, -0.057751f, -0.019783f, -0.017751f, -0.062500f, -0.053738f, -0.051207f, -0.063332f, -0.036576f, -0.033063f, -0.066367f, -0.051128f, -0.047697f, -0.021727f, -0.027127f, -0.023329f, -0.026211f, -0.054969f, -0.033997f, -0.049775f, -0.057335f, -0.035776f, -0.055481f, -0.037573f, -0.040004f, -0.026725f, -0.046362f, -0.032557f, -0.046399f, -0.028837f, -0.032704f, -0.032061f, -0.046842f, -0.050731f, 0.061860f, 0.120198f, 0.064361f, 0.104736f, 0.071804f, 0.045334f, 0.105398f, -0.003035f, 0.044805f, 0.055236f, -0.019191f, 0.057259f, 0.019481f, 0.033449f, 0.055377f, -0.000761f, 0.007682f, 0.020781f, 0.043147f, -0.017136f, 0.021617f, 0.017426f, -0.029675f, 0.006988f, -0.005484f, 0.010020f, 0.019858f, -0.034530f, -0.010112f, 0.026666f, -0.003558f, -0.009766f, 0.001402f, -0.037272f, 0.000251f, -0.040137f, -0.028243f, 0.020460f, -0.008433f, -0.021355f, -0.016569f, -0.029686f, -0.037329f, 0.006188f, -0.003823f, -0.026652f, -0.023249f, -0.015997f, -0.014252f, -0.035486f, -0.026564f, -0.018124f, -0.032205f, -0.011239f, -0.015078f, -0.034137f, -0.050901f, -0.030889f, -0.032785f, -0.009180f, -0.002942f, -0.014080f, -0.017990f, -0.060111f, 0.025081f, 0.116552f, 0.059694f, 0.093554f, 0.052119f, 0.061837f, 0.089927f, -0.014216f, 0.093741f, 0.005454f, 0.025266f, 0.017837f, 0.007350f, 0.049290f, 0.026965f, 0.036592f, 0.028551f, 0.018086f, -0.023031f, 0.033531f, -0.036356f, 0.007319f, 0.011025f, 0.007296f, 0.015628f, -0.035449f, 0.005687f, 0.004208f, -0.008375f, 0.010483f, -0.032113f, -0.002580f, -0.041037f, -0.024509f, 0.005961f, 0.003071f, -0.013033f, -0.019207f, -0.042755f, -0.013558f, 0.003915f, -0.034743f, -0.019735f, -0.028923f, -0.007738f, -0.037812f, -0.022823f, -0.010541f, -0.024606f, -0.009779f, -0.038955f, -0.039550f, -0.042867f, -0.034121f, -0.026397f, 0.001182f, -0.028218f, -0.012426f, -0.037212f, -0.022451f, -0.040321f, -0.031196f, -0.034340f, -0.023552f, -0.022789f, -0.036474f, -0.028925f, -0.024455f, -0.035206f, -0.037884f, -0.039152f, -0.021257f, -0.016186f, -0.025265f, -0.030688f, -0.037463f, -0.031422f, -0.047306f, -0.023126f, -0.022111f, -0.032552f, -0.021836f, -0.028060f, -0.032736f, -0.022162f, -0.029822f, -0.034184f, -0.036620f, -0.029992f, -0.030885f, -0.027843f, -0.015338f, -0.038512f, -0.025558f, -0.031855f, -0.021915f, -0.045252f, -0.018953f, -0.032100f, -0.012693f, -0.029502f, -0.015120f, -0.030574f, -0.019145f, -0.043226f, -0.027101f, -0.037971f, -0.013225f, -0.035435f, -0.014216f, -0.042633f, -0.008658f, -0.029596f, -0.002976f, -0.042951f, 0.057427f, 0.079876f, 0.076685f, 0.052328f, 0.053981f, 0.057366f, 0.032857f, 0.063170f, 0.017810f, 0.042581f, 0.014990f, 0.041838f, -0.000735f, 0.037180f, 0.019571f, 0.003604f, 0.026482f, 0.003039f, 0.001743f, 0.023425f, 0.026375f, -0.010365f, 0.007745f, 0.013099f, -0.007578f, 0.009110f, -0.009529f, -0.007603f, -0.015759f, 0.011038f, -0.005631f, -0.001573f, -0.021553f, -0.017179f, 0.022066f, 0.000296f, -0.013912f, -0.006305f, -0.016266f, -0.018930f, -0.010254f, -0.012620f, -0.002841f, -0.012317f, -0.026184f, -0.032865f, -0.013463f, 0.006624f, 0.001800f, -0.018780f, -0.025364f, -0.020086f, -0.022307f, -0.016571f, -0.005244f, -0.010993f, -0.021025f, -0.017189f, -0.021884f, -0.025180f, -0.028159f, -0.016538f, 0.010156f, -0.024290f, 0.008708f, 0.084360f, 0.057376f, 0.053053f, 0.049688f, 0.056057f, 0.043604f, 0.050254f, 0.017638f, 0.038759f, 0.018276f, 0.022022f, -0.001910f, 0.041661f, 0.002010f, 0.042157f, -0.002806f, 0.013701f, 0.007712f, 0.008907f, -0.019653f, 0.022474f, -0.001176f, 0.008345f, -0.007988f, 0.004772f, -0.029964f, 0.015031f, -0.002386f, -0.006245f, -0.027411f, -0.010640f, 0.012650f, -0.003098f, -0.009762f, -0.011774f, -0.026702f, -0.008491f, -0.017501f, -0.003462f, -0.013652f, -0.024973f, -0.023965f, -0.018094f, 0.003752f, -0.010606f, -0.022513f, -0.022779f, -0.016584f, -0.023664f, -0.016755f, -0.009450f, -0.026862f, -0.017865f, -0.017989f, -0.024995f, -0.029521f, -0.014458f, -0.002857f, -0.020695f, -0.020298f, -0.023905f, -0.031549f, -0.015249f, -0.019390f, -0.015716f, -0.020870f, -0.026750f, -0.019046f, -0.021736f, -0.025748f, -0.028169f, -0.025607f, -0.014724f, -0.009103f, -0.015496f, -0.020012f, -0.023883f, -0.025953f, -0.019234f, -0.017849f, -0.021083f, -0.024974f, -0.018566f, -0.025042f, -0.022077f, -0.018308f, -0.019515f, -0.016733f, -0.024097f, -0.018851f, -0.014590f, -0.019152f, -0.020147f, -0.022684f, -0.018279f, -0.021268f, -0.021523f, -0.012603f, -0.017320f, -0.013227f, -0.017180f, -0.021428f, -0.018934f, -0.019099f, -0.016081f, -0.023493f, -0.017097f, -0.021455f, -0.013994f, -0.014920f, -0.011336f, -0.019194f, -0.014545f, -0.020752f, 0.034230f, 0.078463f, 0.050348f, 0.054549f, 0.046567f, 0.037659f, 0.039584f, 0.027459f, 0.030024f, 0.031522f, 0.014714f, 0.030080f, 0.009142f, 0.020026f, 0.009339f, 0.009799f, 0.023990f, -0.002206f, 0.013216f, 0.017994f, 0.006275f, 0.007920f, -0.004017f, -0.002436f, 0.015985f, -0.001307f, -0.008218f, -0.009445f, 0.017372f, -0.008805f, -0.002215f, -0.011389f, -0.005147f, -0.001910f, 0.001631f, -0.002017f, -0.014827f, -0.014248f, -0.005191f, 0.008987f, -0.010256f, -0.013724f, -0.012406f, -0.012166f, -0.008852f, -0.001084f, -0.011339f, -0.009061f, -0.012732f, -0.019521f, -0.011492f, 0.003432f, -0.013204f, -0.014783f, -0.019451f, -0.015777f, -0.011144f, -0.010634f, -0.004672f, -0.012807f, -0.007579f, -0.016483f, -0.013143f, -0.019296f, 0.004753f, 0.073424f, 0.055120f, 0.044931f, 0.036889f, 0.027617f, 0.042590f, 0.026763f, 0.034019f, 0.023542f, 0.019377f, 0.017718f, 0.010068f, 0.018949f, 0.002422f, 0.016458f, 0.008339f, 0.005309f, 0.012764f, 0.002244f, 0.008453f, -0.006289f, -0.000013f, 0.013726f, -0.001165f, -0.014535f, -0.002047f, 0.003604f, -0.009454f, -0.003652f, -0.012842f, -0.001498f, -0.004566f, 0.001242f, -0.012866f, -0.016068f, -0.009410f, 0.004625f, -0.011232f, -0.017110f, -0.014307f, -0.016697f, -0.002647f, -0.006455f, -0.013913f, -0.011157f, -0.019950f, -0.016043f, -0.001945f, -0.011263f, -0.018242f, -0.016175f, -0.017664f, -0.014876f, -0.008102f, -0.007770f, -0.017986f, -0.013404f, -0.019445f, -0.017091f, -0.016358f, -0.009445f, -0.012104f, -0.013782f, -0.018192f, -0.019230f, -0.014186f, -0.011177f, -0.013918f, -0.014981f, -0.016354f, -0.016739f, -0.013637f, -0.013832f, -0.015234f, -0.017776f, -0.011303f, -0.015021f, -0.018138f, -0.017998f, -0.013347f, -0.015970f, -0.010933f, -0.010302f, -0.012873f, -0.013103f, -0.016470f, -0.014716f, -0.014307f, -0.014394f, -0.016347f, -0.017075f, -0.011377f, -0.010431f, -0.013476f, -0.014561f, -0.012599f, -0.013648f, -0.012756f, -0.016199f, -0.010307f, -0.010315f, -0.013373f, -0.010395f, -0.010882f, -0.009786f, -0.012323f, -0.015300f, -0.015013f, -0.010735f, -0.011968f, -0.011615f, -0.010325f, -0.008162f, -0.014319f, 0.017017f, 0.065784f, 0.041376f, 0.048228f, 0.030220f, 0.040276f, 0.022114f, 0.030701f, 0.017116f, 0.023197f, 0.017485f, 0.021176f, 0.009618f, 0.018200f, 0.013847f, 0.003634f, 0.016586f, 0.004671f, 0.008221f, -0.004260f, 0.010576f, 0.009668f, -0.006010f, 0.001857f, 0.013347f, -0.001849f, 0.000494f, -0.005781f, 0.000816f, 0.004007f, -0.001915f, -0.013338f, -0.004401f, 0.009149f, -0.002643f, -0.010126f, -0.005430f, -0.007564f, -0.000016f, -0.006578f, -0.006780f, -0.010536f, -0.013266f, 0.004875f, -0.000809f, -0.010765f, -0.009631f, -0.009678f, -0.007007f, -0.003709f, -0.010065f, -0.009513f, -0.010320f, -0.011212f, -0.007890f, -0.004272f, -0.005412f, -0.008959f, -0.012472f, -0.011414f, -0.006543f, -0.008916f, -0.007987f, -0.010998f, -0.006026f, 0.054260f, 0.046802f, 0.037857f, 0.029998f, 0.036691f, 0.021340f, 0.024605f, 0.017917f, 0.018261f, 0.016858f, 0.017022f, 0.009007f, 0.016340f, 0.002572f, 0.008647f, 0.009084f, 0.005951f, -0.001674f, 0.000923f, 0.015421f, -0.006698f, -0.002433f, 0.007939f, -0.000269f, -0.004383f, -0.005267f, 0.001412f, 0.001997f, -0.008668f, -0.012234f, -0.001028f, 0.003698f, -0.013450f, -0.007973f, -0.007283f, -0.003091f, -0.002835f, -0.006924f, -0.009225f, -0.017439f, -0.003168f, -0.003411f, -0.010896f, -0.012510f, -0.010783f, -0.006978f, -0.005847f, -0.010844f, -0.009835f, -0.012450f, -0.013849f, -0.007684f, -0.005367f, -0.008705f, -0.012526f, -0.015063f, -0.010172f, -0.010382f, -0.010811f, -0.009775f, -0.012086f, -0.009720f, -0.009851f, -0.013031f, -0.010197f, -0.007936f, -0.012880f, -0.012133f, -0.013362f, -0.010536f, -0.008057f, -0.010027f, -0.010295f, -0.012463f, -0.010596f, -0.011144f, -0.011112f, -0.012293f, -0.011094f, -0.006666f, -0.010720f, -0.010782f, -0.010730f, -0.010610f, -0.012038f, -0.010415f, -0.008590f, -0.011063f, -0.009319f, -0.007877f, -0.007923f, -0.011223f, -0.011265f, -0.009506f, -0.009681f, -0.010097f, -0.008086f, -0.009905f, -0.008306f, -0.009841f, -0.007509f, -0.008873f, -0.008190f, -0.007923f, -0.008901f, -0.009630f, -0.008430f, -0.008864f, -0.008166f, -0.008403f, -0.005230f, -0.009276f, -0.003911f, -0.012277f, 0.009796f, 0.050451f, 0.036713f, 0.034378f, 0.029207f, 0.028120f, 0.022787f, 0.022176f, 0.015443f, 0.018596f, 0.012183f, 0.012194f, 0.013492f, 0.007577f, 0.013172f, 0.008526f, 0.006597f, 0.004158f, 0.012990f, -0.003147f, 0.000585f, 0.009255f, 0.001916f, 0.001521f, -0.001127f, 0.006570f, -0.000050f, -0.007654f, -0.000707f, 0.007186f, -0.006736f, -0.002782f, -0.003798f, 0.002499f, -0.002593f, -0.002999f, -0.009352f, -0.003398f, 0.002879f, -0.006735f, -0.006882f, -0.006093f, -0.001760f, -0.002602f, -0.007072f, -0.005026f, -0.008493f, -0.006706f, -0.003381f, -0.003230f, -0.007578f, -0.008191f, -0.004955f, -0.004835f, -0.005946f, -0.006163f, -0.008866f, -0.005943f, -0.007634f, -0.007488f, -0.003774f, -0.007237f, -0.007081f, -0.005841f, -0.007223f, 0.040488f, 0.039124f, 0.029483f, 0.026358f, 0.024085f, 0.019645f, 0.018513f, 0.013148f, 0.018394f, 0.009401f, 0.012010f, 0.010048f, 0.005779f, 0.008926f, 0.007741f, 0.001892f, 0.005070f, 0.007195f, -0.005124f, 0.008069f, -0.001335f, -0.000076f, -0.002734f, 0.003188f, 0.002931f, -0.008619f, -0.003798f, 0.003676f, -0.005939f, -0.004934f, -0.004422f, -0.000058f, -0.004851f, -0.004865f, -0.010964f, -0.001236f, -0.002396f, -0.007535f, -0.007800f, -0.005825f, -0.003231f, -0.007271f, -0.007884f, -0.009312f, -0.008400f, -0.003467f, -0.004639f, -0.008362f, -0.010981f, -0.007326f, -0.006237f, -0.007439f, -0.007991f, -0.008333f, -0.006377f, -0.009358f, -0.007373f, -0.006173f, -0.010119f, -0.009001f, -0.009354f, -0.006460f, -0.006298f, -0.007855f, -0.009216f, -0.008479f, -0.008102f, -0.008551f, -0.009816f, -0.007111f, -0.006515f, -0.008694f, -0.007303f, -0.008333f, -0.008783f, -0.006827f, -0.007781f, -0.009316f, -0.006532f, -0.006520f, -0.008144f, -0.009394f, -0.006737f, -0.008517f, -0.006742f, -0.007041f, -0.007619f, -0.007919f, -0.006280f, -0.006913f, -0.006600f, -0.006853f, -0.006996f, -0.007689f, -0.007165f, -0.007767f, -0.006920f, -0.006016f, -0.004830f, -0.005495f, -0.006625f, -0.006939f, -0.007586f, -0.006666f, -0.004966f, -0.005180f, -0.006067f, -0.005737f, -0.005864f, -0.006504f, -0.005456f, -0.007217f, -0.002520f, -0.007288f, 0.003725f, 0.040927f, 0.031065f, 0.027141f, 0.022947f, 0.020147f, 0.020147f, 0.015549f, 0.016650f, 0.011235f, 0.012225f, 0.009898f, 0.007151f, 0.010980f, 0.006037f, 0.004935f, 0.010502f, -0.000612f, 0.004783f, 0.007158f, -0.000707f, 0.000949f, 0.003961f, 0.005406f, -0.005891f, 0.004734f, 0.002445f, -0.003085f, -0.003155f, 0.000998f, -0.000019f, -0.001583f, -0.006035f, 0.000379f, 0.001638f, -0.005100f, -0.004582f, -0.002616f, -0.000495f, -0.004184f, -0.003120f, -0.005997f, -0.002051f, -0.001818f, -0.004226f, -0.007257f, -0.003725f, -0.002869f, -0.003357f, -0.005169f, -0.005152f, -0.003425f, -0.006745f, -0.002595f, -0.005424f, -0.005504f, -0.005033f, -0.004866f, -0.003902f, -0.004601f, -0.005904f, -0.004162f, -0.005373f, -0.004657f, -0.007449f, 0.028417f, 0.033288f, 0.022736f, 0.023532f, 0.016277f, 0.018721f, 0.013099f, 0.013260f, 0.009343f, 0.011772f, 0.006489f, 0.006018f, 0.008974f, 0.002673f, 0.006124f, 0.006923f, -0.003391f, 0.006594f, 0.001388f, 0.000001f, 0.000481f, 0.004420f, -0.004880f, -0.002379f, 0.003100f, -0.003027f, -0.003094f, -0.000448f, -0.000647f, -0.003023f, -0.007557f, -0.002288f, 0.000346f, -0.005705f, -0.005391f, -0.003131f, -0.002854f, -0.005071f, -0.005282f, -0.006893f, -0.001444f, -0.003976f, -0.006376f, -0.007633f, -0.004321f, -0.005935f, -0.005061f, -0.006570f, -0.003643f, -0.006793f, -0.004634f, -0.005490f, -0.007215f, -0.006577f, -0.006524f, -0.004309f, -0.005742f, -0.006855f, -0.005850f, -0.006113f, -0.006652f, -0.006928f, -0.004761f, -0.006129f, -0.005379f, -0.006712f, -0.007078f, -0.005218f, -0.006421f, -0.006467f, -0.004762f, -0.006110f, -0.006595f, -0.005641f, -0.005929f, -0.005297f, -0.005983f, -0.007019f, -0.005788f, -0.005554f, -0.004874f, -0.004879f, -0.005675f, -0.005868f, -0.006076f, -0.006399f, -0.004930f, -0.004909f, -0.004806f, -0.004947f, -0.005659f, -0.005784f, -0.005453f, -0.004148f, -0.004172f, -0.005076f, -0.005348f, -0.005114f, -0.004689f, -0.005483f, -0.003546f, -0.004480f, -0.004238f, -0.004514f, -0.004887f, -0.004921f, -0.004726f, -0.003266f, -0.003356f, -0.004217f, -0.004199f, -0.004610f, -0.003490f, -0.004903f, -0.000403f, 0.032204f, 0.026660f, 0.022187f, 0.018626f, 0.016688f, 0.013813f, 0.013126f, 0.011368f, 0.010822f, 0.009755f, 0.006027f, 0.010525f, 0.002082f, 0.008646f, 0.003853f, 0.002768f, 0.007489f, 0.000756f, 0.001307f, 0.004882f, 0.000700f, -0.002358f, 0.006477f, -0.001211f, -0.000716f, 0.001111f, 0.001469f, -0.002098f, -0.003901f, 0.002365f, -0.000498f, -0.004335f, -0.000819f, 0.000022f, -0.002133f, -0.003060f, -0.003505f, -0.001077f, -0.000762f, -0.004952f, -0.003213f, -0.001807f, -0.001684f, -0.003872f, -0.003425f, -0.003368f, -0.003784f, -0.001912f, -0.004264f, -0.003911f, -0.003624f, -0.002514f, -0.003254f, -0.004372f, -0.003057f, -0.003751f, -0.004167f, -0.003859f, -0.002932f, -0.004915f, -0.002579f, -0.005684f, -0.001491f, -0.006182f, 0.018081f, 0.028921f, 0.018325f, 0.017379f, 0.014739f, 0.013243f, 0.011431f, 0.009915f, 0.007229f, 0.008583f, 0.004821f, 0.008832f, 0.000929f, 0.007754f, 0.000656f, 0.002578f, 0.004213f, 0.000323f, 0.001444f, 0.003821f, -0.003908f, 0.000380f, 0.002174f, -0.002776f, -0.000280f, -0.000111f, -0.001174f, -0.005002f, -0.000999f, 0.000273f, -0.004407f, -0.002879f, -0.001218f, -0.003213f, -0.004150f, -0.004443f, -0.001572f, -0.001581f, -0.005719f, -0.004181f, -0.003467f, -0.003274f, -0.005333f, -0.003062f, -0.004171f, -0.003758f, -0.003741f, -0.005536f, -0.004792f, -0.004753f, -0.003174f, -0.004737f, -0.004546f, -0.004472f, -0.004699f, -0.005089f, -0.003643f, -0.005088f, -0.003845f, -0.005479f, -0.004496f, -0.004335f, -0.005471f, -0.004041f, -0.004567f, -0.005238f, -0.003860f, -0.004371f, -0.004087f, -0.005286f, -0.005295f, -0.004229f, -0.004326f, -0.004028f, -0.004071f, -0.004513f, -0.004777f, -0.004780f, -0.003726f, -0.003811f, -0.004317f, -0.004568f, -0.004531f, -0.004437f, -0.003460f, -0.003697f, -0.003969f, -0.004361f, -0.003984f, -0.004493f, -0.003319f, -0.003159f, -0.003947f, -0.003656f, -0.004039f, -0.003872f, -0.003847f, -0.002791f, -0.003407f, -0.003306f, -0.003884f, -0.003370f, -0.003642f, -0.002994f, -0.002900f, -0.002925f, -0.003560f, -0.002960f, -0.003092f, -0.003210f, -0.003030f, -0.002160f, -0.003023f, -0.002796f, -0.002649f, 0.023061f, 0.022697f, 0.017622f, 0.016113f, 0.013209f, 0.011675f, 0.010313f, 0.008383f, 0.008398f, 0.005950f, 0.008168f, 0.003491f, 0.007708f, 0.002000f, 0.004401f, 0.004261f, 0.000529f, 0.004285f, 0.002158f, -0.001039f, 0.004871f, -0.000888f, 0.000076f, 0.001663f, 0.000968f, -0.002817f, 0.001177f, 0.001187f, -0.003076f, -0.000668f, 0.000522f, -0.001382f, -0.002011f, -0.002227f, 0.000532f, -0.002330f, -0.003009f, -0.001454f, -0.001008f, -0.002606f, -0.002037f, -0.002714f, -0.001827f, -0.001735f, -0.003106f, -0.002756f, -0.002194f, -0.002218f, -0.003298f, -0.002316f, -0.002597f, -0.003073f, -0.001918f, -0.003150f, -0.002579f, -0.003345f, -0.002688f, -0.002657f, -0.003256f, -0.002479f, -0.002687f, -0.003994f, -0.001228f, -0.005033f, 0.012159f, 0.022861f, 0.014575f, 0.015039f, 0.011376f, 0.011026f, 0.008376f, 0.007759f, 0.006136f, 0.005609f, 0.006374f, 0.002850f, 0.005075f, 0.000988f, 0.003360f, 0.003683f, -0.000513f, 0.004108f, -0.001508f, 0.000046f, 0.001996f, -0.001576f, -0.000247f, 0.001182f, -0.001851f, -0.002830f, 0.001162f, -0.001724f, -0.002727f, -0.000471f, -0.002376f, -0.002550f, -0.003441f, -0.000415f, -0.002037f, -0.003835f, -0.002448f, -0.002001f, -0.003650f, -0.003077f, -0.002859f, -0.002435f, -0.002707f, -0.003844f, -0.003583f, -0.002947f, -0.003067f, -0.003656f, -0.002948f, -0.003738f, -0.003540f, -0.003163f, -0.003596f, -0.003299f, -0.003935f, -0.002736f, -0.003927f, -0.003627f, -0.003433f, -0.004095f, -0.003339f, -0.003221f, -0.002769f, -0.004118f, -0.003859f, -0.003450f, -0.003101f, -0.003569f, -0.003533f, -0.003520f, -0.003754f, -0.003111f, -0.002947f, -0.003276f, -0.003627f, -0.003831f, -0.003128f, -0.002643f, -0.003240f, -0.003547f, -0.003187f, -0.003554f, -0.002938f, -0.002660f, -0.003081f, -0.002908f, -0.003396f, -0.003230f, -0.002634f, -0.002443f, -0.003018f, -0.003120f, -0.002985f, -0.002699f, -0.002760f, -0.002151f, -0.002745f, -0.002647f, -0.002857f, -0.002704f, -0.002806f, -0.001863f, -0.002409f, -0.002339f, -0.002543f, -0.002458f, -0.002557f, -0.001996f, -0.002202f, -0.001912f, -0.002449f, -0.001816f, -0.002757f, -0.001302f, -0.003173f, 0.016794f, 0.019518f, 0.013525f, 0.013006f, 0.010141f, 0.009960f, 0.007419f, 0.008087f, 0.005207f, 0.006588f, 0.003420f, 0.005978f, 0.002422f, 0.004262f, 0.003143f, 0.001077f, 0.004589f, -0.001069f, 0.003159f, 0.001239f, -0.000456f, 0.002035f, 0.001061f, -0.001705f, 0.001619f, 0.000238f, -0.001965f, 0.000713f, -0.000510f, -0.000944f, -0.001481f, 0.000427f, -0.001224f, -0.002170f, -0.000583f, -0.001126f, -0.001905f, -0.001374f, -0.001674f, -0.000845f, -0.002003f, -0.002096f, -0.001562f, -0.001649f, -0.002370f, -0.001590f, -0.002124f, -0.002031f, -0.001455f, -0.002370f, -0.002006f, -0.002592f, -0.001484f, -0.002685f, -0.001434f, -0.002702f, -0.002022f, -0.002293f, -0.001554f, -0.002651f, -0.002253f, -0.002791f, -0.000923f, -0.003868f, 0.006713f, 0.019352f, 0.011595f, 0.012628f, 0.008797f, 0.008913f, 0.005968f, 0.006631f, 0.004528f, 0.005995f, 0.002385f, 0.004533f, 0.001100f, 0.003316f, 0.002147f, 0.001000f, 0.002980f, -0.001764f, 0.002325f, -0.000140f, -0.000318f, 0.001107f, -0.001143f, -0.001727f, 0.001353f, -0.001996f, -0.000935f, -0.000468f, -0.001548f, -0.002378f, -0.001368f, -0.000600f, -0.002613f, -0.001667f, -0.001425f, -0.002590f, -0.002233f, -0.002206f, -0.001505f, -0.002449f, -0.002782f, -0.002242f, -0.002174f, -0.002782f, -0.002239f, -0.002545f, -0.002651f, -0.002434f, -0.002866f, -0.002534f, -0.002911f, -0.001989f, -0.003123f, -0.002204f, -0.003458f, -0.002347f, -0.002818f, -0.002225f, -0.003135f, -0.002731f, -0.002755f, -0.002274f, -0.002889f, -0.002647f, -0.003163f, -0.002369f, -0.002369f, -0.002537f, -0.002939f, -0.002803f, -0.002592f, -0.002078f, -0.002801f, -0.002475f, -0.002908f, -0.002472f, -0.002169f, -0.002330f, -0.002625f, -0.002569f, -0.002645f, -0.001964f, -0.002191f, -0.002284f, -0.002659f, -0.002320f, -0.002564f, -0.001757f, -0.002198f, -0.002043f, -0.002340f, -0.002117f, -0.002407f, -0.001583f, -0.002233f, -0.001819f, -0.002316f, -0.001832f, -0.002117f, -0.001507f, -0.002131f, -0.001656f, -0.002188f, -0.001584f, -0.001924f, -0.001362f, -0.001948f, -0.001323f, -0.002267f, -0.001300f, -0.002099f, -0.000833f, -0.002095f, -0.000439f, -0.003463f, 0.011685f, 0.016215f, 0.011046f, 0.010294f, 0.008520f, 0.007464f, 0.006594f, 0.005382f, 0.005388f, 0.003794f, 0.004370f, 0.002867f, 0.003264f, 0.002684f, 0.001596f, 0.003277f, -0.000448f, 0.003407f, -0.000240f, 0.001162f, 0.001579f, -0.000671f, 0.000821f, 0.000917f, -0.001573f, 0.001094f, -0.000402f, -0.000719f, -0.000709f, 0.000607f, -0.001780f, -0.000522f, -0.000419f, -0.001101f, -0.001188f, -0.001031f, -0.000789f, -0.001420f, -0.001574f, -0.000812f, -0.001312f, -0.001460f, -0.001195f, -0.001780f, -0.001134f, -0.001654f, -0.001559f, -0.001812f, -0.001105f, -0.001823f, -0.001129f, -0.002215f, -0.001454f, -0.001682f, -0.001324f, -0.002192f, -0.001403f, -0.001762f, -0.001218f, -0.002146f, -0.001373f, -0.002569f, -0.000487f, -0.002969f, 0.003666f, 0.015055f, 0.010348f, 0.009824f, 0.007287f, 0.006397f, 0.005365f, 0.004520f, 0.004832f, 0.003239f, 0.003320f, 0.001863f, 0.002272f, 0.002186f, 0.001065f, 0.002061f, -0.000759f, 0.002412f, -0.001026f, 0.001183f, 0.000250f, -0.001351f, 0.000593f, -0.000740f, -0.001081f, 0.000455f, -0.001420f, -0.001391f, -0.000824f, -0.000686f, -0.002183f, -0.000407f, -0.001722f, -0.001479f, -0.001904f, -0.001036f, -0.001736f, -0.001840f, -0.001761f, -0.001653f, -0.002140f, -0.001596f, -0.002129f, -0.001449f, -0.002190f, -0.001907f, -0.002238f, -0.001725f, -0.002310f, -0.001590f, -0.002560f, -0.001910f, -0.001966f, -0.001853f, -0.002555f, -0.001896f, -0.001959f, -0.001991f, -0.002215f, -0.002183f, -0.002279f, -0.001641f, -0.002114f, -0.002101f, -0.002412f, -0.001639f, -0.001953f, -0.002132f, -0.002200f, -0.002042f, -0.001848f, -0.001712f, -0.002056f, -0.002014f, -0.002285f, -0.001576f, -0.001766f, -0.001887f, -0.002050f, -0.001845f, -0.001874f, -0.001536f, -0.001955f, -0.001657f, -0.001908f, -0.001691f, -0.001566f, -0.001574f, -0.001897f, -0.001675f, -0.001801f, -0.001321f, -0.001510f, -0.001506f, -0.001678f, -0.001539f, -0.001642f, -0.001384f, -0.001382f, -0.001212f, -0.001694f, -0.001285f, -0.001499f, -0.001231f, -0.001375f, -0.001181f, -0.001445f, -0.001016f, -0.001488f, -0.000979f, -0.001465f, -0.000794f, -0.001748f, -0.000309f, -0.002533f, 0.007326f, 0.013953f, 0.008692f, 0.008686f, 0.006318f, 0.006444f, 0.004668f, 0.004876f, 0.003613f, 0.003738f, 0.002737f, 0.002731f, 0.002346f, 0.001539f, 0.002509f, 0.000461f, 0.002599f, -0.000272f, 0.001690f, 0.000503f, -0.000257f, 0.001514f, -0.000664f, 0.000362f, 0.000502f, -0.000708f, -0.000252f, 0.000286f, -0.001135f, -0.000144f, -0.000294f, -0.000876f, -0.000735f, -0.000613f, -0.000647f, -0.001311f, -0.000491f, -0.000947f, -0.001001f, -0.001032f, -0.001119f, -0.000963f, -0.001112f, -0.001248f, -0.000964f, -0.001213f, -0.001090f, -0.001296f, -0.001450f, -0.001033f, -0.001076f, -0.001439f, -0.001370f, -0.001081f, -0.001221f, -0.001391f, -0.001467f, -0.001375f, -0.000847f, -0.001385f, -0.001364f, -0.001688f, -0.000641f, -0.001965f, 0.001192f, 0.012163f, 0.008536f, 0.007967f, 0.005765f, 0.005381f, 0.003876f, 0.004083f, 0.003287f, 0.002826f, 0.002153f, 0.001893f, 0.001877f, 0.001211f, 0.001661f, -0.000111f, 0.001724f, -0.000766f, 0.001531f, -0.000370f, -0.000334f, 0.000524f, -0.001187f, 0.000264f, -0.000376f, -0.001163f, -0.000375f, -0.000610f, -0.001467f, -0.000302f, -0.001142f, -0.001223f, -0.001228f, -0.000779f, -0.001533f, -0.001129f, -0.001189f, -0.001520f, -0.001294f, -0.001535f, -0.001367f, -0.001257f, -0.001700f, -0.001437f, -0.001490f, -0.001532f, -0.001555f, -0.001701f, -0.001453f, -0.001459f, -0.001736f, -0.001737f, -0.001441f, -0.001530f, -0.001622f, -0.001785f, -0.001566f, -0.001390f, -0.001729f, -0.001781f, -0.001633f, -0.001258f, -0.001648f, -0.001621f, -0.001811f, -0.001461f, -0.001392f, -0.001548f, -0.001668f, -0.001677f, -0.001294f, -0.001455f, -0.001612f, -0.001519f, -0.001508f, -0.001250f, -0.001463f, -0.001511f, -0.001543f, -0.001485f, -0.001155f, -0.001246f, -0.001463f, -0.001414f, -0.001423f, -0.001199f, -0.001312f, -0.001191f, -0.001347f, -0.001259f, -0.001229f, -0.001147f, -0.001194f, -0.001255f, -0.001174f, -0.001079f, -0.001170f, -0.000986f, -0.001253f, -0.001028f, -0.001131f, -0.000957f, -0.001045f, -0.000893f, -0.001143f, -0.000908f, -0.001101f, -0.000832f, -0.001024f, -0.000641f, -0.001189f, -0.000548f, -0.001285f, -0.000282f, -0.001997f, 0.004463f, 0.011485f, 0.007179f, 0.007053f, 0.005036f, 0.005096f, 0.003767f, 0.003873f, 0.002811f, 0.003042f, 0.001944f, 0.002508f, 0.001192f, 0.002299f, 0.000437f, 0.002178f, -0.000175f, 0.001698f, 0.000013f, 0.000684f, 0.000737f, -0.000379f, 0.000700f, -0.000115f, -0.000424f, 0.000524f, -0.000626f, -0.000173f, -0.000122f, -0.000605f, -0.000523f, -0.000338f, -0.000566f, -0.000718f, -0.000358f, -0.000845f, -0.000656f, -0.000855f, -0.000714f, -0.000692f, -0.000951f, -0.000760f, -0.000860f, -0.000827f, -0.000997f, -0.001040f, -0.000697f, -0.000891f, -0.001170f, -0.000919f, -0.000870f, -0.000989f, -0.001104f, -0.001059f, -0.000724f, -0.000977f, -0.001186f, -0.001130f, -0.000741f, -0.001066f, -0.001028f, -0.001187f, -0.000751f, -0.001106f, -0.000046f, 0.009254f, 0.007263f, 0.006271f, 0.004777f, 0.004190f, 0.003274f, 0.003188f, 0.002519f, 0.002272f, 0.001541f, 0.001750f, 0.000977f, 0.001724f, 0.000121f, 0.001374f, -0.000393f, 0.001200f, -0.000328f, 0.000251f, 0.000109f, -0.000700f, 0.000421f, -0.000703f, -0.000396f, -0.000217f, -0.001024f, -0.000403f, -0.000592f, -0.000898f, -0.000843f, -0.000608f, -0.001133f, -0.000857f, -0.000830f, -0.001126f, -0.000984f, -0.001149f, -0.000936f, -0.001216f, -0.001080f, -0.001146f, -0.001118f, -0.001159f, -0.001394f, -0.001040f, -0.001096f, -0.001394f, -0.001226f, -0.001110f, -0.001287f, -0.001287f, -0.001352f, -0.001042f, -0.001201f, -0.001403f, -0.001384f, -0.000993f, -0.001271f, -0.001257f, -0.001375f, -0.001102f, -0.001202f, -0.001239f, -0.001363f, -0.001125f, -0.001018f, -0.001283f, -0.001289f, -0.001259f, -0.001045f, -0.001034f, -0.001203f, -0.001192f, -0.001232f, -0.000954f, -0.001167f, -0.001056f, -0.001185f, -0.001013f, -0.000997f, -0.001053f, -0.001115f, -0.001032f, -0.000989f, -0.000935f, -0.000969f, -0.001047f, -0.001024f, -0.000911f, -0.000916f, -0.000789f, -0.001048f, -0.000818f, -0.000990f, -0.000819f, -0.000898f, -0.000756f, -0.000898f, -0.000723f, -0.000922f, -0.000680f, -0.000872f, -0.000700f, -0.000835f, -0.000587f, -0.000906f, -0.000535f, -0.000869f, -0.000487f, -0.000900f, -0.000395f, -0.001028f, -0.000083f, -0.001491f, 0.002504f, 0.009148f, 0.006070f, 0.005473f, 0.004333f, 0.003910f, 0.003237f, 0.002808f, 0.002464f, 0.001996f, 0.002046f, 0.001417f, 0.001683f, 0.000838f, 0.001396f, 0.000436f, 0.001068f, 0.000407f, 0.000491f, 0.000642f, -0.000274f, 0.000853f, -0.000579f, 0.000475f, -0.000080f, -0.000320f, 0.000029f, -0.000276f, -0.000459f, -0.000085f, -0.000411f, -0.000491f, -0.000295f, -0.000577f, -0.000510f, -0.000608f, -0.000424f, -0.000586f, -0.000678f, -0.000568f, -0.000680f, -0.000631f, -0.000846f, -0.000506f, -0.000668f, -0.000868f, -0.000698f, -0.000642f, -0.000779f, -0.000866f, -0.000735f, -0.000579f, -0.000845f, -0.000929f, -0.000678f, -0.000666f, -0.000863f, -0.000861f, -0.000755f, -0.000630f, -0.000844f, -0.000865f, -0.000819f, -0.000551f, -0.000714f, 0.006893f, 0.006332f, 0.004748f, 0.004110f, 0.003164f, 0.002842f, 0.002249f, 0.002309f, 0.001470f, 0.001583f, 0.000918f, 0.001345f, 0.000527f, 0.000966f, 0.000116f, 0.000678f, 0.000056f, 0.000240f, 0.000168f, -0.000499f, 0.000434f, -0.000808f, 0.000253f, -0.000631f, -0.000413f, -0.000343f, -0.000589f, -0.000628f, -0.000385f, -0.000857f, -0.000591f, -0.000694f, -0.000721f, -0.000793f, -0.000803f, -0.000720f, -0.000965f, -0.000835f, -0.000821f, -0.000845f, -0.000955f, -0.000938f, -0.000788f, -0.001064f, -0.000944f, -0.000880f, -0.000899f, -0.001083f, -0.001002f, -0.000813f, -0.000928f, -0.001144f, -0.000901f, -0.000911f, -0.001025f, -0.001037f, -0.000913f, -0.000843f, -0.000997f, -0.001085f, -0.000980f, -0.000770f, -0.000989f, -0.000980f, -0.000995f, -0.000806f, -0.000969f, -0.000906f, -0.000961f, -0.000852f, -0.000814f, -0.000952f, -0.000938f, -0.000862f, -0.000744f, -0.000867f, -0.000863f, -0.000896f, -0.000815f, -0.000794f, -0.000727f, -0.000855f, -0.000770f, -0.000802f, -0.000715f, -0.000798f, -0.000750f, -0.000700f, -0.000750f, -0.000678f, -0.000710f, -0.000717f, -0.000687f, -0.000678f, -0.000624f, -0.000651f, -0.000669f, -0.000613f, -0.000639f, -0.000618f, -0.000570f, -0.000583f, -0.000573f, -0.000597f, -0.000582f, -0.000538f, -0.000512f, -0.000546f, -0.000458f, -0.000589f, -0.000443f, -0.000594f, -0.000273f, -0.000835f, 0.001001f, 0.007335f, 0.005023f, 0.004543f, 0.003403f, 0.003225f, 0.002397f, 0.002419f, 0.001751f, 0.001896f, 0.001281f, 0.001453f, 0.000858f, 0.001120f, 0.000584f, 0.000876f, 0.000458f, 0.000427f, 0.000514f, -0.000055f, 0.000619f, -0.000327f, 0.000483f, -0.000239f, -0.000010f, -0.000008f, -0.000301f, -0.000113f, -0.000129f, -0.000434f, -0.000175f, -0.000388f, -0.000345f, -0.000415f, -0.000302f, -0.000475f, -0.000482f, -0.000437f, -0.000484f, -0.000518f, -0.000560f, -0.000332f, -0.000688f, -0.000553f, -0.000519f, -0.000513f, -0.000694f, -0.000536f, -0.000487f, -0.000594f, -0.000782f, -0.000429f, -0.000615f, -0.000619f, -0.000725f, -0.000425f, -0.000641f, -0.000592f, -0.000802f, -0.000357f, -0.000723f, -0.000517f, -0.000835f, -0.000265f, -0.000935f, 0.004990f, 0.005381f, 0.003737f, 0.003416f, 0.002547f, 0.002215f, 0.001890f, 0.001657f, 0.001344f, 0.001069f, 0.000963f, 0.000729f, 0.000731f, 0.000434f, 0.000367f, 0.000305f, 0.000094f, 0.000321f, -0.000343f, 0.000372f, -0.000614f, 0.000280f, -0.000557f, -0.000130f, -0.000356f, -0.000453f, -0.000357f, -0.000371f, -0.000655f, -0.000320f, -0.000687f, -0.000496f, -0.000657f, -0.000461f, -0.000760f, -0.000558f, -0.000735f, -0.000561f, -0.000841f, -0.000553f, -0.000730f, -0.000797f, -0.000708f, -0.000618f, -0.000811f, -0.000769f, -0.000716f, -0.000684f, -0.000917f, -0.000638f, -0.000703f, -0.000778f, -0.000882f, -0.000682f, -0.000696f, -0.000751f, -0.000885f, -0.000622f, -0.000753f, -0.000783f, -0.000772f, -0.000657f, -0.000721f, -0.000754f, -0.000815f, -0.000655f, -0.000629f, -0.000741f, -0.000754f, -0.000685f, -0.000656f, -0.000688f, -0.000678f, -0.000675f, -0.000649f, -0.000625f, -0.000694f, -0.000652f, -0.000612f, -0.000592f, -0.000623f, -0.000642f, -0.000585f, -0.000626f, -0.000537f, -0.000582f, -0.000578f, -0.000576f, -0.000567f, -0.000521f, -0.000541f, -0.000522f, -0.000510f, -0.000552f, -0.000489f, -0.000502f, -0.000475f, -0.000495f, -0.000475f, -0.000459f, -0.000441f, -0.000467f, -0.000418f, -0.000477f, -0.000405f, -0.000420f, -0.000375f, -0.000428f, -0.000380f, -0.000436f, -0.000323f, -0.000411f, -0.000268f, -0.000537f, 0.000252f, 0.005587f, 0.004406f, 0.003503f, 0.002895f, 0.002430f, 0.002063f, 0.001801f, 0.001571f, 0.001311f, 0.001151f, 0.000966f, 0.000843f, 0.000761f, 0.000586f, 0.000582f, 0.000292f, 0.000514f, 0.000008f, 0.000532f, -0.000182f, 0.000418f, -0.000228f, 0.000128f, -0.000082f, -0.000154f, -0.000013f, -0.000210f, -0.000214f, -0.000156f, -0.000311f, -0.000239f, -0.000272f, -0.000279f, -0.000394f, -0.000279f, -0.000380f, -0.000375f, -0.000424f, -0.000255f, -0.000569f, -0.000342f, -0.000404f, -0.000416f, -0.000552f, -0.000313f, -0.000457f, -0.000544f, -0.000457f, -0.000336f, -0.000568f, -0.000466f, -0.000457f, -0.000370f, -0.000613f, -0.000448f, -0.000438f, -0.000414f, -0.000611f, -0.000372f, -0.000518f, -0.000338f, -0.000700f, -0.000224f, -0.000861f, 0.003401f, 0.004657f, 0.002907f, 0.002851f, 0.001989f, 0.001877f, 0.001392f, 0.001365f, 0.001028f, 0.000928f, 0.000661f, 0.000648f, 0.000491f, 0.000370f, 0.000301f, 0.000152f, 0.000231f, -0.000067f, 0.000182f, -0.000293f, 0.000109f, -0.000333f, -0.000069f, -0.000266f, -0.000325f, -0.000206f, -0.000436f, -0.000304f, -0.000387f, -0.000413f, -0.000467f, -0.000389f, -0.000497f, -0.000479f, -0.000473f, -0.000518f, -0.000588f, -0.000441f, -0.000526f, -0.000629f, -0.000508f, -0.000562f, -0.000603f, -0.000575f, -0.000469f, -0.000671f, -0.000631f, -0.000499f, -0.000577f, -0.000661f, -0.000575f, -0.000533f, -0.000633f, -0.000629f, -0.000504f, -0.000572f, -0.000656f, -0.000615f, -0.000511f, -0.000551f, -0.000613f, -0.000600f, -0.000513f, -0.000573f, -0.000596f, -0.000542f, -0.000517f, -0.000550f, -0.000574f, -0.000546f, -0.000507f, -0.000488f, -0.000564f, -0.000523f, -0.000516f, -0.000474f, -0.000512f, -0.000481f, -0.000500f, -0.000482f, -0.000467f, -0.000479f, -0.000458f, -0.000463f, -0.000433f, -0.000453f, -0.000444f, -0.000422f, -0.000450f, -0.000391f, -0.000417f, -0.000400f, -0.000420f, -0.000397f, -0.000378f, -0.000372f, -0.000369f, -0.000374f, -0.000382f, -0.000339f, -0.000348f, -0.000330f, -0.000353f, -0.000340f, -0.000322f, -0.000291f, -0.000325f, -0.000305f, -0.000320f, -0.000280f, -0.000286f, -0.000255f, -0.000308f, -0.000260f, -0.000214f, 0.004212f, 0.003787f, 0.002745f, 0.002410f, 0.001895f, 0.001723f, 0.001397f, 0.001261f, 0.001016f, 0.000936f, 0.000717f, 0.000742f, 0.000502f, 0.000550f, 0.000285f, 0.000458f, 0.000109f, 0.000390f, -0.000038f, 0.000278f, -0.000089f, 0.000106f, -0.000029f, -0.000083f, 0.000014f, -0.000206f, -0.000076f, -0.000182f, -0.000176f, -0.000190f, -0.000174f, -0.000286f, -0.000220f, -0.000256f, -0.000291f, -0.000309f, -0.000191f, -0.000413f, -0.000270f, -0.000299f, -0.000345f, -0.000396f, -0.000226f, -0.000402f, -0.000390f, -0.000294f, -0.000336f, -0.000452f, -0.000313f, -0.000332f, -0.000376f, -0.000452f, -0.000255f, -0.000410f, -0.000381f, -0.000414f, -0.000262f, -0.000443f, -0.000331f, -0.000452f, -0.000192f, -0.000560f, -0.000147f, -0.000788f, 0.002227f, 0.003961f, 0.002324f, 0.002309f, 0.001612f, 0.001549f, 0.001075f, 0.001105f, 0.000771f, 0.000780f, 0.000472f, 0.000580f, 0.000272f, 0.000426f, 0.000072f, 0.000302f, -0.000080f, 0.000229f, -0.000197f, 0.000132f, -0.000244f, -0.000036f, -0.000207f, -0.000195f, -0.000175f, -0.000313f, -0.000227f, -0.000280f, -0.000338f, -0.000294f, -0.000367f, -0.000370f, -0.000349f, -0.000345f, -0.000458f, -0.000375f, -0.000392f, -0.000467f, -0.000378f, -0.000422f, -0.000500f, -0.000426f, -0.000371f, -0.000528f, -0.000447f, -0.000405f, -0.000520f, -0.000448f, -0.000418f, -0.000442f, -0.000553f, -0.000426f, -0.000411f, -0.000493f, -0.000488f, -0.000406f, -0.000468f, -0.000478f, -0.000459f, -0.000388f, -0.000480f, -0.000472f, -0.000439f, -0.000384f, -0.000460f, -0.000436f, -0.000448f, -0.000386f, -0.000446f, -0.000408f, -0.000420f, -0.000375f, -0.000434f, -0.000391f, -0.000407f, -0.000371f, -0.000387f, -0.000384f, -0.000389f, -0.000363f, -0.000365f, -0.000354f, -0.000362f, -0.000350f, -0.000368f, -0.000316f, -0.000354f, -0.000309f, -0.000363f, -0.000292f, -0.000336f, -0.000286f, -0.000340f, -0.000287f, -0.000312f, -0.000260f, -0.000308f, -0.000270f, -0.000315f, -0.000228f, -0.000291f, -0.000235f, -0.000299f, -0.000222f, -0.000282f, -0.000188f, -0.000290f, -0.000185f, -0.000301f, -0.000141f, -0.000289f, -0.000136f, -0.000323f, -0.000067f, -0.000408f, 0.003050f, 0.003229f, 0.002196f, 0.001959f, 0.001542f, 0.001386f, 0.001126f, 0.000969f, 0.000839f, 0.000692f, 0.000643f, 0.000498f, 0.000480f, 0.000315f, 0.000363f, 0.000184f, 0.000280f, 0.000076f, 0.000182f, 0.000024f, 0.000063f, 0.000023f, -0.000061f, 0.000027f, -0.000152f, -0.000020f, -0.000148f, -0.000118f, -0.000133f, -0.000157f, -0.000203f, -0.000153f, -0.000206f, -0.000234f, -0.000157f, -0.000271f, -0.000247f, -0.000194f, -0.000281f, -0.000283f, -0.000179f, -0.000310f, -0.000297f, -0.000211f, -0.000297f, -0.000327f, -0.000228f, -0.000268f, -0.000331f, -0.000286f, -0.000219f, -0.000364f, -0.000272f, -0.000283f, -0.000242f, -0.000370f, -0.000237f, -0.000306f, -0.000243f, -0.000392f, -0.000154f, -0.000409f, -0.000096f, -0.000659f, 0.001342f, 0.003314f, 0.001923f, 0.001853f, 0.001308f, 0.001239f, 0.000886f, 0.000850f, 0.000629f, 0.000597f, 0.000424f, 0.000384f, 0.000279f, 0.000236f, 0.000172f, 0.000110f, 0.000081f, -0.000001f, 0.000012f, -0.000051f, -0.000100f, -0.000080f, -0.000183f, -0.000069f, -0.000271f, -0.000120f, -0.000292f, -0.000183f, -0.000264f, -0.000230f, -0.000335f, -0.000218f, -0.000339f, -0.000279f, -0.000303f, -0.000350f, -0.000330f, -0.000263f, -0.000409f, -0.000310f, -0.000334f, -0.000385f, -0.000336f, -0.000302f, -0.000425f, -0.000351f, -0.000324f, -0.000356f, -0.000419f, -0.000289f, -0.000397f, -0.000377f, -0.000344f, -0.000319f, -0.000406f, -0.000364f, -0.000334f, -0.000329f, -0.000400f, -0.000324f, -0.000347f, -0.000347f, -0.000365f, -0.000313f, -0.000337f, -0.000339f, -0.000359f, -0.000301f, -0.000329f, -0.000320f, -0.000333f, -0.000309f, -0.000315f, -0.000302f, -0.000315f, -0.000296f, -0.000303f, -0.000288f, -0.000300f, -0.000279f, -0.000296f, -0.000260f, -0.000290f, -0.000260f, -0.000295f, -0.000237f, -0.000274f, -0.000239f, -0.000279f, -0.000232f, -0.000256f, -0.000216f, -0.000261f, -0.000225f, -0.000239f, -0.000198f, -0.000246f, -0.000202f, -0.000239f, -0.000178f, -0.000220f, -0.000183f, -0.000233f, -0.000176f, -0.000200f, -0.000153f, -0.000221f, -0.000146f, -0.000225f, -0.000110f, -0.000230f, -0.000085f, -0.000273f, -0.000007f, -0.000420f, 0.002082f, 0.002789f, 0.001726f, 0.001664f, 0.001190f, 0.001155f, 0.000841f, 0.000831f, 0.000608f, 0.000619f, 0.000444f, 0.000452f, 0.000295f, 0.000325f, 0.000203f, 0.000234f, 0.000125f, 0.000135f, 0.000075f, 0.000046f, 0.000048f, -0.000034f, 0.000039f, -0.000100f, -0.000004f, -0.000115f, -0.000072f, -0.000104f, -0.000116f, -0.000144f, -0.000102f, -0.000199f, -0.000123f, -0.000164f, -0.000207f, -0.000146f, -0.000186f, -0.000237f, -0.000138f, -0.000225f, -0.000235f, -0.000159f, -0.000229f, -0.000250f, -0.000172f, -0.000220f, -0.000262f, -0.000193f, -0.000202f, -0.000280f, -0.000196f, -0.000213f, -0.000229f, -0.000266f, -0.000173f, -0.000253f, -0.000228f, -0.000240f, -0.000168f, -0.000283f, -0.000174f, -0.000296f, -0.000084f, -0.000467f, 0.000699f, 0.002711f, 0.001613f, 0.001503f, 0.001042f, 0.001006f, 0.000717f, 0.000687f, 0.000482f, 0.000483f, 0.000319f, 0.000327f, 0.000196f, 0.000203f, 0.000107f, 0.000114f, 0.000023f, 0.000022f, -0.000011f, -0.000044f, -0.000048f, -0.000128f, -0.000071f, -0.000165f, -0.000101f, -0.000195f, -0.000168f, -0.000173f, -0.000201f, -0.000214f, -0.000204f, -0.000265f, -0.000187f, -0.000247f, -0.000273f, -0.000222f, -0.000282f, -0.000261f, -0.000227f, -0.000310f, -0.000280f, -0.000225f, -0.000315f, -0.000276f, -0.000253f, -0.000309f, -0.000298f, -0.000223f, -0.000320f, -0.000296f, -0.000266f, -0.000265f, -0.000315f, -0.000266f, -0.000265f, -0.000303f, -0.000284f, -0.000244f, -0.000288f, -0.000283f, -0.000278f, -0.000244f, -0.000281f, -0.000268f, -0.000261f, -0.000250f, -0.000275f, -0.000247f, -0.000258f, -0.000239f, -0.000263f, -0.000240f, -0.000250f, -0.000224f, -0.000251f, -0.000224f, -0.000248f, -0.000213f, -0.000236f, -0.000208f, -0.000242f, -0.000194f, -0.000228f, -0.000196f, -0.000227f, -0.000190f, -0.000209f, -0.000180f, -0.000219f, -0.000183f, -0.000195f, -0.000165f, -0.000202f, -0.000168f, -0.000197f, -0.000146f, -0.000191f, -0.000149f, -0.000195f, -0.000127f, -0.000180f, -0.000135f, -0.000183f, -0.000121f, -0.000169f, -0.000109f, -0.000182f, -0.000102f, -0.000182f, -0.000065f, -0.000195f, -0.000051f, -0.000233f, 0.000031f, -0.000385f, 0.001375f, 0.002357f, 0.001401f, 0.001358f, 0.000960f, 0.000926f, 0.000677f, 0.000662f, 0.000492f, 0.000481f, 0.000355f, 0.000344f, 0.000244f, 0.000253f, 0.000161f, 0.000178f, 0.000085f, 0.000121f, 0.000024f, 0.000083f, -0.000028f, 0.000051f, -0.000071f, 0.000010f, -0.000084f, -0.000043f, -0.000074f, -0.000087f, -0.000099f, -0.000087f, -0.000149f, -0.000075f, -0.000159f, -0.000125f, -0.000117f, -0.000177f, -0.000137f, -0.000128f, -0.000204f, -0.000117f, -0.000169f, -0.000194f, -0.000142f, -0.000161f, -0.000210f, -0.000139f, -0.000172f, -0.000208f, -0.000155f, -0.000166f, -0.000195f, -0.000183f, -0.000146f, -0.000209f, -0.000174f, -0.000169f, -0.000163f, -0.000206f, -0.000152f, -0.000189f, -0.000152f, -0.000225f, -0.000088f, -0.000302f, 0.000294f, 0.002134f, 0.001392f, 0.001199f, 0.000873f, 0.000785f, 0.000592f, 0.000536f, 0.000401f, 0.000364f, 0.000265f, 0.000253f, 0.000158f, 0.000152f, 0.000079f, 0.000092f, 0.000011f, 0.000037f, -0.000054f, 0.000006f, -0.000094f, -0.000035f, -0.000137f, -0.000058f, -0.000143f, -0.000115f, -0.000150f, -0.000151f, -0.000150f, -0.000156f, -0.000204f, -0.000146f, -0.000214f, -0.000170f, -0.000194f, -0.000229f, -0.000179f, -0.000196f, -0.000247f, -0.000167f, -0.000253f, -0.000213f, -0.000191f, -0.000230f, -0.000249f, -0.000177f, -0.000250f, -0.000220f, -0.000211f, -0.000219f, -0.000254f, -0.000185f, -0.000225f, -0.000236f, -0.000219f, -0.000201f, -0.000235f, -0.000211f, -0.000213f, -0.000205f, -0.000234f, -0.000194f, -0.000210f, -0.000206f, -0.000217f, -0.000193f, -0.000207f, -0.000191f, -0.000211f, -0.000184f, -0.000201f, -0.000185f, -0.000197f, -0.000179f, -0.000189f, -0.000171f, -0.000196f, -0.000168f, -0.000179f, -0.000164f, -0.000181f, -0.000164f, -0.000171f, -0.000150f, -0.000174f, -0.000154f, -0.000158f, -0.000142f, -0.000165f, -0.000142f, -0.000156f, -0.000124f, -0.000156f, -0.000132f, -0.000155f, -0.000107f, -0.000148f, -0.000115f, -0.000150f, -0.000104f, -0.000137f, -0.000100f, -0.000141f, -0.000096f, -0.000131f, -0.000083f, -0.000143f, -0.000073f, -0.000141f, -0.000053f, -0.000153f, -0.000035f, -0.000182f, 0.000031f, -0.000300f, 0.000843f, 0.001958f, 0.001156f, 0.001106f, 0.000778f, 0.000746f, 0.000543f, 0.000529f, 0.000390f, 0.000381f, 0.000284f, 0.000268f, 0.000200f, 0.000187f, 0.000137f, 0.000119f, 0.000088f, 0.000069f, 0.000048f, 0.000023f, 0.000019f, -0.000009f, -0.000017f, -0.000025f, -0.000054f, -0.000029f, -0.000087f, -0.000046f, -0.000091f, -0.000085f, -0.000075f, -0.000115f, -0.000089f, -0.000100f, -0.000142f, -0.000073f, -0.000151f, -0.000111f, -0.000107f, -0.000152f, -0.000122f, -0.000110f, -0.000168f, -0.000110f, -0.000129f, -0.000161f, -0.000125f, -0.000127f, -0.000159f, -0.000132f, -0.000124f, -0.000161f, -0.000136f, -0.000129f, -0.000144f, -0.000148f, -0.000127f, -0.000140f, -0.000145f, -0.000138f, -0.000121f, -0.000155f, -0.000113f, -0.000181f, 0.000055f, 0.001645f, 0.001209f, 0.000946f, 0.000736f, 0.000614f, 0.000487f, 0.000416f, 0.000340f, 0.000276f, 0.000220f, 0.000182f, 0.000142f, 0.000106f, 0.000074f, 0.000046f, 0.000037f, -0.000003f, -0.000015f, -0.000037f, -0.000033f, -0.000067f, -0.000075f, -0.000083f, -0.000098f, -0.000087f, -0.000137f, -0.000104f, -0.000132f, -0.000130f, -0.000130f, -0.000165f, -0.000130f, -0.000144f };
 
     struct inline4 : as_engine<
         /* W             */ 4,
         /* H             */ 9,
         /* THROTTLE_Y    */ 2,
         /* PISTON_Y      */ 4,
-        /* AUDIO_Y       */ 7,
+        /* AUDIO_Y       */ 5,
         /* PIPE_CELLS    */ 256,
         /* PIPE_SUBSTEPS */ 10,
         inline_pistons,
-        basic_cams,
+        vtec_cams,
         basic_sparkplugs>
     {
         inline4()
         {
             this->convolution.set_impulse(g_impulse);
-            this->lumped_drag_torque_n_m = 30.2_r;
-            this->limiter.max_angular_velocity_r_per_s = 700.0_r;
-            this->limiter.limit_time_s = 0.07_r;
-            this->flywheel.mass_kg = 15.0_r;
-            this->flywheel.radius_m = 0.18_r;
-            this->crankshaft.mass_kg = 12.5_r;
-            this->crankshaft.radius_m = 0.045_r;
-            this->crankshaft.angular_velocity_r_per_s = 150.0_r;
-            this->pistons.diameter_m.fill(0.086_r);
-            this->pistons.crank_throw_length_m.fill(0.043_r);
-            this->pistons.connecting_rod_length_m.fill(0.145_r);
-            this->pistons.connecting_rod_mass_kg.fill(0.45_r);
-            this->pistons.head_mass_density_kg_per_m3.fill(2700.0_r);
-            this->pistons.head_compression_height_m.fill(0.030_r);
-            this->pistons.head_clearance_height_m.fill(0.007_r);
-            this->pistons.friction_n_m_s2_per_r2.fill(0.00005_r);
-            this->inlet_cam.ramp_theta_r.fill(g_pi_r * 1.0_r);
-            this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.6_r);
-            real theta0_r = 0.0_r;
+            this->lumped_drag_torque_n_m = 35.2;
+            this->limiter.max_angular_velocity_r_per_s = 700.0;
+            this->limiter.limit_time_s = 0.04;
+            this->flywheel.mass_kg = 18.0;
+            this->flywheel.radius_m = 0.20;
+            this->crankshaft.mass_kg = 12.5;
+            this->crankshaft.radius_m = 0.045;
+            this->crankshaft.angular_velocity_r_per_s = 150.0;
+            this->pistons.diameter_m.fill(0.086);
+            this->pistons.crank_throw_length_m.fill(0.043);
+            this->pistons.connecting_rod_length_m.fill(0.145);
+            this->pistons.connecting_rod_mass_kg.fill(0.45);
+            this->pistons.head_mass_density_kg_per_m3.fill(2700.0);
+            this->pistons.head_compression_height_m.fill(0.030);
+            this->pistons.head_clearance_height_m.fill(0.007);
+            this->pistons.friction_n_m_s2_per_r2.fill(0.00005);
+            this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.85);
+            this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.5);
+            double theta0_r = 0.0;
             for(size_t i = 0; i < get_width(); i++)
             {
                 this->pistons.theta0_r[i] = theta0_r;
-                this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - 0.4_r;
-                this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - 0.4_r;
-                this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r + 0.9_r;
-                theta0_r += g_otto_cycle_r / static_cast<real>(get_width());
+                this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - 1.0;
+                this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - 0.4;
+                this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r + 0.9;
+                theta0_r += g_otto_cycle_r / get_width();
             }
             for(auto& flow : this->flows)
             {
-                flow.chamber_nozzle_open_ratio.fill(1.0_r);
+                flow.chamber_nozzle_open_ratio.fill(1.0);
                 flow.chamber_nozzle_flow_area_m2 = {
-                    0.00250_r, /* Atmospheric Source -> Intake           */
-                    0.00120_r, /* Intake             -> Throttle         */
-                    0.00085_r, /* Throttle           -> Runner           */
-                    0.00090_r, /* Runner             -> Piston           */
-                    0.00120_r, /* Piston             -> Runner           */
-                    0.00150_r, /* Runner             -> Chamber1         */
-                    0.00175_r, /* Chamber1           -> Chamber2         */
-                    0.00200_r, /* Chamber2           -> Atmospheric Sink */
+                    0.00250, /* Source   -> Intake    */
+                    0.00120, /* Intake   -> Throttle  */
+                    0.00085, /* Throttle -> Runner    */
+                    0.00090, /* Runner   -> Piston    */
+                    0.00120, /* Piston   -> Chamber0  */
+                    0.00170, /* Chamber0 -> Chamber1  */
+                    0.00185, /* Chamber1 -> Chamber2  */
+                    0.00250, /* Chamber2 -> Sink      */
+                };
+                flow.chamber_volume_m3 = {
+                    g_resevoir_volume_m3, /* Source   */
+                    0.0030,               /* Intake   */
+                    0.0008,               /* Throttle */
+                    0.0003,               /* Runner   */
+                    0.0000,               /* Piston   */
+                    0.0003,               /* Chamber0 */
+                    0.0004,               /* Chamber1 */
+                    0.0005,               /* Chamber2 */
+                    g_resevoir_volume_m3  /* Sink     */
                 };
             }
-            /*                             Atmospheric Source    Intake   Throttle  Runner    Piston     Runner    Chamber1  Chamber2   Atmospheric Sink    */
-            flows[0].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.0005_r, 0.0005_r, 0.0005_r, g_resevoir_volume_m3 };
-            flows[1].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.0005_r, 0.0005_r, 0.0005_r, g_resevoir_volume_m3 };
-            flows[2].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.0005_r, 0.0005_r, 0.0005_r, g_resevoir_volume_m3 };
-            flows[3].chamber_volume_m3 = { g_resevoir_volume_m3, 0.003_r, 0.0008_r, 0.0003_r, 0.00000_r, 0.0005_r, 0.0005_r, 0.0005_r, g_resevoir_volume_m3 };
             this->throttle.table = {
-                0.00100_r,
-                0.02500_r,
-                0.25000_r,
-                1.00000_r,
+                0.001,
+                0.025,
+                0.250,
+                1.000,
             };
-            this->pipe.piston_connect_m = { 0.0_r, 0.38_r, 0.17_r, 0.63_r };
-            this->pipe.mic_position0_m = 0.7_r;
-            this->pipe.mic_position1_m = 1.2_r;
-            this->pipe.length_m = 1.50_r;
-            this->dc.set_cutoff_frequency(2.0_r);
-            this->gain.ratio = 0.00003_r;
+            this->pipe.piston_connect_m = { 0.00, 0.38, 0.16, 0.26 };
+            this->pipe.mic_position0_m = 0.61;
+            this->pipe.mic_position1_m = 0.74;
+            this->pipe.length_m = 1.0;
+            this->dc.set_cutoff_frequency(10.0);
+            this->gain.ratio = 0.000002;
         }
     };
 
