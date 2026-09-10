@@ -13,7 +13,11 @@ struct point
     SDL_FPoint self;
     uint32_t color;
 
-    point(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p), color(color) {}
+    point(const int x_p, const int y_p, const uint32_t color)
+        : self(x_p, y_p)
+        , color(color)
+        {
+        }
 };
 
 struct points
@@ -73,7 +77,11 @@ struct circle
     double radius;
     uint32_t color;
 
-    circle(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p), color(color) {}
+    circle(const int x_p, const int y_p, const uint32_t color)
+        : self(x_p, y_p)
+        , color(color)
+        {
+        }
 
     circle(const rect& rect, const uint32_t color, const double border_ratio = 1.0)
     {
@@ -88,7 +96,11 @@ struct message : point
 {
     std::string string;
 
-    message(const int x_p, const int y_p, const uint32_t color, const std::string& string): point(x_p, y_p, color), string(string) {}
+    message(const int x_p, const int y_p, const uint32_t color, const std::string& string)
+        : point(x_p, y_p, color)
+        , string(string)
+        {
+        }
 };
 
 struct sdl

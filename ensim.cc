@@ -715,13 +715,16 @@ namespace ensim
     template<size_t W>
     struct vtec_cams : basic_cams<W>
     {
+        double vtec_engage_r_per_s = 400.0;
+        double vtec_boost = 10.0;
+
         fn void set_open_ratios() override
         {
             for(size_t i = 0; i < W; i++)
             {
-                if(this->crankshaft_angular_velocity_r_per_s > 400.0)
+                if(this->crankshaft_angular_velocity_r_per_s > vtec_engage_r_per_s)
                 {
-                    const double boost = clamper(10.0 * this->temp_open_ratio[i], 0.0, 1.0);
+                    const double boost = clamper(vtec_boost * this->temp_open_ratio[i], 0.0, 1.0);
                     this->open_ratio[i] = boost;
                 }
                 else
@@ -2084,7 +2087,9 @@ namespace ensim
             this->pistons.head_clearance_height_m.fill(0.007);
             this->pistons.friction_n_m_s2_per_r2.fill(0.00005);
             this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.85);
+            this->inlet_cam.vtec_engage_r_per_s = 450.0;
             this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.5);
+            this->outlet_cam.vtec_engage_r_per_s = 450.0;
             double theta0_r = 0.0;
             for(size_t i = 0; i < get_width(); i++)
             {
