@@ -619,7 +619,7 @@ struct audio_popup : signals, popup
 
 struct pipe_popup : signals, popup
 {
-    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t signal_colors[] = { sdl::green, sdl::purple, sdl::blue, sdl::orange, sdl::red, sdl::yellow };
     static constexpr uint32_t text_color = sdl::white;
     const std::string name;
     const ensim::engine& engine;
@@ -628,23 +628,27 @@ struct pipe_popup : signals, popup
 
     void draw(sdl& sdl) override
     {
-        const std::vector<float>& pipe_signal = engine.get_pipe_pressure_signal();
         const rect fill = calc_rect();
-        const rect signal(fill, signal_color);
-        const points data = project_1d(pipe_signal, signal, max_points);
-        const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
-        const auto [y_min, y_max] = minmax(pipe_signal);
-        const double amplitude = y_max - y_min;
-        const std::vector<std::string> strings = {
-            name,
-            "max = " + std::to_string(y_max),
-            "min = " + std::to_string(y_min),
-            "amplitude = " + std::to_string(amplitude),
-            "samples = " + std::to_string(pipe_signal.size()),
-        };
         sdl.fill(fill);
-        sdl.draw_lines(data);
-        sdl.write(font, strings);
+        const std::span<const std::vector<float>> pipe_signals = engine.get_pipe_pressure_signals();
+        size_t i = 0;
+        for(auto& pipe_signal : pipe_signals)
+        {
+            const rect signal(fill, signal_colors[i++]);
+            const points data = project_1d(pipe_signal, signal, max_points);
+            const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
+            const auto [y_min, y_max] = minmax(pipe_signal);
+            const double amplitude = y_max - y_min;
+            const std::vector<std::string> strings = {
+                name,
+                "max = " + std::to_string(y_max),
+                "min = " + std::to_string(y_min),
+                "amplitude = " + std::to_string(amplitude),
+                "samples = " + std::to_string(pipe_signal.size()),
+            };
+            sdl.draw_lines(data);
+            sdl.write(font, strings);
+        }
     }
 };
 
@@ -786,7 +790,7 @@ struct ui
     ui(ensim::engine& engine): engine(engine), y_select(engine.get_piston_y())
     {
         engine.set_logger(x_select, y_select);
-        if(engine.get_width() >= signals::count)
+        if(engine.get_height() > signals::count)
         {
             throw std::runtime_error("max signals supported: " + std::to_string(signals::count));
         }
