@@ -620,7 +620,6 @@ struct audio_popup : signals, popup
 struct pipe_popup : signals, popup
 {
     static constexpr uint32_t signal_colors[] = { sdl::green, sdl::purple, sdl::blue, sdl::orange, sdl::red, sdl::yellow };
-    static constexpr uint32_t text_color = sdl::white;
     const std::string name;
     const ensim::engine& engine;
 
@@ -634,20 +633,24 @@ struct pipe_popup : signals, popup
         size_t i = 0;
         for(auto& pipe_signal : pipe_signals)
         {
-            const rect signal(fill, signal_colors[i++]);
+            const rect signal(fill, signal_colors[i]);
             const points data = project_1d(pipe_signal, signal, max_points);
-            const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, text_color);
             const auto [y_min, y_max] = minmax(pipe_signal);
             const double amplitude = y_max - y_min;
-            const std::vector<std::string> strings = {
-                name,
-                "max = " + std::to_string(y_max),
-                "min = " + std::to_string(y_min),
-                "amplitude = " + std::to_string(amplitude),
-                "samples = " + std::to_string(pipe_signal.size()),
-            };
             sdl.draw_lines(data);
-            sdl.write(font, strings);
+            if(i == 0)
+            {
+                const point font(fill.self.x + sdl::line_p, fill.self.y + sdl::line_p, signal_colors[i]);
+                const std::vector<std::string> strings = {
+                    name,
+                    "max = " + std::to_string(y_max),
+                    "min = " + std::to_string(y_min),
+                    "amplitude = " + std::to_string(amplitude),
+                    "samples = " + std::to_string(pipe_signal.size()),
+                };
+                sdl.write(font, strings);
+            }
+            i++;
         }
     }
 };
@@ -917,13 +920,13 @@ int main(int argc, const char* const*)
 {
     if(argc == 2)
     {
-        auto engine = ensim::new_engine(ensim::type::inline4);
+        auto engine = ensim::new_engine(ensim::type::inline8);
         engine->run(ensim::g_sample_rate_hz);
         printf("%lu bytes\n", engine->get_bytes());
         return 0;
     }
     std::atomic<bool> done = false;
-    auto engine = ensim::new_engine(ensim::type::inline4);
+    auto engine = ensim::new_engine(ensim::type::inline8);
     sdl sdl;
     std::jthread thread(
         [&done, &engine, &sdl]()
