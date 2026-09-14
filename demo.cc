@@ -13,11 +13,7 @@ struct point
     SDL_FPoint self;
     uint32_t color;
 
-    point(const int x_p, const int y_p, const uint32_t color)
-        : self(x_p, y_p)
-        , color(color)
-        {
-        }
+    point(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p) , color(color) {}
 };
 
 struct points
@@ -77,11 +73,7 @@ struct circle
     double radius;
     uint32_t color;
 
-    circle(const int x_p, const int y_p, const uint32_t color)
-        : self(x_p, y_p)
-        , color(color)
-        {
-        }
+    circle(const int x_p, const int y_p, const uint32_t color): self(x_p, y_p), color(color) {}
 
     circle(const rect& rect, const uint32_t color, const double border_ratio = 1.0)
     {
@@ -96,11 +88,7 @@ struct message : point
 {
     std::string string;
 
-    message(const int x_p, const int y_p, const uint32_t color, const std::string& string)
-        : point(x_p, y_p, color)
-        , string(string)
-        {
-        }
+    message(const int x_p, const int y_p, const uint32_t color, const std::string& string): point(x_p, y_p, color), string(string) {}
 };
 
 struct sdl
@@ -109,7 +97,6 @@ struct sdl
     static constexpr int h_p = 900;
     static constexpr uint32_t line_p = 16;
     static constexpr uint32_t font_p = 8;
-
     static constexpr uint32_t grey   = 0xFFAAAAAA;
     static constexpr uint32_t white  = 0xFFFFFFFF;
     static constexpr uint32_t black  = 0xFF101010;
@@ -119,6 +106,11 @@ struct sdl
     static constexpr uint32_t orange = 0xFFFFAA00;
     static constexpr uint32_t red    = 0xFFFF2222;
     static constexpr uint32_t yellow = 0xFFFFFF00;
+
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    SDL_AudioStream* audio_stream;
+    SDL_AudioSpec audio_spec;
 
     sdl()
     {
@@ -207,7 +199,7 @@ struct sdl
         size_t i = 0;
         for(const auto& x : strings)
         {
-            const message message(point.self.x, point.self.y + i * sdl::line_p, point.color, x);
+            const message message(point.self.x, point.self.y + i * 0.8 * sdl::line_p, point.color, x);
             write(message);
             i++;
         }
@@ -284,20 +276,14 @@ struct sdl
     {
         SDL_PutAudioStreamData(audio_stream, audio.data(), audio.size() * sizeof(float));
     }
-
-private:
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    SDL_AudioStream* audio_stream;
-    SDL_AudioSpec audio_spec;
 };
 
 template <typename T>
 std::pair<T, T> minmax(const std::vector<T>& line)
 {
-    const auto [min_it, max_it] = std::minmax_element(line.begin(), line.end());
-    const double min = (min_it == line.end()) ? 0.0 : *min_it;
-    const double max = (max_it == line.end()) ? 0.0 : *max_it;
+    const auto [x, y] = std::minmax_element(line.begin(), line.end());
+    const auto min = (x == line.end()) ? 0.0 : *x;
+    const auto max = (y == line.end()) ? 0.0 : *y;
     return { min, max };
 }
 
@@ -395,6 +381,17 @@ struct chamber : cell
     static constexpr int h_p = sdl::h_p / signals::count;
     static constexpr int ws_p = w_p / 3;
     static constexpr int hs_p = w_p / 3;
+    static constexpr uint32_t fill_color = sdl::black;
+    static constexpr uint32_t throttle_color = sdl::orange;
+    static constexpr uint32_t piston_color = sdl::purple;
+    static constexpr uint32_t audio_color = sdl::blue;
+    static constexpr uint32_t panic_color = sdl::red;
+    static constexpr uint32_t select_color = sdl::yellow;
+    int x;
+    int y;
+    int& x_select;
+    int& y_select;
+    ensim::engine& engine;
 
     chamber(const int x, const int y, int& x_select, int& y_select, ensim::engine& engine)
         : x(x)
@@ -439,23 +436,12 @@ struct chamber : cell
             sdl.write(message(xf_p, yf_p, audio_color, "A"), true);
         }
     }
-
-private:
-    int x;
-    int y;
-    int& x_select;
-    int& y_select;
-    ensim::engine& engine;
-    static constexpr uint32_t fill_color = sdl::black;
-    static constexpr uint32_t throttle_color = sdl::orange;
-    static constexpr uint32_t piston_color = sdl::purple;
-    static constexpr uint32_t audio_color = sdl::blue;
-    static constexpr uint32_t panic_color = sdl::red;
-    static constexpr uint32_t select_color = sdl::yellow;
 };
 
 struct frame : cell
 {
+    static constexpr uint32_t frame_color = sdl::white;
+
     void draw(sdl& sdl) override
     {
         const int x_p = 0;
@@ -463,15 +449,17 @@ struct frame : cell
         const rect rect(x_p, y_p, sdl::w_p, sdl::h_p, frame_color);
         sdl.outline(rect);
     }
-
-private:
-    static constexpr uint32_t frame_color = sdl::white;
 };
 
 struct port : cell
 {
     static constexpr int w_p = chamber::w_p / 4;
     static constexpr int h_p = chamber::w_p / 4;
+    static constexpr uint32_t fill_color = sdl::green;
+
+    int x;
+    int y;
+    ensim::engine& engine;
 
     port(const int x, const int y, ensim::engine& engine): x(x), y(y), engine(engine) {}
 
@@ -483,18 +471,18 @@ struct port : cell
         const rect rect(x_p, y_p, w_p, h_p, fill_color, ratio);
         sdl.fill(rect);
     }
-
-private:
-    int x;
-    int y;
-    ensim::engine& engine;
-    static constexpr uint32_t fill_color = sdl::green;
 };
 
 struct plot : signals, cell
 {
     static constexpr size_t max_points = sdl::w_p;
     static constexpr int h_p = sdl::h_p / signals::count;
+    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t fill_color = sdl::black;
+    static constexpr uint32_t text_color = sdl::white;
+    static constexpr uint32_t zero_line_color = sdl::grey;
+    int y;
+    ensim::engine& engine;
 
     plot(const int y, ensim::engine& engine): y(y), engine(engine) {}
 
@@ -528,14 +516,6 @@ struct plot : signals, cell
         sdl.draw_lines(data);
         sdl.write(font, strings);
     }
-
-private:
-    int y;
-    ensim::engine& engine;
-    static constexpr uint32_t signal_color = sdl::red;
-    static constexpr uint32_t fill_color = sdl::black;
-    static constexpr uint32_t text_color = sdl::white;
-    static constexpr uint32_t zero_line_color = sdl::grey;
 };
 
 struct popup : cell
@@ -545,10 +525,10 @@ struct popup : cell
     static constexpr int h_p = sdl::h_p / 2;
     static constexpr int dw_p = 2 * sdl::line_p;
     static constexpr int dh_p = 2 * sdl::line_p;
+    int index;
 
     popup(const int index): index(index) {}
 
-protected:
     std::pair<int, int> calc_position() const
     {
         const int x_p = sdl::w_p - w_p - index * dw_p;
@@ -561,13 +541,16 @@ protected:
         const auto [x_p, y_p] = calc_position();
         return rect(x_p, y_p, w_p, h_p, sdl::black);
     }
-
-private:
-    int index;
 };
 
 struct plot_popup : signals, popup
 {
+    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t text_color = sdl::white;
+    std::string name;
+    const std::vector<double>& x_signal;
+    const std::vector<double>& y_signal;
+
     plot_popup(const int index, const std::string& name, const std::vector<double>& x_signal, const std::vector<double>& y_signal)
         : popup(index)
         , name(name)
@@ -595,17 +578,15 @@ struct plot_popup : signals, popup
         sdl.draw_lines(data);
         sdl.write(font, strings);
     }
-
-private:
-    std::string name;
-    const std::vector<double>& x_signal;
-    const std::vector<double>& y_signal;
-    static constexpr uint32_t signal_color = sdl::red;
-    static constexpr uint32_t text_color = sdl::white;
 };
 
 struct audio_popup : signals, popup
 {
+    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t text_color = sdl::white;
+    const std::string name;
+    const std::vector<float>& audio_signal;
+
     audio_popup(const int index, const std::string& name, const std::vector<float>& audio_signal)
         : popup(index)
         , name(name)
@@ -634,22 +615,16 @@ struct audio_popup : signals, popup
         sdl.draw_lines(data);
         sdl.write(font, strings);
     }
-
-private:
-    const std::string name;
-    const std::vector<float>& audio_signal;
-    static constexpr uint32_t signal_color = sdl::red;
-    static constexpr uint32_t text_color = sdl::white;
 };
 
 struct pipe_popup : signals, popup
 {
-    pipe_popup(const int index, const std::string& name, const ensim::engine& engine)
-        : popup(index)
-        , name(name)
-        , engine(engine)
-        {
-        }
+    static constexpr uint32_t signal_color = sdl::red;
+    static constexpr uint32_t text_color = sdl::white;
+    const std::string name;
+    const ensim::engine& engine;
+
+    pipe_popup(const int index, const std::string& name, const ensim::engine& engine): popup(index), name(name), engine(engine) {}
 
     void draw(sdl& sdl) override
     {
@@ -671,16 +646,26 @@ struct pipe_popup : signals, popup
         sdl.draw_lines(data);
         sdl.write(font, strings);
     }
-
-private:
-    const std::string name;
-    const ensim::engine& engine;
-    static constexpr uint32_t signal_color = sdl::red;
-    static constexpr uint32_t text_color = sdl::white;
 };
 
 struct gauge_popup : popup
 {
+    static constexpr double start_theta_r = (4.0 / 3.0) * std::numbers::pi_v<double>;
+    static constexpr double sweep_theta_r = (5.0 / 3.0) * std::numbers::pi_v<double>;
+    static constexpr double outer_ratio = 0.75;
+    static constexpr double inner_ratio = 0.05;
+    static constexpr double ticks_ratio = 0.82;
+    static constexpr double needle_ratio = 0.85;
+    static constexpr uint32_t needle_color = sdl::red;
+    static constexpr uint32_t inner_color = sdl::grey;
+    static constexpr uint32_t outer_color = sdl::grey;
+    static constexpr uint32_t ticks_color = sdl::white;
+    static constexpr uint32_t text_color = sdl::white;
+    const std::string name;
+    const std::atomic<double>& value;
+    const double max_value;
+    const size_t needle_ticks;
+
     gauge_popup(const int index, const std::string& name, const std::atomic<double>& value, const double max_value, const size_t needle_ticks)
         : popup(index)
         , name(name)
@@ -714,7 +699,6 @@ struct gauge_popup : popup
         sdl.write(text, strings);
     }
 
-private:
     double to_angle(const double at) const
     {
         return start_theta_r - (at / max_value) * sweep_theta_r;
@@ -750,32 +734,14 @@ private:
             sdl.write(message, true);
         }
     }
-
-    const std::string name;
-    const std::atomic<double>& value;
-    const double max_value;
-    const size_t needle_ticks;
-    static constexpr double start_theta_r = (4.0 / 3.0) * std::numbers::pi_v<double>;
-    static constexpr double sweep_theta_r = (5.0 / 3.0) * std::numbers::pi_v<double>;
-    static constexpr double outer_ratio = 0.75;
-    static constexpr double inner_ratio = 0.05;
-    static constexpr double ticks_ratio = 0.82;
-    static constexpr double needle_ratio = 0.85;
-    static constexpr uint32_t needle_color = sdl::red;
-    static constexpr uint32_t inner_color = sdl::grey;
-    static constexpr uint32_t outer_color = sdl::grey;
-    static constexpr uint32_t ticks_color = sdl::white;
-    static constexpr uint32_t text_color = sdl::white;
 };
 
 struct help_popup : popup
 {
-    help_popup(const int index, const std::string& name, ensim::engine& engine)
-        : popup(index)
-        , name(name)
-        , engine(engine)
-        {
-        }
+    static constexpr uint32_t text_color = sdl::white;
+    ensim::engine& engine;
+
+    help_popup(const int index, ensim::engine& engine): popup(index), engine(engine) {}
 
     void draw(sdl& sdl) override
     {
@@ -786,28 +752,38 @@ struct help_popup : popup
             text_color
         );
         const std::vector<std::string> strings = {
-            name,
+            "                   _           ______  ",
+            "  ___  ____  _____(_)___ ___  / ____/  ",
+            " / _ \\/ __ \\/ ___/ / __ `__ \\/___ \\",
+            "/  __/ / / (__  ) / / / / / /___/ /    ",
+            "\\___/_/ /_/____/_/_/ /_/ /_/_____/    ",
+            "",
+            "1,2,3,4 for throttle",
             "Q,E to cycle through these popups.",
             "W,A,S,D for chamber select.",
             "Render drops: " + std::to_string(engine.get_swap_drops()),
             "Engine bytes: " + std::to_string(engine.get_bytes()),
-            "AGPL V3.",
+            "",
+            "Copyright (C) 2026 Gustav Louw",
+            "ensim.cc, ensim.hh, demo.cc",
+            "Licensed under GNU AGPLv3.",
+            "See: https://www.gnu.org/licenses/agpl-3.0.html",
         };
         sdl.fill(rect);
         sdl.write(point, strings);
     }
-
-private:
-    const std::string name;
-    ensim::engine& engine;
-    static constexpr uint32_t text_color = sdl::white;
 };
 
 struct ui
 {
-    ui(ensim::engine& engine)
-        : engine(engine)
-        , y_select(engine.get_piston_y())
+    std::vector<std::unique_ptr<cell>> base;
+    std::vector<std::unique_ptr<cell>> popups;
+    ensim::engine& engine;
+    int x_select = 0;
+    int y_select = 0;
+    bool done = false;
+
+    ui(ensim::engine& engine): engine(engine), y_select(engine.get_piston_y())
     {
         engine.set_logger(x_select, y_select);
         if(engine.get_width() >= signals::count)
@@ -848,7 +824,7 @@ struct ui
         case 4: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
         case 5: return std::make_unique<plot_popup> (next, "static temperature (k) volume (m3) diagram", volume, temperature);
         case 6: return std::make_unique<audio_popup>(next, "impulse signal", impulse);
-        case 7: return std::make_unique<help_popup> (next, "help", engine);
+        case 7: return std::make_unique<help_popup> (next, engine);
         }
         return nullptr;
     }
@@ -929,40 +905,8 @@ struct ui
                 if(event.key.key == SDLK_E) pop_popup();
                 if(event.key.key == SDLK_Q) push_popup();
             }
-            if(event.type == SDL_EVENT_KEY_UP)
-            {
-                if(event.key.key == SDLK_L)
-                {
-                    engine.set_swap_lock_on();
-                    const std::vector<double>& volume = engine.get_volume_signal_m3();
-                    const std::vector<double>& temperature = engine.get_static_temperature_signal_k();
-                    const std::vector<double>& pressure = engine.get_static_pressure_signal_pa();
-                    const size_t size = volume.size();
-                    puts("PV");
-                    for(size_t i = 0; i < size; i++)
-                    {
-                        printf("%f %f\n", volume[i], pressure[i]);
-                    }
-                    puts("TV");
-                    for(size_t i = 0; i < size; i++)
-                    {
-                        printf("%f %f\n", volume[i], temperature[i]);
-                    }
-                    engine.set_swap_lock_off();
-                }
-            }
         }
     }
-
-private:
-    std::vector<std::unique_ptr<cell>> base;
-    std::vector<std::unique_ptr<cell>> popups;
-
-public:
-    ensim::engine& engine;
-    int x_select = 0;
-    int y_select = 0;
-    bool done = false;
 };
 
 int main(int argc, const char* const*)
