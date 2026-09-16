@@ -33,15 +33,7 @@ namespace ensim
     static constexpr float g_gamma_f = g_gamma;
     static constexpr float g_dt_s_f = g_dt_s;
 
-    using std::sin;
-    using std::cos;
-    using std::fmax;
-    using std::fmin;
-    using std::log;
-    using std::sqrt;
-    using std::trunc;
-    using std::exp;
-    using std::fabs;
+    using std::sin, std::cos, std::fmax, std::fmin, std::log, std::sqrt, std::trunc, std::exp, std::fabs;
 
     fn auto clamper(const auto value, const auto lower, const auto upper)
     {
@@ -652,8 +644,9 @@ namespace ensim
     struct cams
     {
         std::array<double, W> engage_theta_r = {};
-        std::array<double, W> ramp_theta_r = {};
+        std::array<double, W> temp_ramp_theta_r = {};
         std::array<double, W> temp_open_ratio = {};
+        std::array<double, W> ramp_theta_r = {};
         std::array<double, W> open_ratio = {};
         double crankshaft_theta_r = 0.0;
         double crankshaft_angular_velocity_r_per_s = 0.0;
@@ -678,7 +671,7 @@ namespace ensim
                     theta1_r += g_otto_cycle_r;
                 }
                 const double open_r = theta1_r - theta0_r;
-                const double t = open_r / ramp_theta_r[i];
+                const double t = open_r / temp_ramp_theta_r[i];
                 const double a = t * t * t * t;
                 const double b = t * a;
                 const double c = t * b;
@@ -692,6 +685,14 @@ namespace ensim
             }
         }
 
+        fn virtual void set_ramp_thetas()
+        {
+            for(size_t i = 0; i < W; i++)
+            {
+                temp_ramp_theta_r[i] = ramp_theta_r[i];
+            }
+        }
+
         fn virtual void set_open_ratios()
         {
             for(size_t i = 0; i < W; i++)
@@ -702,30 +703,40 @@ namespace ensim
 
         void update()
         {
+            set_ramp_thetas();
             calc_open_ratios();
             set_open_ratios();
         }
     };
 
     template<size_t W, size_t S>
-    requires (S > 0)
+    requires(S > 0)
     struct vtec_cams : cams<W, S>
     {
         std::array<double, S> vtec_engage_r_per_s = {};
-        std::array<double, S> vtec_boost = {};
+        std::array<double, S> vtec_open_boost = {};
+        std::array<double, S> vtec_ramp_boost = {};
+
+        fn void set_ramp_thetas() override
+        {
+            for(size_t i = 0; i < W; i++)
+            for(size_t j = 0; j < S; j++)
+            {
+                if(this->crankshaft_angular_velocity_r_per_s > vtec_engage_r_per_s[j])
+                {
+                    this->temp_ramp_theta_r[i] = vtec_ramp_boost[j] * this->ramp_theta_r[i];
+                }
+            }
+        }
 
         fn void set_open_ratios() override
         {
             for(size_t i = 0; i < W; i++)
+            for(size_t j = 0; j < S; j++)
             {
-                for(size_t j = 0; j < S; j++)
+                if(this->crankshaft_angular_velocity_r_per_s > vtec_engage_r_per_s[j])
                 {
-                    if(this->crankshaft_angular_velocity_r_per_s > vtec_engage_r_per_s[j])
-                    {
-                        const double boost = vtec_boost[j] * this->temp_open_ratio[i];
-                        const double clamp = clamper(boost, 0.0, 1.0);
-                        this->open_ratio[i] = clamp;
-                    }
+                    this->open_ratio[i] = clamper(vtec_open_boost[j] * this->temp_open_ratio[i], 0.0, 1.0);
                 }
             }
         }
@@ -1452,18 +1463,17 @@ namespace ensim
         }
     };
 
-    #define FLUIDS(X) \
-        X(chamber_volume_m3) \
+    #define FLUIDS(X)                       \
+        X(chamber_volume_m3)                \
         X(chamber_nozzle_real_flow_area_m2) \
-        X(chamber_static_pressure_pa) \
-        X(chamber_static_temperature_k) \
-        X(chamber_mass_kg) \
-        X(nozzle_static_temperature_k) \
-        X(nozzle_static_density_kg_per_m3) \
+        X(chamber_static_pressure_pa)       \
+        X(chamber_static_temperature_k)     \
+        X(chamber_mass_kg)                  \
+        X(nozzle_static_temperature_k)      \
+        X(nozzle_static_density_kg_per_m3)  \
         X(nozzle_velocity_m_per_s)
 
-    #define PISTONS(X) \
-        X(total_torque_n_m)
+    #define PISTONS(X) X(total_torque_n_m)
 
     #define DIAGS(X) FLUIDS(X) PISTONS(X)
 
@@ -1628,7 +1638,7 @@ namespace ensim
         template<size_t> typename SPARKPLUGS>
     struct as_engine : engine
     {
-        double lumped_drag_torque_n_m = {};
+        double lumped_parasitic_torque_n_m = {};
         struct PISTONS<W> pistons = {};
         struct CAMS<W, VTEC_STEPS> inlet_cam = {};
         struct CAMS<W, VTEC_STEPS> outlet_cam = {};
@@ -1686,7 +1696,7 @@ namespace ensim
             {
                 t += pistons.total_torque_n_m[x];
             }
-            t -= lumped_drag_torque_n_m;
+            t -= lumped_parasitic_torque_n_m;
             t -= load_torque_n_m;
             return t / I;
         }
@@ -2069,8 +2079,8 @@ namespace ensim
           2, /* THROTTLE_Y    */
           4, /* PISTON_Y      */
           5, /* AUDIO_Y       */
-        256, /* PIPE_CELLS    */
-         10, /* PIPE_SUBSTEPS */
+        300, /* PIPE_CELLS    */
+        11, /* PIPE_SUBSTEPS */
           2, /* PIPE_COUNT    */
           5, /* VTEC_STEPS    */
         inline_pistons,
@@ -2080,12 +2090,12 @@ namespace ensim
         inline8()
         {
             this->convolution.set_impulse(g_impulse);
-            this->lumped_drag_torque_n_m = 76.0;
+            this->lumped_parasitic_torque_n_m = 65.0;
             this->pistons.friction_n_m_s2_per_r2.fill(0.00003);
             this->limiter.max_angular_velocity_r_per_s = 1125.0;
             this->limiter.limit_time_s = 0.033;
             this->flywheel.mass_kg = 18.0;
-            this->flywheel.radius_m = 0.22;
+            this->flywheel.radius_m = 0.20;
             this->crankshaft.mass_kg = 12.5;
             this->crankshaft.radius_m = 0.045;
             this->crankshaft.angular_velocity_r_per_s = 100.0;
@@ -2098,17 +2108,19 @@ namespace ensim
             this->pistons.head_clearance_height_m.fill(0.007);
             this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.85);
             this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.5);
-            this->inlet_cam.vtec_engage_r_per_s = { 0.0, 400.0, 600.0, 800.0, 1000.0 };
-            this->outlet_cam.vtec_engage_r_per_s = { 0.0, 400.0, 600.0, 800.0, 1000.0 };
-            this->inlet_cam.vtec_boost = { 1.0, 2.0, 3.0, 5.0, 10.0 };
-            this->outlet_cam.vtec_boost = { 1.0, 2.0, 3.0, 5.0, 10.0 };
+            this->inlet_cam.vtec_engage_r_per_s  = { 0.0, 200.0, 400.0, 600.0, 800.0 };
+            this->outlet_cam.vtec_engage_r_per_s = { 0.0, 200.0, 400.0, 600.0, 800.0 };
+            this->inlet_cam.vtec_open_boost  = { 1.0, 1.5, 2.0, 2.5, 5.0 };
+            this->outlet_cam.vtec_open_boost = { 1.0, 1.5, 2.0, 2.5, 5.0 };
+            this->inlet_cam.vtec_ramp_boost  = { 1.0, 1.05, 1.10, 1.15, 1.20 };
+            this->outlet_cam.vtec_ramp_boost = { 1.0, 1.1, 1.2, 1.3, 1.4 };
             double theta0_r = 0.0;
             for(size_t i = 0; i < get_width(); i++)
             {
                 this->pistons.theta0_r[i] = theta0_r;
                 this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - 1.0;
                 this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - 0.4;
-                this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r + 0.9;
+                this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r + 0.7;
                 theta0_r += g_otto_cycle_r / get_width();
             }
             for(auto& flow : this->flows)
@@ -2137,7 +2149,7 @@ namespace ensim
                 };
             }
             this->throttle.table = {
-                0.001,
+                0.0005,
                 0.010,
                 0.100,
                 1.000,
@@ -2146,11 +2158,11 @@ namespace ensim
             pipes[1].piston_connect_m = { 0.31, 0.00, 0.44, 0.15 };
             for(auto& pipe : this->pipes)
             {
-                pipe.mic_position_m = 1.09;
-                pipe.length_m = 1.1;
+                pipe.mic_position_m = 1.0;
+                pipe.length_m = 1.0;
             }
             this->dc.set_cutoff_frequency(10.0);
-            this->gain.ratio = 0.0001;
+            this->gain.ratio = 0.0003;
         }
     };
 
