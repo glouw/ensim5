@@ -93,8 +93,8 @@ struct message : point
 
 struct sdl
 {
-    static constexpr int w_p = 1600;
-    static constexpr int h_p = 900;
+    static constexpr int w_p = 1920;
+    static constexpr int h_p = 1080;
     static constexpr uint32_t line_p = 16;
     static constexpr uint32_t font_p = 8;
     static constexpr uint32_t grey   = 0xFFAAAAAA;
@@ -659,25 +659,31 @@ struct gauge_popup : popup
 {
     static constexpr double start_theta_r = (4.0 / 3.0) * std::numbers::pi_v<double>;
     static constexpr double sweep_theta_r = (5.0 / 3.0) * std::numbers::pi_v<double>;
-    static constexpr double outer_ratio = 0.75;
+    static constexpr double outer_ratio = 0.80;
     static constexpr double inner_ratio = 0.05;
     static constexpr double ticks_ratio = 0.82;
     static constexpr double needle_ratio = 0.85;
-    static constexpr uint32_t needle_color = sdl::red;
+    static constexpr uint32_t needle1_color = sdl::red;
+    static constexpr uint32_t needle2_color = sdl::yellow;
     static constexpr uint32_t inner_color = sdl::grey;
     static constexpr uint32_t outer_color = sdl::grey;
     static constexpr uint32_t ticks_color = sdl::white;
+    static constexpr uint32_t ticks_redline_color = sdl::red;
     static constexpr uint32_t text_color = sdl::white;
     const std::string name;
-    const std::atomic<double>& value;
+    const std::atomic<double>& value1;
+    const std::atomic<double>& value2;
     const double max_value;
+    const double redline_value;
     const size_t needle_ticks;
 
-    gauge_popup(const int index, const std::string& name, const std::atomic<double>& value, const double max_value, const size_t needle_ticks)
+    gauge_popup(const int index, const std::string& name, const std::atomic<double>& value1, const std::atomic<double>& value2, const double max_value, const double redline_value, const size_t needle_ticks)
         : popup(index)
         , name(name)
-        , value(value)
+        , value1(value1)
+        , value2(value2)
         , max_value(max_value)
+        , redline_value(redline_value)
         , needle_ticks(needle_ticks)
         {
         }
@@ -690,11 +696,8 @@ struct gauge_popup : popup
             rect.self.y + sdl::line_p,
             text_color
         );
-        const double at = value;
         const std::vector<std::string> strings = {
             name,
-            std::to_string(at),
-            "max: " + std::to_string(max_value),
         };
         const circle outer(rect, outer_color, outer_ratio);
         const circle inner(rect, inner_color, inner_ratio);
@@ -702,7 +705,8 @@ struct gauge_popup : popup
         sdl.draw_circle(outer);
         sdl.draw_circle(inner);
         draw_ticks(sdl, outer);
-        draw_needle(sdl, outer, at);
+        draw_needle(sdl, outer, value1, needle1_color);
+        draw_needle(sdl, outer, value2, needle2_color);
         sdl.write(text, strings);
     }
 
@@ -711,15 +715,15 @@ struct gauge_popup : popup
         return start_theta_r - (at / max_value) * sweep_theta_r;
     }
 
-    void draw_needle(sdl& sdl, const circle& outer, const double at) const
+    void draw_needle(sdl& sdl, const circle& outer, const double at, const uint32_t color) const
     {
-        const point middle(outer.self.x, outer.self.y, needle_color);
+        const point middle(outer.self.x, outer.self.y, color);
         const double angle_r = to_angle(at);
         const double radius = needle_ratio * outer.radius;
         const point tip(
             middle.self.x + std::cos(angle_r) * radius,
             middle.self.y - std::sin(angle_r) * radius,
-            needle_color
+            color
         );
         sdl.draw_line(middle, tip);
     }
@@ -735,7 +739,7 @@ struct gauge_popup : popup
             const message message(
                 outer.self.x + std::cos(angle_r) * radius,
                 outer.self.y - std::sin(angle_r) * radius,
-                ticks_color,
+                tick > redline_value ? ticks_redline_color : ticks_color,
                 std::to_string(static_cast<int>(tick))
             );
             sdl.write(message, true);
@@ -816,7 +820,8 @@ struct ui
 
     std::unique_ptr<popup> make_popup()
     {
-        const std::atomic<double>& angular_velocity = engine.get_angular_velocity_r_per_s();
+        const std::atomic<double>& load_angular_velocity = engine.get_load_angular_velocity_r_per_s();
+        const std::atomic<double>& engine_angular_velocity = engine.get_engine_angular_velocity_r_per_s();
         const std::vector<double>& volume = engine.get_volume_signal_m3();
         const std::vector<double>& temperature = engine.get_static_temperature_signal_k();
         const std::vector<double>& pressure = engine.get_static_pressure_signal_pa();
@@ -825,7 +830,7 @@ struct ui
         const size_t next = popups.size() + 1;
         switch(next)
         {
-        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", angular_velocity, 1100.0, 20);
+        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", engine_angular_velocity, load_angular_velocity, 1500.0, 1200.0, 20);
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
         case 3: return std::make_unique<pipe_popup> (next, "pipe pressure", engine);
         case 4: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
@@ -866,6 +871,8 @@ struct ui
         engine.set_swap_lock_off();
     }
 
+    double throttle = 0.0;
+
     void poll(sdl& sdl)
     {
         const std::vector<SDL_Event> events = sdl.poll();
@@ -879,28 +886,38 @@ struct ui
             {
                 if(event.key.key == SDLK_0)
                 {
-                    engine.set_throttle_open_ratio(0.00);
+                    engine.set_throttle_open_ratio(throttle = 0.00);
                     engine.set_injection_off();
                 }
                 if(event.key.key == SDLK_1)
                 {
-                    engine.set_throttle_open_ratio(0.00);
+                    engine.set_throttle_open_ratio(throttle = 0.00);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_2)
                 {
-                    engine.set_throttle_open_ratio(0.33);
+                    engine.set_throttle_open_ratio(throttle = 0.33);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_3)
                 {
-                    engine.set_throttle_open_ratio(0.66);
+                    engine.set_throttle_open_ratio(throttle = 0.66);
                     engine.set_injection_on();
                 }
                 if(event.key.key == SDLK_4)
                 {
-                    engine.set_throttle_open_ratio(0.99);
+                    engine.set_throttle_open_ratio(throttle = 0.99);
                     engine.set_injection_on();
+                }
+                if(event.key.key == SDLK_J)
+                {
+                    engine.set_throttle_open_ratio(0.0);
+                    engine.disengage_clutch();
+                }
+                if(event.key.key == SDLK_K)
+                {
+                    engine.set_throttle_open_ratio(0.0);
+                    engine.disengage_clutch();
                 }
                 if(event.key.key == SDLK_W) y_select -= 1;
                 if(event.key.key == SDLK_S) y_select += 1;
@@ -911,6 +928,21 @@ struct ui
                 engine.set_logger(x_select, y_select);
                 if(event.key.key == SDLK_E) pop_popup();
                 if(event.key.key == SDLK_Q) push_popup();
+            }
+            if(event.type == SDL_EVENT_KEY_UP)
+            {
+                if(event.key.key == SDLK_J)
+                {
+                    engine.set_throttle_open_ratio(throttle);
+                    engine.decrement_gear();
+                    engine.engage_clutch();
+                }
+                if(event.key.key == SDLK_K)
+                {
+                    engine.set_throttle_open_ratio(throttle);
+                    engine.increment_gear();
+                    engine.engage_clutch();
+                }
             }
         }
     }
@@ -939,7 +971,7 @@ int main(int argc, const char* const*)
                     sdl.buffer_audio(engine->get_audio_signal());
                 }
                 using namespace std::chrono_literals;
-                std::this_thread::sleep_for(100us);
+                std::this_thread::sleep_for(10us);
             }
         }
     );

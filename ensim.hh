@@ -23,7 +23,8 @@ namespace ensim
         virtual size_t get_throttle_y() const = 0;
         virtual size_t get_bytes() const = 0;
         virtual std::string_view get_signal_name(const size_t index) const = 0;
-        virtual const std::atomic<double>& get_angular_velocity_r_per_s() const = 0;
+        virtual const std::atomic<double>& get_load_angular_velocity_r_per_s() const = 0;
+        virtual const std::atomic<double>& get_engine_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const = 0;
         virtual const std::atomic<bool>& get_panic(const size_t x, const size_t y) const = 0;
         virtual size_t get_swap_drops() const = 0;
@@ -35,9 +36,12 @@ namespace ensim
         virtual const std::vector<float>& get_impulse_signal() const = 0;
         virtual const std::span<const std::vector<float>> get_pipe_pressure_signals() const = 0;
         virtual void set_throttle_open_ratio(const double) = 0;
-        virtual void set_load_torque_n_m(const double) = 0;
         virtual void set_injection_on() = 0;
         virtual void set_injection_off() = 0;
+        virtual void increment_gear() = 0;
+        virtual void decrement_gear() = 0;
+        virtual void engage_clutch() = 0;
+        virtual void disengage_clutch() = 0;
         virtual void set_logger(const size_t x, const size_t y) = 0;
         virtual void set_swap_lock_on() = 0;
         virtual void set_swap_lock_off() = 0;
