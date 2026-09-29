@@ -27,6 +27,7 @@ namespace ensim
         virtual const std::atomic<double>& get_engine_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const = 0;
         virtual const std::atomic<bool>& get_panic(const size_t x, const size_t y) const = 0;
+        virtual const std::atomic<size_t>& get_gear() const = 0;
         virtual size_t get_swap_drops() const = 0;
         virtual const std::vector<double>& get_signal(const size_t index) const = 0;
         virtual const std::vector<double>& get_static_temperature_signal_k() const = 0;

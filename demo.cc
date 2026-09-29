@@ -673,15 +673,17 @@ struct gauge_popup : popup
     const std::string name;
     const std::atomic<double>& value1;
     const std::atomic<double>& value2;
+    const std::atomic<size_t>& integral;
     const double max_value;
     const double redline_value;
     const size_t needle_ticks;
 
-    gauge_popup(const int index, const std::string& name, const std::atomic<double>& value1, const std::atomic<double>& value2, const double max_value, const double redline_value, const size_t needle_ticks)
+    gauge_popup(const int index, const std::string& name, const std::atomic<double>& value1, const std::atomic<double>& value2, const std::atomic<size_t>& integral, const double max_value, const double redline_value, const size_t needle_ticks)
         : popup(index)
         , name(name)
         , value1(value1)
         , value2(value2)
+        , integral(integral)
         , max_value(max_value)
         , redline_value(redline_value)
         , needle_ticks(needle_ticks)
@@ -698,15 +700,19 @@ struct gauge_popup : popup
         );
         const std::vector<std::string> strings = {
             name,
+            std::to_string(value1),
+            std::to_string(value2),
         };
         const circle outer(rect, outer_color, outer_ratio);
         const circle inner(rect, inner_color, inner_ratio);
+        const message above(inner.self.x, inner.self.y - outer.radius / 3, text_color, std::to_string(integral));
         sdl.fill(rect);
         sdl.draw_circle(outer);
         sdl.draw_circle(inner);
         draw_ticks(sdl, outer);
         draw_needle(sdl, outer, value1, needle1_color);
         draw_needle(sdl, outer, value2, needle2_color);
+        sdl.write(above, true);
         sdl.write(text, strings);
     }
 
@@ -822,6 +828,7 @@ struct ui
     {
         const std::atomic<double>& load_angular_velocity = engine.get_load_angular_velocity_r_per_s();
         const std::atomic<double>& engine_angular_velocity = engine.get_engine_angular_velocity_r_per_s();
+        const std::atomic<size_t>& gear = engine.get_gear();
         const std::vector<double>& volume = engine.get_volume_signal_m3();
         const std::vector<double>& temperature = engine.get_static_temperature_signal_k();
         const std::vector<double>& pressure = engine.get_static_pressure_signal_pa();
@@ -830,7 +837,7 @@ struct ui
         const size_t next = popups.size() + 1;
         switch(next)
         {
-        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", engine_angular_velocity, load_angular_velocity, 1500.0, 1200.0, 20);
+        case 1: return std::make_unique<gauge_popup>(next, "angular velocity (r/s)", engine_angular_velocity, load_angular_velocity, gear, 1500.0, 1200.0, 20);
         case 2: return std::make_unique<audio_popup>(next, "audio", audio);
         case 3: return std::make_unique<pipe_popup> (next, "pipe pressure", engine);
         case 4: return std::make_unique<plot_popup> (next, "static pressure (p) volume (m3) diagram", volume, pressure);
