@@ -25,6 +25,7 @@ namespace ensim
         virtual std::string_view get_signal_name(const size_t index) const = 0;
         virtual const std::atomic<double>& get_load_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_engine_angular_velocity_r_per_s() const = 0;
+        virtual const std::atomic<double>& get_limiter_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const = 0;
         virtual const std::atomic<bool>& get_panic(const size_t x, const size_t y) const = 0;
         virtual const std::atomic<size_t>& get_gear() const = 0;
@@ -52,7 +53,8 @@ namespace ensim
 
     enum class type : size_t
     {
-        inline8
+        inline8,
+        trx450r
     };
 
     std::unique_ptr<engine> new_engine(const type);
