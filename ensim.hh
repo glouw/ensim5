@@ -14,7 +14,7 @@ namespace ensim
 
     struct engine
     {
-        virtual void run(const size_t steps) = 0;
+        virtual void run(size_t steps) = 0;
         virtual void reset() = 0;
         virtual size_t get_width() const = 0;
         virtual size_t get_height() const = 0;
