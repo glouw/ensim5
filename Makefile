@@ -1,4 +1,4 @@
-CC = clang++ -std=c++20 -O3 -ffast-math -march=native -g -Wall -Wextra -Wpedantic
+CC = clang++ -std=c++20 -O3 -ffast-math -march=native -g -Wall -Wextra -Wpedantic -Wfatal-errors
 
 SAN = 0
 
