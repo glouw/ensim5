@@ -3,9 +3,7 @@
 #include <cstddef>
 #include <memory>
 #include <vector>
-#include <array>
 #include <atomic>
-#include <span>
 #include <string_view>
 
 namespace ensim
@@ -23,6 +21,7 @@ namespace ensim
         virtual constexpr size_t get_audio_y() const = 0;
         virtual constexpr size_t get_throttle_y() const = 0;
         virtual constexpr size_t get_bytes() const = 0;
+        virtual constexpr size_t get_signal_count() const = 0;
         virtual std::string_view get_signal_name(const size_t index) const = 0;
         virtual const std::atomic<double>& get_load_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_engine_angular_velocity_r_per_s() const = 0;

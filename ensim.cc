@@ -2054,6 +2054,11 @@ namespace ensim
             return sizeof *this;
         }
 
+        constexpr size_t get_signal_count() const override
+        {
+            return std::size(g_signal_names);
+        }
+
         std::string_view get_signal_name(const size_t index) const override
         {
             return g_signal_names[index];
@@ -2255,7 +2260,7 @@ namespace ensim
                 pipe.mic_position_m = pipe.length_m = 0.51;
             }
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.00005;
+            this->gain.ratio = 0.0001;
         }
     };
 
