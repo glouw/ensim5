@@ -8,6 +8,7 @@
 #include <mutex>
 #include <numeric>
 #include <raylib.h>
+#include <raymath.h>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -21,8 +22,11 @@ static constexpr float g_sidebar_width_p = g_xres_p / 6;
 static constexpr size_t g_producer_block_size = 200;
 static constexpr int g_audio_bit_depth = 32;
 static constexpr int g_audio_channels = 1;
+static constexpr size_t g_mesh_slices = 32;
 static constexpr float g_font_size = 1.0f;
 static constexpr float g_plot_border_line_thickness = 1.0f;
+static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
+static constexpr int g_stream_buffer_size = 8192;
 static constexpr Color g_plot_border_color = GRAY;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 
@@ -95,26 +99,6 @@ public:
     {
         return self[index(i)];
     }
-
-    T& front()
-    {
-        return self[head];
-    }
-
-    const T& front() const
-    {
-        return self[head];
-    }
-
-    T& back()
-    {
-        return self[tail];
-    }
-
-    const T& back() const
-    {
-        return self[tail];
-    }
 };
 
 class producer
@@ -141,7 +125,7 @@ public:
         ready.clear();
         for(size_t i = 0; i < samples; i++)
         {
-            ready.push_back(queue.front());
+            ready.push_back(queue[0]);
             queue.pop_front();
         }
         std::lock_guard lock2(history_mutex);
@@ -211,6 +195,7 @@ public:
     audio(const AudioCallback audio_callback)
     {
         InitAudioDevice();
+        SetAudioStreamBufferSizeDefault(g_stream_buffer_size);
         stream = LoadAudioStream(ensim::g_sample_rate_hz, g_audio_bit_depth, g_audio_channels);
         SetAudioStreamCallback(stream, audio_callback);
         PlayAudioStream(stream);
@@ -496,35 +481,63 @@ public:
     virtual ~part() = default;
 };
 
+struct shape
+{
+    Model model = {};
+    Vector3 rotation = {};
+    Vector3 position = {};
+    double theta_degrees = {};
+};
+
 class piston : public part
 {
-    std::array<Model, 1> models = {
-        LoadModelFromMesh(GenMeshCylinder(1.0f, 2.0f, 16)),
-    };
-    Vector3 position = { 0.0f, 0.0f, 0.0f };
-    Vector3 rotation_axis = { 0.0f, 1.0f, 0.0f };
-    Vector3 scale = { 1.0f, 1.0f, 1.0f };
-    float theta_r = 0.0f;
+    double head_radius_m = 0.0;
+    double head_height_m = 0.0;
+    double conrod_height_m = 0.0;
+    double conrod_width_m = 0.015;
+    double conrod_depth_m = 0.007;
+    std::array<shape, 2> shapes = {};
+    std::function<double()> get_pin_y_m = {};
+    std::function<double()> get_pin_phi_r = {};
 
 public:
+    piston(const double head_radius_m, const double head_height_m, const double conrod_height_m, const std::function<double()> get_pin_y_m, const std::function<double()> get_pin_phi_r)
+        : head_radius_m(head_radius_m)
+        , head_height_m(head_height_m)
+        , conrod_height_m(conrod_height_m)
+        , get_pin_y_m(get_pin_y_m)
+        , get_pin_phi_r(get_pin_phi_r)
+    {
+        shapes[0] = {
+            LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices))
+        };
+        shapes[1] = {
+            LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m)),
+        };
+        shapes[1].model.transform = MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f);
+    }
+
     void update() override
     {
-        theta_r += 1.0f;
+        shapes[0].position.y = get_pin_y_m();
+        shapes[1].position.y = get_pin_y_m() + head_height_m / 2.0;
+        shapes[1].rotation = { 0.0, 0.0, 1.0 };
+        shapes[1].theta_degrees = get_pin_phi_r() * RAD2DEG;
     }
 
     void draw() override
     {
-        for(auto& model : models)
+        for(auto& shape : shapes)
         {
-            DrawModelWiresEx(model, position, rotation_axis, theta_r, scale, GRAY);
+            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, GRAY);
         }
     }
 
     ~piston()
     {
-        for(auto& model : models)
+        for(auto& shape : shapes)
         {
-            UnloadModel(model);
+            UnloadModel(shape.model);
         }
     }
 };
@@ -532,6 +545,7 @@ public:
 class parts
 {
     std::vector<std::unique_ptr<part>> self = {};
+    ensim::engine* engine = nullptr;
 
 public:
     auto begin()
@@ -544,9 +558,24 @@ public:
         return self.end();
     }
 
-    parts()
+    void set(ensim::engine* engine)
     {
-        push(std::make_unique<piston>());
+        self.clear();
+        this->engine = engine;
+        for(size_t x = 0; x < engine->get_width(); x++)
+        {
+            push(std::make_unique<piston>(
+                engine->get_piston_head_radius_m(x),
+                engine->get_piston_head_height_m(x),
+                engine->get_piston_connecting_rod_length_m(x),
+                [this, x]()-> double {
+                    return this->engine->get_piston_pin_y_m(x);
+                },
+                [this, x]()-> double {
+                    return this->engine->get_piston_pin_phi_r(x);
+                }
+            ));
+        }
     }
 
     void push(std::unique_ptr<part> part)
@@ -566,20 +595,14 @@ public:
 class window
 {
     ensim::engine* engine = {};
-    Camera3D camera = {
-        .position = { 0.0f, 10.0f, 10.0f },
-        .target = { 0.0f, 0.0f, 0.0f },
-        .up = { 0.0f, 1.0f, 0.0f },
-        .fovy = 45.0f,
-        .projection = CAMERA_PERSPECTIVE,
-    };
+    Camera3D camera = {};
 
 public:
     window()
     {
+        SetConfigFlags(FLAG_VSYNC_HINT);
         InitWindow(g_xres_p, g_yres_p, g_name);
         SetTargetFPS(g_fps);
-        SetConfigFlags(FLAG_VSYNC_HINT);
     }
 
     ~window()
@@ -620,13 +643,21 @@ public:
     void set(ensim::engine* engine)
     {
         this->engine = engine;
+        const float y = engine->get_piston_top_dead_center(0);
+        camera = {
+            .position = { 1.0f, 0.0f, 0.0f },
+            .target = { 0.0f, y, 0.0f },
+            .up = { 0.0f, 1.0f, 0.0f },
+            .fovy = 45.0f,
+            .projection = CAMERA_PERSPECTIVE,
+        };
     }
 
     void open()
     {
         BeginDrawing();
         ClearBackground(BLACK);
-        DrawFPS(512 + g_margin_p, g_margin_p);
+        UpdateCamera(&camera, CAMERA_THIRD_PERSON);
         engine->set_swap_lock_on();
     }
 
@@ -642,16 +673,17 @@ public:
     }
 };
 
-static void set(window& window, sidebar& sidebar, producer& producer, ensim::engine* engine)
+static void set(window& window, sidebar& sidebar, producer& producer, parts& parts, ensim::engine* engine)
 {
     window.set(engine);
     sidebar.set(engine);
     producer.set(engine);
+    parts.set(engine);
 }
 
 static void audio_callback(void* const data, const unsigned frames)
 {
-    float* const buffer = static_cast<float*>(data);
+    float* const buffer = static_cast<float* const>(data);
     const std::vector<float>& block = g_producer.consume(frames);
     std::copy(block.begin(), block.end(), buffer);
 };
@@ -664,7 +696,7 @@ int main()
     sidebar sidebar;
     audio audio(audio_callback);
     parts parts;
-    set(window, sidebar, g_producer, engine.get());
+    set(window, sidebar, g_producer, parts, engine.get());
     window.loop(sidebar, parts);
     g_producer.stop();
 }

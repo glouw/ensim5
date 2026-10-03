@@ -954,6 +954,7 @@ namespace ensim
         std::array<double, W> theta_r = {};
         std::array<double, W> sint = {};
         std::array<double, W> cost = {};
+        std::array<double, W> pin_phi_r = {};
         std::array<double, W> pin_x_m = {};
         std::array<double, W> pin_y_m = {};
         std::array<double, W> bearing_x_m = {};
@@ -989,6 +990,16 @@ namespace ensim
                 const double t = theta_r[i];
                 sint[i] = sin(t);
                 cost[i] = cos(t);
+            }
+        }
+
+        fn void calc_pin_phi()
+        {
+            for(size_t i = 0; i < W; i++)
+            {
+                const double r = crank_throw_length_m[i];
+                const double l = connecting_rod_length_m[i];
+                pin_phi_r[i] = asin(sint[i] * r / l);
             }
         }
 
@@ -1166,6 +1177,7 @@ namespace ensim
         {
             calc_thetas();
             calc_sin_cos();
+            calc_pin_phi();
             calc_positions();
             calc_volumes();
             calc_masses();
@@ -1636,6 +1648,13 @@ namespace ensim
             std::atomic<double> limiter_angular_velocity_r_per_s = 0.0;
             std::array<std::array<std::atomic<double>, W>, H> port_open_ratios = {};
             std::array<std::array<std::atomic<bool>, W>, H> panics = {};
+            std::array<std::atomic<double>, W> pistons_head_radius_m = {};
+            std::array<std::atomic<double>, W> pistons_head_height_m = {};
+            std::array<std::atomic<double>, W> pistons_pin_y_m = {};
+            std::array<std::atomic<double>, W> connecting_rod_length_m = {};
+            std::array<std::atomic<double>, W> crank_throw_length_m= {};
+            std::array<std::atomic<double>, W> pin_phi_r = {};
+            std::array<std::atomic<double>, W> top_dead_center_m = {};
         }
         out;
     };
@@ -1799,6 +1818,7 @@ namespace ensim
             broadcast_state();
             log_volumes();
             reset_chambers();
+            post_mail(0);
         }
 
         bool diags_swap()
@@ -1959,7 +1979,7 @@ namespace ensim
             return x;
         }
 
-        void post_mail()
+        void collect_mail()
         {
             throttle.open_ratio = mailbox.in.throttle_open_ratio;
             logger.x = mailbox.in.log_x;
@@ -1970,7 +1990,7 @@ namespace ensim
             audio_signal.clear();
         }
 
-        void collect_mail(const size_t swap_drops)
+        void post_mail(const size_t swap_drops)
         {
             mailbox.out.limiter_angular_velocity_r_per_s = limiter.max_angular_velocity_r_per_s;
             mailbox.out.load_angular_velocity_r_per_s = load.angular_velocity_r_per_s;
@@ -1981,13 +2001,23 @@ namespace ensim
                 mailbox.out.port_open_ratios[y][x] = flows[x].chamber_nozzle_open_ratio[y];
                 mailbox.out.panics[y][x] = flows[x].panic[y];
             }
+            for(size_t x = 0; x < W; x++)
+            {
+                mailbox.out.pistons_head_radius_m[x] = pistons.diameter_m[x] / 2.0;
+                mailbox.out.pistons_head_height_m[x] = 2.0 * pistons.head_compression_height_m[x];
+                mailbox.out.pistons_pin_y_m[x] = pistons.pin_y_m[x];
+                mailbox.out.connecting_rod_length_m[x] = pistons.connecting_rod_length_m[x];
+                mailbox.out.crank_throw_length_m[x] = pistons.crank_throw_length_m[x];
+                mailbox.out.pin_phi_r[x] = pistons.pin_phi_r[x];
+                mailbox.out.top_dead_center_m[x] = pistons.connecting_rod_length_m[x] + pistons.crank_throw_length_m[x] + pistons.head_compression_height_m[x];
+            }
             mailbox.out.swap_drops += swap_drops;
         }
 
         void run(size_t steps) override
         {
             size_t swap_drops = 0;
-            post_mail();
+            collect_mail();
             while(steps--)
             {
                 update_cams();
@@ -2011,7 +2041,7 @@ namespace ensim
                 const float sample = calc_audio_sample();
                 audio_signal.push_back(sample);
             }
-            collect_mail(swap_drops);
+            post_mail(swap_drops);
         }
 
         const std::atomic<double>& get_limiter_angular_velocity_r_per_s() const override
@@ -2092,6 +2122,36 @@ namespace ensim
         size_t get_swap_drops() const override
         {
             return mailbox.out.swap_drops;
+        }
+
+        const std::atomic<double>& get_piston_head_radius_m(const size_t x) const override
+        {
+            return mailbox.out.pistons_head_radius_m[x];
+        }
+
+        const std::atomic<double>& get_piston_head_height_m(const size_t x) const override
+        {
+            return mailbox.out.pistons_head_height_m[x];
+        }
+
+        const std::atomic<double>& get_piston_pin_y_m(const size_t x) const override
+        {
+            return mailbox.out.pistons_pin_y_m[x];
+        }
+
+        const std::atomic<double>& get_piston_connecting_rod_length_m(const size_t x) const override
+        {
+            return mailbox.out.connecting_rod_length_m[x];
+        }
+
+        const std::atomic<double>& get_piston_top_dead_center(const size_t x) const override
+        {
+            return mailbox.out.top_dead_center_m[x];
+        }
+
+        const std::atomic<double>& get_piston_pin_phi_r(const size_t x) const override
+        {
+            return mailbox.out.pin_phi_r[x];
         }
 
         const std::vector<double>& get_signal(const size_t index) const override
