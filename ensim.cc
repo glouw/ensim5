@@ -1651,10 +1651,11 @@ namespace ensim
             std::array<std::atomic<double>, W> pistons_head_radius_m = {};
             std::array<std::atomic<double>, W> pistons_head_height_m = {};
             std::array<std::atomic<double>, W> pistons_pin_y_m = {};
-            std::array<std::atomic<double>, W> connecting_rod_length_m = {};
-            std::array<std::atomic<double>, W> crank_throw_length_m= {};
-            std::array<std::atomic<double>, W> pin_phi_r = {};
-            std::array<std::atomic<double>, W> top_dead_center_m = {};
+            std::array<std::atomic<double>, W> pistons_connecting_rod_length_m = {};
+            std::array<std::atomic<double>, W> pistons_crank_diameter_m = {};
+            std::array<std::atomic<double>, W> pistons_pin_phi_r = {};
+            std::array<std::atomic<double>, W> pistons_top_dead_center_m = {};
+            std::array<std::atomic<double>, W> pistons_crank_theta_r = {};
         }
         out;
     };
@@ -2006,10 +2007,11 @@ namespace ensim
                 mailbox.out.pistons_head_radius_m[x] = pistons.diameter_m[x] / 2.0;
                 mailbox.out.pistons_head_height_m[x] = 2.0 * pistons.head_compression_height_m[x];
                 mailbox.out.pistons_pin_y_m[x] = pistons.pin_y_m[x];
-                mailbox.out.connecting_rod_length_m[x] = pistons.connecting_rod_length_m[x];
-                mailbox.out.crank_throw_length_m[x] = pistons.crank_throw_length_m[x];
-                mailbox.out.pin_phi_r[x] = pistons.pin_phi_r[x];
-                mailbox.out.top_dead_center_m[x] = pistons.connecting_rod_length_m[x] + pistons.crank_throw_length_m[x] + pistons.head_compression_height_m[x];
+                mailbox.out.pistons_connecting_rod_length_m[x] = pistons.connecting_rod_length_m[x];
+                mailbox.out.pistons_crank_diameter_m[x] = 2.0 * pistons.crank_throw_length_m[x];
+                mailbox.out.pistons_pin_phi_r[x] = pistons.pin_phi_r[x];
+                mailbox.out.pistons_crank_theta_r[x] = pistons.theta_r[x];
+                mailbox.out.pistons_top_dead_center_m[x] = pistons.connecting_rod_length_m[x] + pistons.crank_throw_length_m[x] + pistons.head_compression_height_m[x];
             }
             mailbox.out.swap_drops += swap_drops;
         }
@@ -2141,17 +2143,27 @@ namespace ensim
 
         const std::atomic<double>& get_piston_connecting_rod_length_m(const size_t x) const override
         {
-            return mailbox.out.connecting_rod_length_m[x];
+            return mailbox.out.pistons_connecting_rod_length_m[x];
+        }
+
+        const std::atomic<double>& get_piston_crank_diameter_m(const size_t x) const override
+        {
+            return mailbox.out.pistons_crank_diameter_m[x];
         }
 
         const std::atomic<double>& get_piston_top_dead_center(const size_t x) const override
         {
-            return mailbox.out.top_dead_center_m[x];
+            return mailbox.out.pistons_top_dead_center_m[x];
         }
 
         const std::atomic<double>& get_piston_pin_phi_r(const size_t x) const override
         {
-            return mailbox.out.pin_phi_r[x];
+            return mailbox.out.pistons_pin_phi_r[x];
+        }
+
+        const std::atomic<double>& get_piston_crank_theta_r(const size_t x) const override
+        {
+            return mailbox.out.pistons_crank_theta_r[x];
         }
 
         const std::vector<double>& get_signal(const size_t index) const override
@@ -2263,10 +2275,9 @@ namespace ensim
             this->load.mass_kg = 250.0;
             this->load.radius_m = 0.1;
             this->load.friction_n_m_s2_per_r2 = 0.1;
-            this->load.angular_velocity_r_per_s = 50.0;
+            this->load.angular_velocity_r_per_s = this->flywheel.angular_velocity_r_per_s = 200.0;
             this->flywheel.mass_kg = 1.55;
             this->flywheel.radius_m = 0.079;
-            this->flywheel.angular_velocity_r_per_s = 500.0;
             this->crankshaft.mass_kg = 7.2;
             this->crankshaft.radius_m = 0.047;
             this->pistons.friction_n_m_s2_per_r2.fill(0.00004);

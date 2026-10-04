@@ -34,8 +34,10 @@ namespace ensim
         virtual const std::atomic<double>& get_piston_head_height_m(const size_t x) const = 0;
         virtual const std::atomic<double>& get_piston_pin_y_m(const size_t x) const = 0;
         virtual const std::atomic<double>& get_piston_connecting_rod_length_m(const size_t x) const = 0;
+        virtual const std::atomic<double>& get_piston_crank_diameter_m(const size_t x) const = 0;
         virtual const std::atomic<double>& get_piston_top_dead_center(const size_t x) const = 0;
         virtual const std::atomic<double>& get_piston_pin_phi_r(const size_t x) const = 0;
+        virtual const std::atomic<double>& get_piston_crank_theta_r(const size_t x) const = 0;
         virtual const std::vector<double>& get_signal(const size_t index) const = 0;
         virtual const std::vector<double>& get_static_temperature_signal_k() const = 0;
         virtual const std::vector<double>& get_static_pressure_signal_pa() const = 0;
