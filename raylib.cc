@@ -30,6 +30,8 @@ static constexpr int g_stream_buffer_size = 8192;
 static constexpr Color g_plot_border_color = GRAY;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr size_t g_signal_stride = 8;
+static constexpr float g_grid_steps = 32.0f;
+static constexpr float g_grid_step_size = 0.2f;
 
 template<typename T, size_t N>
 class ring
@@ -160,7 +162,7 @@ public:
         {
             if(not produce())
             {
-                const auto delay = std::chrono::microseconds(200);
+                const auto delay = std::chrono::microseconds(100);
                 std::this_thread::sleep_for(delay);
             }
         }
@@ -282,7 +284,6 @@ public:
 
     void draw() const override
     {
-        DrawRectangleLinesEx(rectangle, g_plot_border_line_thickness, g_plot_border_color);
         const range range = get_size();
         if(range.valid())
         {
@@ -476,6 +477,10 @@ public:
 
 class part
 {
+protected:
+    float x = 0.0;
+    float z = 0.0;
+    part(const float x, const float z): x(x * g_grid_step_size), z(z * g_grid_step_size) {}
 public:
     virtual void draw() = 0;
     virtual void update() = 0;
@@ -492,42 +497,56 @@ struct shape
 
 class piston : public part
 {
-    double head_radius_m = 0.0;
-    double head_height_m = 0.0;
-    double conrod_height_m = 0.0;
-    double conrod_width_m = 0.015;
-    double conrod_depth_m = 0.007;
-    double counter_weight_height_m = 0.0;
-    double counter_weight_depth_m = 1.75 * conrod_depth_m;
-    double counter_weight_width_m = 1.75 * conrod_width_m;
+    float head_radius_m = 0.0f;
+    float head_height_m = 0.0f;
+    float conrod_height_m = 0.0f;
+    float conrod_width_m = 0.015f;
+    float conrod_depth_m = 0.007f;
+    float counter_weight_height_m = 0.0f;
+    float counter_weight_depth_m = 1.75f * conrod_depth_m;
+    float counter_weight_width_m = 1.75f * conrod_width_m;
     std::array<shape, 3> shapes = {};
-    std::function<double()> get_pin_y_m = {};
-    std::function<double()> get_pin_phi_r = {};
-    std::function<double()> get_crank_theta_r = {};
+    std::function<float()> get_pin_y_m = {};
+    std::function<float()> get_pin_phi_r = {};
+    std::function<float()> get_crank_theta_r = {};
 
 public:
-    piston(const double head_radius_m, const double head_height_m, const double conrod_height_m, const double crank_diameter_m, const std::function<double()> get_pin_y_m, const std::function<double()> get_pin_phi_r, const std::function<double()> get_crank_theta_r)
-        : head_radius_m(head_radius_m)
+    piston(
+        const float x,
+        const float z,
+        const float head_radius_m,
+        const float head_height_m,
+        const float conrod_height_m,
+        const float crank_diameter_m,
+        const std::function<float()> get_pin_y_m,
+        const std::function<float()> get_pin_phi_r,
+        const std::function<float()> get_crank_theta_r)
+        : part(x, z)
+        , head_radius_m(head_radius_m)
         , head_height_m(head_height_m)
         , conrod_height_m(conrod_height_m)
-        , counter_weight_height_m(1.5 * crank_diameter_m)
+        , counter_weight_height_m(1.5f * crank_diameter_m)
         , get_pin_y_m(get_pin_y_m)
         , get_pin_phi_r(get_pin_phi_r)
         , get_crank_theta_r(get_crank_theta_r)
     {
         shapes[0] = { LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices)) };
         shapes[1] = { LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m)) };
-        shapes[1].model.transform = MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f);
         shapes[2] = { LoadModelFromMesh(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m)) };
+
+        const float theta_r = 90.0f * DEG2RAD;
+        shapes[0].model.transform = MatrixRotateY(theta_r);
+        shapes[1].model.transform = MatrixMultiply(MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f), MatrixRotateY(theta_r));
+        shapes[2].model.transform = MatrixRotateY(theta_r);
     }
 
     void update() override
     {
-        shapes[0].position.y = get_pin_y_m() - head_height_m / 2.0;
-        shapes[1].position.y = get_pin_y_m();
-        shapes[2].position.z = -conrod_depth_m;
-        shapes[1].rotation = { 0.0, 0.0, 1.0 };
-        shapes[2].rotation = { 0.0, 0.0, 1.0 };
+        shapes[0].position = { x, get_pin_y_m() - head_height_m / 2.0f, z };
+        shapes[1].position = { x, get_pin_y_m(), z };
+        shapes[2].position = { x - conrod_depth_m, 0.0f, z };
+        shapes[1].rotation = { 1.0f, 0.0f, 0.0f };
+        shapes[2].rotation = { 1.0f, 0.0f, 0.0f };
         shapes[1].theta_degrees = +RAD2DEG * get_pin_phi_r();
         shapes[2].theta_degrees = -RAD2DEG * get_crank_theta_r();
     }
@@ -536,7 +555,7 @@ public:
     {
         for(auto& shape : shapes)
         {
-            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, GRAY);
+            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, MAROON);
         }
     }
 
@@ -569,20 +588,23 @@ public:
     {
         self.clear();
         this->engine = engine;
+        for(size_t y = 0; y < engine->get_height(); y++)
         for(size_t x = 0; x < engine->get_width(); x++)
         {
             push(std::make_unique<piston>(
+                x,
+                y,
                 engine->get_piston_head_radius_m(x),
                 engine->get_piston_head_height_m(x),
                 engine->get_piston_connecting_rod_length_m(x),
                 engine->get_piston_crank_diameter_m(x),
-                [this, x]()-> double {
+                [this, x]()-> float {
                     return this->engine->get_piston_pin_y_m(x);
                 },
-                [this, x]()-> double {
+                [this, x]()-> float {
                     return this->engine->get_piston_pin_phi_r(x);
                 },
-                [this, x]()-> double {
+                [this, x]()-> float {
                     return this->engine->get_piston_crank_theta_r(x);
                 }
             ));
@@ -631,6 +653,7 @@ public:
     void draw(parts& parts)
     {
         BeginMode3D(camera);
+        DrawGrid(g_grid_steps, g_grid_step_size);
         for(auto& part : parts)
         {
             part->draw();
@@ -644,8 +667,8 @@ public:
         {
             parts.update();
             open();
-            draw(sidebar);
             draw(parts);
+            draw(sidebar);
             close();
         }
     }
@@ -653,10 +676,9 @@ public:
     void set(ensim::engine* engine)
     {
         this->engine = engine;
-        const float y = engine->get_piston_top_dead_center(0);
         camera = {
             .position = { 1.0f, 0.0f, 0.0f },
-            .target = { 0.0f, y, 0.0f },
+            .target = { 0.0f, 0.0f, 0.0f },
             .up = { 0.0f, 1.0f, 0.0f },
             .fovy = 45.0f,
             .projection = CAMERA_PERSPECTIVE,

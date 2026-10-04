@@ -8,7 +8,7 @@ Q,E to cycle popups.
 
 [https://www.youtube.com/watch?v=za0bQ6HqPRg](https://www.youtube.com/watch?v=za0bQ6HqPRg)
 
-Ensim5 improves on Ensim4 by exploring SIMD and cache locality for piston kinematics, isentropic flow, and computatoinal fluid dynamics.
+Ensim5 improves on Ensim4 by exploring SIMD and cache locality for piston kinematics, isentropic flow, and computational fluid dynamics.
 
 ### ATTRIBUTION
 
