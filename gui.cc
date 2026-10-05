@@ -14,25 +14,28 @@
 #include <thread>
 #include <vector>
 
-static constexpr float g_margin_p = 8.0f;
-static constexpr int g_xres_p = 1920;
-static constexpr int g_yres_p = 1080;
 static constexpr int g_fps = 60;
+static constexpr int g_audio_bit_depth = 32;
+static constexpr int g_audio_channels = 1;
+static constexpr float g_margin_p = 8.0f;
+static constexpr size_t g_xres_p = 1920;
+static constexpr size_t g_yres_p = 1080;
 static constexpr const char* g_name = "ensim5";
 static constexpr float g_sidebar_width_p = g_xres_p / 5;
 static constexpr size_t g_producer_block_size = 200;
-static constexpr int g_audio_bit_depth = 32;
-static constexpr int g_audio_channels = 1;
-static constexpr size_t g_mesh_slices = 8;
+static constexpr size_t g_mesh_slices = 10;
 static constexpr float g_font_size = 1.0f;
 static constexpr float g_plot_border_line_thickness = 1.0f;
 static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
-static constexpr int g_stream_buffer_size = 8192;
+static constexpr size_t g_stream_buffer_size = 4096;
+static constexpr size_t g_producer_queue_size = 4096;
+static constexpr size_t g_history_size = 256;
 static constexpr Color g_plot_border_color = GRAY;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
-static constexpr size_t g_signal_stride = 8;
 static constexpr float g_grid_steps = 32.0f;
 static constexpr float g_grid_step_size = 0.15f;
+static constexpr size_t g_signal_samples = 128;
+static constexpr size_t g_signal_default_samples = -1;
 
 template<typename T, size_t N>
 class ring
@@ -108,9 +111,9 @@ public:
 class producer
 {
     ensim::engine* engine = nullptr;
-    ring<float, 2048> queue = {};
-    ring<size_t, 1024> history = {};
-    ring<size_t, 1024> snapshot = {};
+    ring<float, g_producer_queue_size> queue = {};
+    ring<size_t, g_history_size> history = {};
+    ring<size_t, g_history_size> snapshot = {};
     std::mutex engine_mutex = {};
     std::mutex queue_mutex = {};
     std::mutex history_mutex = {};
@@ -163,7 +166,7 @@ public:
         {
             if(not produce())
             {
-                const auto delay = std::chrono::microseconds(100);
+                const auto delay = std::chrono::microseconds(50);
                 std::this_thread::sleep_for(delay);
             }
         }
@@ -239,15 +242,15 @@ class plot : public widget
     std::string title = {};
     signal<T> x = {};
     signal<T> y = {};
-    size_t stride = {};
+    size_t samples = {};
     size_t signals = {};
 
 public:
-    plot(const std::string& title, const signal<T> x, const signal<T> y, const size_t stride, const size_t signals)
+    plot(const std::string& title, const signal<T> x, const signal<T> y, const size_t samples, const size_t signals)
         : title(title)
         , x(x)
         , y(y)
-        , stride(stride)
+        , samples(samples)
         , signals(signals) {}
 
     struct range
@@ -293,24 +296,23 @@ public:
             std::vector<Vector2> points = {};
             const double x_p = rectangle.x + g_margin_p;
             const double y_p = rectangle.y + g_margin_p;
-            size_t samples = 0;
+            size_t width = 0;
             for(size_t signal = 0; signal < signals; signal++)
             {
                 const T& sx = x(signal);
                 const T& sy = y(signal);
                 const size_t size = sx.size();
-                samples = size / stride;
-                points.resize(samples);
-                size_t at = 0;
-                for(size_t i = 0; i < size and at < samples; i += stride)
+                width = samples > size ? size : samples;
+                points.resize(width);
+                for (size_t at = 0; at < width; at++)
                 {
+                    const size_t i = at * (size - 1) / (width - 1);
                     const double nx_p = xrange > 0.0 ? (sx[i] - range.xmin) / xrange : 0.5;
                     const double ny_p = yrange > 0.0 ? (sy[i] - range.ymin) / yrange : 0.5;
                     const double w_p = -2.0 * g_margin_p + rectangle.width;
                     const double h_p = -2.0 * g_margin_p + rectangle.height;
-                    points[at].x = x_p + (0.0 + nx_p) * w_p;
+                    points[at].x = x_p + nx_p * w_p;
                     points[at].y = y_p + (1.0 - ny_p) * h_p;
-                    at++;
                 }
                 DrawLineStrip(points.data(), points.size(), g_plot_signal_colors[signal]);
             }
@@ -323,7 +325,7 @@ public:
                 << "\nmin: " << std::fixed << std::setprecision(precision) << range.ymin
                 << "\nrng: " << std::fixed << std::setprecision(precision) << range.ymax - range.ymin
                 << "\ndiv: " << std::fixed << std::setprecision(precision) << div
-                << "\nsamples: " << samples;
+                << "\nsamples: " << width;
             DrawText(metrics.str().data(), x_p, y_p, g_font_size, WHITE);
         }
     }
@@ -345,11 +347,11 @@ template<typename T>
 std::unique_ptr<plot<T>> make_plot(
     const std::string& title,
     const signal<T> y,
-    const size_t stride,
+    const size_t samples,
     const size_t signals = 1)
 {
     const auto x = [y](const size_t signal)-> auto& { return lingen<T>(y(signal).size()); };
-    return std::make_unique<plot<T>>(title, x, y, stride, signals);
+    return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
 
 template<typename T>
@@ -357,10 +359,10 @@ std::unique_ptr<plot<T>> make_plot(
     const std::string& title,
     const signal<T> x,
     const signal<T> y,
-    const size_t stride,
+    const size_t samples,
     const size_t signals = 1)
 {
-    return std::make_unique<plot<T>>(title, x, y, stride, signals);
+    return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
 
 class sidebar
@@ -400,7 +402,7 @@ public:
                 make_plot<std::vector<double>>(
                     std::string(engine->get_signal_name(i)),
                     [this, i](auto)-> auto& { return engine->get_signal(i); },
-                    g_signal_stride
+                    g_signal_samples
                 )
             );
         }
@@ -424,17 +426,17 @@ public:
                 [this](auto signal)-> auto& {
                     return engine->get_pipe_pressure_signal(signal);
                 },
-                1,
+                g_signal_default_samples,
                 engine->get_pipe_count()
             )
         );
         left.push_back(
-            make_plot<ring<size_t, 1024>>(
+            make_plot<ring<size_t, g_history_size>>(
                 "producer audio queue size",
                 [](auto)-> auto& {
                     return g_producer.get_history();
                 },
-                1
+                g_signal_default_samples
             )
         );
         left.push_back(
@@ -446,7 +448,7 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_static_pressure_signal_pa();
                 },
-                g_signal_stride
+                g_signal_samples
             )
         );
         left.push_back(
@@ -458,7 +460,7 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_static_temperature_signal_k();
                 },
-                g_signal_stride
+                g_signal_samples
             )
         );
         float y_p = 0.0f;
@@ -561,7 +563,7 @@ public:
         , head_radius_m(head_radius_m)
         , head_height_m(head_height_m)
         , conrod_height_m(conrod_height_m)
-        , counter_weight_height_m(1.5f * crank_diameter_m)
+        , counter_weight_height_m(crank_diameter_m)
         , get_pin_y_m(get_pin_y_m)
         , get_pin_phi_r(get_pin_phi_r)
         , get_crank_theta_r(get_crank_theta_r)
@@ -574,10 +576,10 @@ public:
         shapes[1].color = DARKBLUE;
         shapes[2].color = DARKBLUE;
 
-        const float theta_r = 90.0f * DEG2RAD;
-        shapes[0].model.transform = MatrixRotateY(theta_r);
-        shapes[1].model.transform = MatrixMultiply(MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f), MatrixRotateY(theta_r));
-        shapes[2].model.transform = MatrixRotateY(theta_r);
+        const float rot90_r = 90.0f * DEG2RAD;
+        shapes[0].model.transform = MatrixRotateY(rot90_r);
+        shapes[1].model.transform = MatrixMultiply(MatrixRotateY(rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
+        shapes[2].model.transform = MatrixRotateY(rot90_r);
     }
 
     void update() override
@@ -587,8 +589,8 @@ public:
         shapes[2].position = { x - conrod_depth_m, 0.0f, z };
         shapes[1].rotation = { 1.0f, 0.0f, 0.0f };
         shapes[2].rotation = { 1.0f, 0.0f, 0.0f };
-        shapes[1].theta_degrees = +RAD2DEG * get_pin_phi_r();
-        shapes[2].theta_degrees = -RAD2DEG * get_crank_theta_r();
+        shapes[1].theta_degrees = RAD2DEG * get_pin_phi_r();
+        shapes[2].theta_degrees = RAD2DEG * get_crank_theta_r();
     }
 
     std::span<const shape> get_shapes() const override

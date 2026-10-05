@@ -1000,7 +1000,7 @@ namespace ensim
             {
                 const double r = crank_throw_length_m[i];
                 const double l = connecting_rod_length_m[i];
-                pin_phi_r[i] = asin(sint[i] * r / l);
+                pin_phi_r[i] = -asin(sint[i] * r / l);
             }
         }
 
@@ -1011,7 +1011,7 @@ namespace ensim
          *                        ________________
          *                       /
          *                      /  2    2    2
-         * y = r * cos(t) + _  /  l  + r  sin (t)
+         * y = r * cos(t) + _  /  l  - r  sin (t)
          *                   \/
          */
 
@@ -1026,7 +1026,7 @@ namespace ensim
                 bearing_x_m[i] = x;
                 bearing_y_m[i] = y;
                 pin_x_m[i] = 0.0;
-                pin_y_m[i] = y + sqrt(l * l + x * x);
+                pin_y_m[i] = y + sqrt(l * l - x * x);
             }
         }
 
@@ -1842,10 +1842,7 @@ namespace ensim
                     for(auto& pipe : pipes)
                     {
                         const auto& signal = pipe.static_pressure_pa;
-                        pipe_static_pressures_pa[i++] = {
-                            signal.begin(),
-                            signal.end()
-                        };
+                        pipe_static_pressures_pa[i++] = { signal.begin(), signal.end() };
                     }
                     swap_mutex.unlock();
                     return true;
