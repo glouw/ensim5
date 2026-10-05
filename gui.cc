@@ -348,9 +348,7 @@ std::unique_ptr<plot<T>> make_plot(
     const size_t stride,
     const size_t signals = 1)
 {
-    const auto x = [y](const size_t signal)-> auto& {
-        return lingen<T>(y(signal).size());
-    };
+    const auto x = [y](const size_t signal)-> auto& { return lingen<T>(y(signal).size()); };
     return std::make_unique<plot<T>>(title, x, y, stride, signals);
 }
 
@@ -376,7 +374,12 @@ public:
         return widgets.begin();
     }
 
-    auto end()
+    const auto begin() const
+    {
+        return widgets.begin();
+    }
+
+    const auto end() const
     {
         return widgets.end();
     }
@@ -613,7 +616,17 @@ public:
         return self.begin();
     }
 
+    const auto begin() const
+    {
+        return self.begin();
+    }
+
     auto end()
+    {
+        return self.end();
+    }
+
+    const auto end() const
     {
         return self.end();
     }
@@ -637,7 +650,7 @@ public:
             else
             if(y == engine->get_piston_y())
             {
-                push(std::make_unique<piston>(
+                self.push_back(std::make_unique<piston>(
                     x,
                     y,
                     engine->get_piston_head_radius_m(x),
@@ -657,14 +670,9 @@ public:
             }
             else
             {
-                push(std::make_unique<cylinder>(x, y, engine->get_chamber_volume_m3(x, y)));
+                self.push_back(std::make_unique<cylinder>(x, y, engine->get_chamber_volume_m3(x, y)));
             }
         }
-    }
-
-    void push(std::unique_ptr<part> part)
-    {
-        self.push_back(std::move(part));
     }
 
     void update()
@@ -694,7 +702,7 @@ public:
         CloseWindow();
     }
 
-    void draw(sidebar& sidebar)
+    void draw(const sidebar& sidebar)
     {
         for(const auto& widget : sidebar)
         {
@@ -710,10 +718,10 @@ public:
         }
     }
 
-    void draw(parts& parts)
+    void draw(const parts& parts)
     {
         BeginMode3D(camera);
-        DrawGrid(16, g_grid_step_size);
+        DrawGrid(g_grid_steps, g_grid_step_size);
         for(const auto& part : parts)
         {
             draw(part->get_shapes());
@@ -721,15 +729,24 @@ public:
         EndMode3D();
     }
 
-    void loop(sidebar& sidebar, parts& parts)
+    void draw(const sidebar& sidebar, const parts& parts)
+    {
+        BeginDrawing();
+        ClearBackground(BLACK);
+        UpdateCamera(&camera, CAMERA_THIRD_PERSON);
+        engine->set_swap_lock_on();
+        draw(parts);
+        draw(sidebar);
+        engine->set_swap_lock_off();
+        EndDrawing();
+    }
+
+    void loop(const sidebar& sidebar, parts& parts)
     {
         while(not done())
         {
             parts.update();
-            open();
-            draw(parts);
-            draw(sidebar);
-            close();
+            draw(sidebar, parts);
         }
     }
 
@@ -743,20 +760,6 @@ public:
             .fovy = 45.0f,
             .projection = CAMERA_PERSPECTIVE,
         };
-    }
-
-    void open()
-    {
-        BeginDrawing();
-        ClearBackground(BLACK);
-        UpdateCamera(&camera, CAMERA_THIRD_PERSON);
-        engine->set_swap_lock_on();
-    }
-
-    void close()
-    {
-        engine->set_swap_lock_off();
-        EndDrawing();
     }
 
     bool done()
