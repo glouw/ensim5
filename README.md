@@ -1,6 +1,6 @@
 ## ENSIM5
 
-![](img/raylib.png)
+![](img/raylib2.png)
 
 [https://www.youtube.com/watch?v=za0bQ6HqPRg](https://www.youtube.com/watch?v=za0bQ6HqPRg)
 
