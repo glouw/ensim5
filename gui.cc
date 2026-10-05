@@ -20,22 +20,22 @@ static constexpr int g_audio_channels = 1;
 static constexpr float g_margin_p = 8.0f;
 static constexpr size_t g_xres_p = 1920;
 static constexpr size_t g_yres_p = 1080;
+static constexpr float g_xmid_p = g_xres_p / 2.0f;
 static constexpr const char* g_name = "ensim5";
 static constexpr float g_sidebar_width_p = g_xres_p / 5;
 static constexpr size_t g_producer_block_size = 200;
-static constexpr size_t g_mesh_slices = 10;
+static constexpr size_t g_mesh_slices = 6;
 static constexpr float g_font_size = 1.0f;
-static constexpr float g_plot_border_line_thickness = 1.0f;
 static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
 static constexpr size_t g_stream_buffer_size = 4096;
 static constexpr size_t g_producer_queue_size = 4096;
-static constexpr size_t g_history_size = 256;
-static constexpr Color g_plot_border_color = GRAY;
+static constexpr size_t g_history_size = 512;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr float g_grid_steps = 16.0f;
 static constexpr float g_grid_step_size = 0.15f;
-static constexpr size_t g_signal_samples = 128;
+static constexpr size_t g_signal_samples = g_sidebar_width_p;
 static constexpr size_t g_signal_default_samples = -1;
+static constexpr float g_hud_gauge_width_p = 192.0f;
 
 template<typename T, size_t N>
 class ring
@@ -234,6 +234,82 @@ public:
 };
 
 template<typename T>
+using sample = std::function<T()>;
+
+class tachometer : public widget
+{
+    sample<float> value = {};
+    sample<float> max = {};
+    size_t ticks = 0;
+    static constexpr float start_r = 3.0f * std::numbers::pi_v<float> / 4.0f;
+    static constexpr float sweep_r = 3.0f * std::numbers::pi_v<float> / 2.0f;
+    static constexpr float inner_radius_ratio = 0.82f;
+    static constexpr float outer_radius_ratio = 0.92f;
+    static constexpr float needle_radius_ratio = 0.80f;
+    static constexpr float tick_radius_ratio = 0.70f;
+    static constexpr float tick_line_width_p = 2.0f;
+    static constexpr float needle_thickness = 3.0f;
+    static constexpr float gauge_thickness = 5.0f;
+
+public:
+    tachometer(const sample<float> value, const sample<float> max, const size_t ticks)
+        : value(value)
+        , max(max)
+        , ticks(ticks)
+    {
+    }
+
+    Vector2 to_polar(const float x, const float y, const float angle_r, const float radius_p) const
+    {
+        return {
+            x + std::cos(angle_r) * radius_p,
+            y + std::sin(angle_r) * radius_p,
+        };
+    }
+
+    void draw() const override
+    {
+        const float radius_p = rectangle.width / 2.0f;
+        const Vector2 mid = {
+            rectangle.x + radius_p,
+            rectangle.y + radius_p,
+        };
+        DrawCircle(mid.x, mid.y, radius_p, BLACK);
+        DrawCircleLines(mid.x, mid.y, radius_p, WHITE);
+        for(size_t i = 0; i <= ticks; i++)
+        {
+            const float tick = static_cast<float>(i) / ticks;
+            const float angle_r = start_r + tick * sweep_r;
+            const float inner_radius_p = radius_p * inner_radius_ratio;
+            const float outer_radius_p = radius_p * outer_radius_ratio;
+            DrawLineEx(
+                to_polar(mid.x, mid.y, angle_r, inner_radius_p),
+                to_polar(mid.x, mid.y, angle_r, outer_radius_p),
+                tick_line_width_p,
+                WHITE
+            );
+            const int tick_value = max() * tick;
+            const std::string text = std::to_string(tick_value);
+            const float tick_radius_p = radius_p * tick_radius_ratio;
+            const Vector2 tick_text = to_polar(mid.x, mid.y, angle_r, tick_radius_p);
+            const int width_p = MeasureText(text.c_str(), 1);
+            DrawText(
+                text.c_str(),
+                tick_text.x - width_p / 2.0,
+                tick_text.y - 5.0f, // TODO: Get font height somehow
+                g_font_size,
+                WHITE
+            );
+        }
+        const float ratio = value() / max();
+        const float angle_r = start_r + ratio * sweep_r;
+        const float needle_radius_p = radius_p * needle_radius_ratio;
+        DrawLineEx(mid, to_polar(mid.x, mid.y, angle_r, needle_radius_p), needle_thickness, RED);
+        DrawCircle(mid.x, mid.y, gauge_thickness, WHITE);
+    }
+};
+
+template<typename T>
 using signal = std::function<const T&(size_t)>;
 
 template<typename T>
@@ -262,7 +338,7 @@ public:
 
         bool valid() const
         {
-            return xmin < xmax and ymin < ymax;
+            return xmin <= xmax and ymin <= ymax;
         }
     };
 
@@ -365,25 +441,25 @@ std::unique_ptr<plot<T>> make_plot(
     return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
 
-class sidebar
+class widgets
 {
-    std::vector<std::unique_ptr<widget>> widgets = {};
+    std::vector<std::unique_ptr<widget>> self = {};
     ensim::engine* engine = {};
 
 public:
     auto begin()
     {
-        return widgets.begin();
+        return self.begin();
     }
 
     const auto begin() const
     {
-        return widgets.begin();
+        return self.begin();
     }
 
     const auto end() const
     {
-        return widgets.end();
+        return self.end();
     }
 
     void set(ensim::engine* engine)
@@ -392,7 +468,36 @@ public:
         regen();
     }
 
-    void regen_right()
+    void regen_hud()
+    {
+        std::unique_ptr<widget> engine_angular_velocity = std::make_unique<tachometer>(
+            [this]()-> auto { return engine->get_engine_angular_velocity_r_per_s(); },
+            [this]()-> auto { return engine->get_limiter_angular_velocity_r_per_s(); },
+            10
+        );
+        std::unique_ptr<widget> load_angular_velocity = std::make_unique<tachometer>(
+            [this]()-> auto { return engine->get_load_angular_velocity_r_per_s(); },
+            [this]()-> auto { return 300.0; },
+            10
+        );
+        const float w_p = g_hud_gauge_width_p;
+        engine_angular_velocity->place(
+            g_xmid_p - g_margin_p - w_p,
+            g_yres_p - w_p,
+            w_p,
+            w_p
+        );
+        load_angular_velocity->place(
+            g_xmid_p + g_margin_p,
+            g_yres_p - w_p,
+            w_p,
+            w_p
+        );
+        self.push_back(std::move(engine_angular_velocity));
+        self.push_back(std::move(load_angular_velocity));
+    }
+
+    void regen_right_sidebar()
     {
         std::vector<std::unique_ptr<widget>> right;
         const size_t size = engine->get_signal_count();
@@ -413,11 +518,11 @@ public:
         {
             widget->place(x_p, y_p, g_sidebar_width_p, h_p);
             y_p += h_p;
-            widgets.push_back(std::move(widget));
+            self.push_back(std::move(widget));
         }
     }
 
-    void regen_left()
+    void regen_left_sidebar()
     {
         std::vector<std::unique_ptr<widget>> left;
         left.push_back(
@@ -470,15 +575,16 @@ public:
         {
             widget->place(x_p, y_p, g_sidebar_width_p, h_p);
             y_p += h_p;
-            widgets.push_back(std::move(widget));
+            self.push_back(std::move(widget));
         }
     }
 
     void regen()
     {
-        widgets.clear();
-        regen_left();
-        regen_right();
+        self.clear();
+        regen_left_sidebar();
+        regen_right_sidebar();
+        regen_hud();
     }
 };
 
@@ -504,14 +610,14 @@ public:
     virtual ~part() = default;
 };
 
-class cylinder : public part
+class chamber : public part
 {
     float radius_m = g_grid_step_size / 4.0f;
     float height_m = 0.0f;
     std::array<shape, 1> shapes = {};
 
 public:
-    cylinder(
+    chamber(
         const float x,
         const float z,
         const float volume_m3)
@@ -535,14 +641,12 @@ public:
 
 class piston : public part
 {
-    float head_radius_m = 0.0f;
     float head_height_m = 0.0f;
-    float conrod_height_m = 0.0f;
     float conrod_width_m = 0.015f;
     float conrod_depth_m = 0.007f;
     float counter_weight_height_m = 0.0f;
-    float counter_weight_depth_m = 1.75f * conrod_depth_m;
-    float counter_weight_width_m = 1.75f * conrod_width_m;
+    float counter_weight_depth_m = 2.0f * conrod_depth_m;
+    float counter_weight_width_m = 2.0f * conrod_width_m;
     std::array<shape, 3> shapes = {};
     std::function<float()> get_pin_y_m = {};
     std::function<float()> get_pin_phi_r = {};
@@ -560,10 +664,8 @@ public:
         const std::function<float()> get_pin_phi_r,
         const std::function<float()> get_crank_theta_r)
         : part(x, z)
-        , head_radius_m(head_radius_m)
         , head_height_m(head_height_m)
-        , conrod_height_m(conrod_height_m)
-        , counter_weight_height_m(crank_diameter_m)
+        , counter_weight_height_m(1.2f * crank_diameter_m)
         , get_pin_y_m(get_pin_y_m)
         , get_pin_phi_r(get_pin_phi_r)
         , get_crank_theta_r(get_crank_theta_r)
@@ -637,9 +739,13 @@ public:
     {
         self.clear();
         this->engine = engine;
-        for(size_t x = 0; x < engine->get_width(); x++)
-        for(size_t y = 0; y < engine->get_height(); y++)
+        const size_t w = engine->get_width();
+        const size_t h = engine->get_height();
+        for(size_t x = 0; x < w; x++)
+        for(size_t y = 0; y < h; y++)
         {
+            const float xx = x;
+            const float zz = y;
             if(y == engine->get_source_y())
             {
                 // Do not draw
@@ -653,8 +759,8 @@ public:
             if(y == engine->get_piston_y())
             {
                 self.push_back(std::make_unique<piston>(
-                    x,
-                    y,
+                    xx,
+                    zz,
                     engine->get_piston_head_radius_m(x),
                     engine->get_piston_head_height_m(x),
                     engine->get_piston_connecting_rod_length_m(x),
@@ -672,7 +778,7 @@ public:
             }
             else
             {
-                self.push_back(std::make_unique<cylinder>(x, y, engine->get_chamber_volume_m3(x, y)));
+                self.push_back(std::make_unique<chamber>(xx, zz, engine->get_chamber_volume_m3(x, y)));
             }
         }
     }
@@ -686,17 +792,51 @@ public:
     }
 };
 
+struct look
+{
+    float yaw_r = std::numbers::pi_v<float> / 4.0f;
+    float pitch_r = atan(sqrt(0.5f));
+    float x = 0.0f;
+    float y = 0.0f;
+    float distance = 2.0f;
+    const float max_pitch_r = std::numbers::pi_v<float> / 2.01f;
+    const float min_pitch_r = 0.0f;
+
+    Camera3D camera = {
+        .position = {},
+        .target = {},
+        .up = { 0.0f, 1.0f, 0.0f },
+        .fovy = 45.0f,
+        .projection = CAMERA_PERSPECTIVE,
+    };
+
+    void update()
+    {
+        pitch_r = std::clamp(pitch_r, min_pitch_r, max_pitch_r);
+        const float xx = x * g_grid_step_size;
+        const float yy = 0.0f;
+        const float zz = y * g_grid_step_size;
+        camera.target.x = xx;
+        camera.target.y = yy;
+        camera.target.z = zz;
+        camera.position.x = xx + distance * sinf(yaw_r) * cosf(pitch_r);
+        camera.position.y = yy + distance * sinf(pitch_r);
+        camera.position.z = zz + distance * cosf(yaw_r) * cosf(pitch_r);
+    }
+};
+
 class window
 {
     ensim::engine* engine = {};
-    Camera3D camera = {};
+    look look = {};
 
 public:
     window()
     {
-        SetConfigFlags(FLAG_FULLSCREEN_MODE);
+        SetConfigFlags(FLAG_FULLSCREEN_MODE | FLAG_VSYNC_HINT);
         InitWindow(g_xres_p, g_yres_p, g_name);
         SetTargetFPS(g_fps);
+        HideCursor();
     }
 
     ~window()
@@ -704,9 +844,9 @@ public:
         CloseWindow();
     }
 
-    void draw(const sidebar& sidebar)
+    void draw(const widgets& widgets)
     {
-        for(const auto& widget : sidebar)
+        for(const auto& widget : widgets)
         {
             widget->draw();
         }
@@ -716,13 +856,13 @@ public:
     {
         for(const auto& shape : shapes)
         {
-            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
+            DrawModelEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
         }
     }
 
     void draw(const parts& parts)
     {
-        BeginMode3D(camera);
+        BeginMode3D(look.camera);
         DrawGrid(g_grid_steps, g_grid_step_size);
         for(const auto& part : parts)
         {
@@ -731,37 +871,102 @@ public:
         EndMode3D();
     }
 
-    void draw(const sidebar& sidebar, const parts& parts)
+    void draw(const widgets& widgets, const parts& parts)
     {
         BeginDrawing();
         ClearBackground(BLACK);
-        UpdateCamera(&camera, CAMERA_THIRD_PERSON);
         engine->set_swap_lock_on();
         draw(parts);
-        draw(sidebar);
+        draw(widgets);
         engine->set_swap_lock_off();
         EndDrawing();
     }
 
-    void loop(const sidebar& sidebar, parts& parts)
+    void handle_input()
+    {
+        if(IsKeyDown(KEY_Q))
+        {
+            look.distance += 0.05f;
+        }
+        if(IsKeyDown(KEY_E))
+        {
+            look.distance -= 0.05f;
+        }
+        if(IsKeyDown(KEY_H))
+        {
+            look.yaw_r -= 0.1f;
+        }
+        if(IsKeyDown(KEY_L))
+        {
+            look.yaw_r += 0.1f;
+        }
+        if(IsKeyDown(KEY_J))
+        {
+            look.pitch_r -= 0.1f;
+        }
+        if(IsKeyDown(KEY_K))
+        {
+            look.pitch_r += 0.1f;
+        }
+        int dx = 0;
+        int dy = 0;
+        if(IsKeyPressed(KEY_W))
+        {
+            dy = -1;
+        }
+        else
+        if(IsKeyPressed(KEY_S))
+        {
+            dy = 1;
+        }
+        else
+        if(IsKeyPressed(KEY_A))
+        {
+            dx = -1;
+        }
+        else
+        if(IsKeyPressed(KEY_D))
+        {
+            dx = 1;
+        }
+        const int dirs = 4;
+        const int dir = std::round(look.yaw_r / (std::numbers::pi_v<float> / 2.0f));
+        const int id = ((dir % dirs) + dirs) % dirs;
+        int mx = 0;
+        int my = 0;
+        switch(id)
+        {
+            case 0: mx =  dx; my =  dy; break;
+            case 1: mx =  dy; my = -dx; break;
+            case 2: mx = -dx; my = -dy; break;
+            case 3: mx = -dy; my =  dx; break;
+        }
+        look.x += mx;
+        look.y += my;
+    }
+
+    void handle_look()
+    {
+        look.update();
+        engine->set_logger(look.x, look.y);
+    }
+
+    void loop(const widgets& widgets, parts& parts)
     {
         while(not done())
         {
+            handle_input();
+            handle_look();
             parts.update();
-            draw(sidebar, parts);
+            draw(widgets, parts);
         }
     }
 
     void set(ensim::engine* engine)
     {
         this->engine = engine;
-        camera = {
-            .position = { 1.0f, 0.0f, 0.0f },
-            .target = { 0.0f, 0.0f, 0.0f },
-            .up = { 0.0f, 1.0f, 0.0f },
-            .fovy = 45.0f,
-            .projection = CAMERA_PERSPECTIVE,
-        };
+        look.x = engine->get_width() / 2;
+        look.y = engine->get_piston_y();
     }
 
     bool done()
@@ -770,10 +975,10 @@ public:
     }
 };
 
-static void set(window& window, sidebar& sidebar, producer& producer, parts& parts, ensim::engine* engine)
+static void set(window& window, widgets& widgets, producer& producer, parts& parts, ensim::engine* engine)
 {
     window.set(engine);
-    sidebar.set(engine);
+    widgets.set(engine);
     producer.set(engine);
     parts.set(engine);
 }
@@ -788,12 +993,14 @@ static void audio_callback(void* const data, const unsigned frames)
 int main()
 {
     std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::inline8);
-    engine->set_logger(0, 4);
     window window;
-    sidebar sidebar;
+    widgets widgets;
     audio audio(audio_callback);
     parts parts;
-    set(window, sidebar, g_producer, parts, engine.get());
-    window.loop(sidebar, parts);
+    set(window, widgets, g_producer, parts, engine.get());
+    window.loop(widgets, parts);
     g_producer.stop();
 }
+
+// TODO
+// * add semicircle for counter balance mass

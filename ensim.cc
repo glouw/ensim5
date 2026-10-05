@@ -2407,7 +2407,7 @@ namespace ensim
                 pipe.length_m = 1.0;
             }
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.0001;
+            this->gain.ratio = 0.0005;
         }
     };
 
@@ -2426,5 +2426,5 @@ namespace ensim
 }
 
 // TODO:
-// move producer here
-// consider 0d to 1d to add to flux faces, not overrwrite conservative
+// * move producer here
+// * consider 0d to 1d to add to flux faces, do not overwrite conservative
