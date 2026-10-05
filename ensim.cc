@@ -2355,7 +2355,7 @@ namespace ensim
         inline8()
         {
             this->gearbox.ratios = { 7.0, 6.0, 5.0, 4.25, 3.7, 3.0 };
-            this->clutch.damping_coefficient_n_m_s = 10.0;
+            this->clutch.damping_coefficient_n_m_s = 2.0;
             this->convolution.set_impulse(g_impulse1);
             this->lumped_parasitic_torque_n_m = 15.0;
             this->limiter.max_angular_velocity_r_per_s = 1350.0;

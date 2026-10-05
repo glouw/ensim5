@@ -480,21 +480,35 @@ public:
             [this]()-> auto { return 300.0; },
             10
         );
+        std::unique_ptr<widget> gear = std::make_unique<tachometer>(
+            [this]()-> auto { return engine->get_gear(); },
+            [this]()-> auto { return 8.0; },
+            8
+        );
+        const float margin_p = 4.0 * g_margin_p;
         const float w_p = g_hud_gauge_width_p;
         engine_angular_velocity->place(
-            g_xmid_p - g_margin_p - w_p,
+            g_xmid_p - margin_p - w_p,
             g_yres_p - w_p,
             w_p,
             w_p
         );
         load_angular_velocity->place(
-            g_xmid_p + g_margin_p,
+            g_xmid_p + margin_p,
             g_yres_p - w_p,
             w_p,
             w_p
         );
+        const float gear_w_p = g_hud_gauge_width_p / 1.75;
+        gear->place(
+            g_xmid_p - gear_w_p / 2.0,
+            g_yres_p - gear_w_p,
+            gear_w_p,
+            gear_w_p
+        );
         self.push_back(std::move(engine_angular_velocity));
         self.push_back(std::move(load_angular_velocity));
+        self.push_back(std::move(gear));
     }
 
     void regen_right_sidebar()
@@ -829,6 +843,7 @@ class window
 {
     ensim::engine* engine = {};
     look look = {};
+    float throttle_ratio = 0.0f;
 
 public:
     window()
@@ -857,6 +872,7 @@ public:
         for(const auto& shape : shapes)
         {
             DrawModelEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
+            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, GRAY);
         }
     }
 
@@ -884,6 +900,53 @@ public:
 
     void handle_input()
     {
+        if(IsKeyPressed(KEY_ZERO))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio = 0.00f);
+            engine->set_injection_off();
+        }
+        if(IsKeyPressed(KEY_ONE))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio = 0.00f);
+            engine->set_injection_on();
+        }
+        if(IsKeyPressed(KEY_TWO))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio = 0.33f);
+            engine->set_injection_on();
+        }
+        if(IsKeyPressed(KEY_THREE))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio = 0.66f);
+            engine->set_injection_on();
+        }
+        if(IsKeyPressed(KEY_FOUR))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio = 0.99f);
+            engine->set_injection_on();
+        }
+        if(IsKeyPressed(KEY_PERIOD))
+        {
+            engine->set_throttle_open_ratio(0.0);
+            engine->disengage_clutch();
+            engine->increment_gear();
+        }
+        if(IsKeyPressed(KEY_COMMA))
+        {
+            engine->set_throttle_open_ratio(0.0);
+            engine->disengage_clutch();
+            engine->decrement_gear();
+        }
+        if(IsKeyReleased(KEY_PERIOD))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio);
+            engine->engage_clutch();
+        }
+        if(IsKeyReleased(KEY_COMMA))
+        {
+            engine->set_throttle_open_ratio(throttle_ratio);
+            engine->engage_clutch();
+        }
         if(IsKeyDown(KEY_Q))
         {
             look.distance += 0.05f;
