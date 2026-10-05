@@ -594,7 +594,7 @@ public:
 
     ~piston()
     {
-        for(auto& shape : shapes)
+        for(const auto& shape : shapes)
         {
             UnloadModel(shape.model);
         }
@@ -668,7 +668,7 @@ public:
 
     void update()
     {
-        for(auto& part : self)
+        for(const auto& part : self)
         {
             part->update();
         }
@@ -695,9 +695,17 @@ public:
 
     void draw(sidebar& sidebar)
     {
-        for(auto& widget : sidebar)
+        for(const auto& widget : sidebar)
         {
             widget->draw();
+        }
+    }
+
+    void draw(const std::span<const shape> shapes)
+    {
+        for(const auto& shape : shapes)
+        {
+            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
         }
     }
 
@@ -705,13 +713,9 @@ public:
     {
         BeginMode3D(camera);
         DrawGrid(16, g_grid_step_size);
-        for(auto& part : parts)
+        for(const auto& part : parts)
         {
-            const std::span<const shape> shapes = part->get_shapes();
-            for(const auto& shape : shapes)
-            {
-                DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
-            }
+            draw(part->get_shapes());
         }
         EndMode3D();
     }
