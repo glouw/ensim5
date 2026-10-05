@@ -16,6 +16,8 @@ namespace ensim
         virtual void reset() = 0;
         virtual constexpr size_t get_width() const = 0;
         virtual constexpr size_t get_height() const = 0;
+        virtual constexpr size_t get_source_y() const = 0;
+        virtual constexpr size_t get_sink_y() const = 0;
         virtual constexpr size_t get_pipe_count() const = 0;
         virtual constexpr size_t get_piston_y() const = 0;
         virtual constexpr size_t get_audio_y() const = 0;
@@ -27,6 +29,7 @@ namespace ensim
         virtual const std::atomic<double>& get_engine_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_limiter_angular_velocity_r_per_s() const = 0;
         virtual const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const = 0;
+        virtual const std::atomic<double>& get_chamber_volume_m3(const size_t x, const size_t y) const = 0;
         virtual const std::atomic<bool>& get_panic(const size_t x, const size_t y) const = 0;
         virtual const std::atomic<size_t>& get_gear() const = 0;
         virtual size_t get_swap_drops() const = 0;

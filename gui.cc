@@ -14,11 +14,11 @@
 #include <vector>
 
 static constexpr float g_margin_p = 8.0f;
-static constexpr int g_xres_p = 1900;
-static constexpr int g_yres_p = 1000;
+static constexpr int g_xres_p = 1920;
+static constexpr int g_yres_p = 1080;
 static constexpr int g_fps = 60;
 static constexpr const char* g_name = "ensim5";
-static constexpr float g_sidebar_width_p = g_xres_p / 3;
+static constexpr float g_sidebar_width_p = g_xres_p / 5;
 static constexpr size_t g_producer_block_size = 200;
 static constexpr int g_audio_bit_depth = 32;
 static constexpr int g_audio_channels = 1;
@@ -31,7 +31,7 @@ static constexpr Color g_plot_border_color = GRAY;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr size_t g_signal_stride = 8;
 static constexpr float g_grid_steps = 32.0f;
-static constexpr float g_grid_step_size = 0.2f;
+static constexpr float g_grid_step_size = 0.15f;
 
 template<typename T, size_t N>
 class ring
@@ -313,14 +313,15 @@ public:
                 }
                 DrawLineStrip(points.data(), points.size(), g_plot_signal_colors[signal]);
             }
+            const double precision = 6.0;
             const double div = range.ymax / range.ymin;
             std::ostringstream metrics;
             metrics
                 << title
-                << "\nmax: " << std::fixed << std::setprecision(6) << range.ymax
-                << "\nmin: " << std::fixed << std::setprecision(6) << range.ymin
-                << "\nrng: " << std::fixed << std::setprecision(6) << range.ymax - range.ymin
-                << "\ndiv: " << std::fixed << std::setprecision(6) << div
+                << "\nmax: " << std::fixed << std::setprecision(precision) << range.ymax
+                << "\nmin: " << std::fixed << std::setprecision(precision) << range.ymin
+                << "\nrng: " << std::fixed << std::setprecision(precision) << range.ymax - range.ymin
+                << "\ndiv: " << std::fixed << std::setprecision(precision) << div
                 << "\nsamples: " << samples;
             DrawText(metrics.str().data(), x_p, y_p, g_font_size, WHITE);
         }
@@ -475,24 +476,55 @@ public:
     }
 };
 
+struct shape
+{
+    Model model = {};
+    Color color = {};
+    Vector3 rotation = {};
+    Vector3 position = {};
+    double theta_degrees = {};
+};
+
 class part
 {
 protected:
     float x = 0.0;
     float z = 0.0;
     part(const float x, const float z): x(x * g_grid_step_size), z(z * g_grid_step_size) {}
+
 public:
-    virtual void draw() = 0;
+    virtual std::span<const shape> get_shapes() const = 0;
     virtual void update() = 0;
     virtual ~part() = default;
 };
 
-struct shape
+class cylinder : public part
 {
-    Model model = {};
-    Vector3 rotation = {};
-    Vector3 position = {};
-    double theta_degrees = {};
+    float radius_m = g_grid_step_size / 4.0f;
+    float height_m = 0.0f;
+    std::array<shape, 1> shapes = {};
+
+public:
+    cylinder(
+        const float x,
+        const float z,
+        const float volume_m3)
+        : part(x, z)
+        , height_m(volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m))
+        {
+            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
+            shapes[0].color = DARKBLUE;
+        }
+
+    void update() override
+    {
+        shapes[0].position = { x, 0.0f, z };
+    }
+
+    std::span<const shape> get_shapes() const override
+    {
+        return shapes;
+    }
 };
 
 class piston : public part
@@ -530,9 +562,13 @@ public:
         , get_pin_phi_r(get_pin_phi_r)
         , get_crank_theta_r(get_crank_theta_r)
     {
-        shapes[0] = { LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices)) };
-        shapes[1] = { LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m)) };
-        shapes[2] = { LoadModelFromMesh(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m)) };
+        shapes[0].model = LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices));
+        shapes[1].model = LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m));
+        shapes[2].model = LoadModelFromMesh(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m));
+
+        shapes[0].color = DARKBLUE;
+        shapes[1].color = DARKBLUE;
+        shapes[2].color = DARKBLUE;
 
         const float theta_r = 90.0f * DEG2RAD;
         shapes[0].model.transform = MatrixRotateY(theta_r);
@@ -551,12 +587,9 @@ public:
         shapes[2].theta_degrees = -RAD2DEG * get_crank_theta_r();
     }
 
-    void draw() override
+    std::span<const shape> get_shapes() const override
     {
-        for(auto& shape : shapes)
-        {
-            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, MAROON);
-        }
+        return shapes;
     }
 
     ~piston()
@@ -588,26 +621,43 @@ public:
     {
         self.clear();
         this->engine = engine;
-        for(size_t y = 0; y < engine->get_height(); y++)
         for(size_t x = 0; x < engine->get_width(); x++)
+        for(size_t y = 0; y < engine->get_height(); y++)
         {
-            push(std::make_unique<piston>(
-                x,
-                y,
-                engine->get_piston_head_radius_m(x),
-                engine->get_piston_head_height_m(x),
-                engine->get_piston_connecting_rod_length_m(x),
-                engine->get_piston_crank_diameter_m(x),
-                [this, x]()-> float {
-                    return this->engine->get_piston_pin_y_m(x);
-                },
-                [this, x]()-> float {
-                    return this->engine->get_piston_pin_phi_r(x);
-                },
-                [this, x]()-> float {
-                    return this->engine->get_piston_crank_theta_r(x);
-                }
-            ));
+            if(y == engine->get_source_y())
+            {
+                // Do not draw
+            }
+            else
+            if(y == engine->get_sink_y())
+            {
+                // Do not draw
+            }
+            else
+            if(y == engine->get_piston_y())
+            {
+                push(std::make_unique<piston>(
+                    x,
+                    y,
+                    engine->get_piston_head_radius_m(x),
+                    engine->get_piston_head_height_m(x),
+                    engine->get_piston_connecting_rod_length_m(x),
+                    engine->get_piston_crank_diameter_m(x),
+                    [this, x]()-> float {
+                        return this->engine->get_piston_pin_y_m(x);
+                    },
+                    [this, x]()-> float {
+                        return this->engine->get_piston_pin_phi_r(x);
+                    },
+                    [this, x]()-> float {
+                        return this->engine->get_piston_crank_theta_r(x);
+                    }
+                ));
+            }
+            else
+            {
+                push(std::make_unique<cylinder>(x, y, engine->get_chamber_volume_m3(x, y)));
+            }
         }
     }
 
@@ -633,6 +683,7 @@ class window
 public:
     window()
     {
+        SetConfigFlags(FLAG_FULLSCREEN_MODE);
         InitWindow(g_xres_p, g_yres_p, g_name);
         SetTargetFPS(g_fps);
     }
@@ -653,10 +704,14 @@ public:
     void draw(parts& parts)
     {
         BeginMode3D(camera);
-        DrawGrid(g_grid_steps, g_grid_step_size);
+        DrawGrid(16, g_grid_step_size);
         for(auto& part : parts)
         {
-            part->draw();
+            const std::span<const shape> shapes = part->get_shapes();
+            for(const auto& shape : shapes)
+            {
+                DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
+            }
         }
         EndMode3D();
     }
@@ -722,7 +777,7 @@ static void audio_callback(void* const data, const unsigned frames)
 
 int main()
 {
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::trx450r);
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::inline8);
     engine->set_logger(0, 4);
     window window;
     sidebar sidebar;

@@ -1648,6 +1648,7 @@ namespace ensim
             std::atomic<double> limiter_angular_velocity_r_per_s = 0.0;
             std::array<std::array<std::atomic<double>, W>, H> port_open_ratios = {};
             std::array<std::array<std::atomic<bool>, W>, H> panics = {};
+            std::array<std::array<std::atomic<double>, W>, H> chamber_volume_m3 = {};
             std::array<std::atomic<double>, W> pistons_head_radius_m = {};
             std::array<std::atomic<double>, W> pistons_head_height_m = {};
             std::array<std::atomic<double>, W> pistons_pin_y_m = {};
@@ -2001,6 +2002,7 @@ namespace ensim
             {
                 mailbox.out.port_open_ratios[y][x] = flows[x].chamber_nozzle_open_ratio[y];
                 mailbox.out.panics[y][x] = flows[x].panic[y];
+                mailbox.out.chamber_volume_m3[y][x] = flows[x].chamber_volume_m3[y];
             }
             for(size_t x = 0; x < W; x++)
             {
@@ -2061,6 +2063,16 @@ namespace ensim
             return H;
         }
 
+        constexpr size_t get_source_y() const override
+        {
+            return 0;
+        }
+
+        constexpr size_t get_sink_y() const override
+        {
+            return H - 1;
+        }
+
         constexpr size_t get_pipe_count() const override
         {
             return PIPE_COUNT;
@@ -2114,6 +2126,11 @@ namespace ensim
         const std::atomic<bool>& get_panic(const size_t x, const size_t y) const override
         {
             return mailbox.out.panics[y][x];
+        }
+
+        const std::atomic<double>& get_chamber_volume_m3(const size_t x, const size_t y) const override
+        {
+            return mailbox.out.chamber_volume_m3[y][x];
         }
 
         const std::atomic<size_t>& get_gear() const override
