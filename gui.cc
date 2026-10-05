@@ -342,7 +342,7 @@ public:
         }
     };
 
-    range get_size() const
+    range get_range() const
     {
         range range = {};
         for(size_t signal = 0; signal < signals; signal++)
@@ -364,7 +364,7 @@ public:
 
     void draw() const override
     {
-        const range range = get_size();
+        const range range = get_range();
         if(range.valid())
         {
             const double xrange = range.xmax - range.xmin;
