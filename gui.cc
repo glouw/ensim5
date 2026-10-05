@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <numeric>
 #include <raylib.h>

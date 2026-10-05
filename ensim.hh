@@ -3,14 +3,13 @@
 #include <cstddef>
 #include <memory>
 #include <vector>
-#include <atomic>
 #include <string_view>
 
 namespace ensim
 {
     static constexpr size_t g_sample_rate_hz = 48000;
 
-    struct engine
+    struct engine /* Thread-safe */
     {
         virtual void run(size_t steps) = 0;
         virtual void reset() = 0;
@@ -25,22 +24,22 @@ namespace ensim
         virtual constexpr size_t get_bytes() const = 0;
         virtual constexpr size_t get_signal_count() const = 0;
         virtual std::string_view get_signal_name(const size_t index) const = 0;
-        virtual const std::atomic<double>& get_load_angular_velocity_r_per_s() const = 0;
-        virtual const std::atomic<double>& get_engine_angular_velocity_r_per_s() const = 0;
-        virtual const std::atomic<double>& get_limiter_angular_velocity_r_per_s() const = 0;
-        virtual const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const = 0;
-        virtual const std::atomic<double>& get_chamber_volume_m3(const size_t x, const size_t y) const = 0;
-        virtual const std::atomic<bool>& get_panic(const size_t x, const size_t y) const = 0;
-        virtual const std::atomic<size_t>& get_gear() const = 0;
+        virtual double get_load_angular_velocity_r_per_s() const = 0;
+        virtual double get_engine_angular_velocity_r_per_s() const = 0;
+        virtual double get_limiter_angular_velocity_r_per_s() const = 0;
+        virtual double get_port_open_ratio(const size_t x, const size_t y) const = 0;
+        virtual double get_chamber_volume_m3(const size_t x, const size_t y) const = 0;
+        virtual bool get_panic(const size_t x, const size_t y) const = 0;
+        virtual size_t get_gear() const = 0;
         virtual size_t get_swap_drops() const = 0;
-        virtual const std::atomic<double>& get_piston_head_radius_m(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_head_height_m(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_pin_y_m(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_connecting_rod_length_m(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_crank_diameter_m(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_top_dead_center(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_pin_phi_r(const size_t x) const = 0;
-        virtual const std::atomic<double>& get_piston_crank_theta_r(const size_t x) const = 0;
+        virtual double get_piston_head_radius_m(const size_t x) const = 0;
+        virtual double get_piston_head_height_m(const size_t x) const = 0;
+        virtual double get_piston_pin_y_m(const size_t x) const = 0;
+        virtual double get_piston_connecting_rod_length_m(const size_t x) const = 0;
+        virtual double get_piston_crank_diameter_m(const size_t x) const = 0;
+        virtual double get_piston_top_dead_center(const size_t x) const = 0;
+        virtual double get_piston_pin_phi_r(const size_t x) const = 0;
+        virtual double get_piston_crank_theta_r(const size_t x) const = 0;
         virtual const std::vector<double>& get_signal(const size_t index) const = 0;
         virtual const std::vector<double>& get_static_temperature_signal_k() const = 0;
         virtual const std::vector<double>& get_static_pressure_signal_pa() const = 0;
@@ -64,8 +63,8 @@ namespace ensim
 
     enum class type : size_t
     {
+        trx450r,
         inline8,
-        trx450r
     };
 
     std::unique_ptr<engine> new_engine(const type);

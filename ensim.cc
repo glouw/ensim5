@@ -5,6 +5,7 @@
 #include <cmath>
 #include <mutex>
 #include <cassert>
+#include <atomic>
 
 #define fn __attribute__((used))
 
@@ -2048,7 +2049,7 @@ namespace ensim
             post_mail(swap_drops);
         }
 
-        const std::atomic<double>& get_limiter_angular_velocity_r_per_s() const override
+        double get_limiter_angular_velocity_r_per_s() const override
         {
             return mailbox.out.limiter_angular_velocity_r_per_s;
         }
@@ -2108,32 +2109,32 @@ namespace ensim
             return g_signal_names[index];
         }
 
-        const std::atomic<double>& get_load_angular_velocity_r_per_s() const override
+        double get_load_angular_velocity_r_per_s() const override
         {
             return mailbox.out.load_angular_velocity_r_per_s;
         }
 
-        const std::atomic<double>& get_engine_angular_velocity_r_per_s() const override
+        double get_engine_angular_velocity_r_per_s() const override
         {
             return mailbox.out.engine_angular_velocity_r_per_s;
         }
 
-        const std::atomic<double>& get_port_open_ratio(const size_t x, const size_t y) const override
+        double get_port_open_ratio(const size_t x, const size_t y) const override
         {
             return mailbox.out.port_open_ratios[y][x];
         }
 
-        const std::atomic<bool>& get_panic(const size_t x, const size_t y) const override
+        bool get_panic(const size_t x, const size_t y) const override
         {
             return mailbox.out.panics[y][x];
         }
 
-        const std::atomic<double>& get_chamber_volume_m3(const size_t x, const size_t y) const override
+        double get_chamber_volume_m3(const size_t x, const size_t y) const override
         {
             return mailbox.out.chamber_volume_m3[y][x];
         }
 
-        const std::atomic<size_t>& get_gear() const override
+        size_t get_gear() const override
         {
             return mailbox.in.gear;
         }
@@ -2143,42 +2144,42 @@ namespace ensim
             return mailbox.out.swap_drops;
         }
 
-        const std::atomic<double>& get_piston_head_radius_m(const size_t x) const override
+        double get_piston_head_radius_m(const size_t x) const override
         {
             return mailbox.out.pistons_head_radius_m[x];
         }
 
-        const std::atomic<double>& get_piston_head_height_m(const size_t x) const override
+        double get_piston_head_height_m(const size_t x) const override
         {
             return mailbox.out.pistons_head_height_m[x];
         }
 
-        const std::atomic<double>& get_piston_pin_y_m(const size_t x) const override
+        double get_piston_pin_y_m(const size_t x) const override
         {
             return mailbox.out.pistons_pin_y_m[x];
         }
 
-        const std::atomic<double>& get_piston_connecting_rod_length_m(const size_t x) const override
+        double get_piston_connecting_rod_length_m(const size_t x) const override
         {
             return mailbox.out.pistons_connecting_rod_length_m[x];
         }
 
-        const std::atomic<double>& get_piston_crank_diameter_m(const size_t x) const override
+        double get_piston_crank_diameter_m(const size_t x) const override
         {
             return mailbox.out.pistons_crank_diameter_m[x];
         }
 
-        const std::atomic<double>& get_piston_top_dead_center(const size_t x) const override
+        double get_piston_top_dead_center(const size_t x) const override
         {
             return mailbox.out.pistons_top_dead_center_m[x];
         }
 
-        const std::atomic<double>& get_piston_pin_phi_r(const size_t x) const override
+        double get_piston_pin_phi_r(const size_t x) const override
         {
             return mailbox.out.pistons_pin_phi_r[x];
         }
 
-        const std::atomic<double>& get_piston_crank_theta_r(const size_t x) const override
+        double get_piston_crank_theta_r(const size_t x) const override
         {
             return mailbox.out.pistons_crank_theta_r[x];
         }
