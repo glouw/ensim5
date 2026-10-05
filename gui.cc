@@ -616,9 +616,20 @@ class part
 protected:
     float x = 0.0;
     float z = 0.0;
-    part(const float x, const float z): x(x * g_grid_step_size), z(z * g_grid_step_size) {}
+    size_t x_id = 0;
+    size_t y_id = 0;
+
+    part(const float x, const float z):
+        x(x * g_grid_step_size),
+        z(z * g_grid_step_size),
+        x_id(x),
+        y_id(z)
+        {
+        }
 
 public:
+    size_t get_x_id() { return x_id; };
+    size_t get_y_id() { return y_id; };
     virtual std::span<const shape> get_shapes() const = 0;
     virtual void update() = 0;
     virtual ~part() = default;
@@ -867,12 +878,12 @@ public:
         }
     }
 
-    void draw(const std::span<const shape> shapes)
+    void draw(const std::span<const shape> shapes, const bool highlight)
     {
         for(const auto& shape : shapes)
         {
-            DrawModelEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
-            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, GRAY);
+            const Color color = highlight ? RED : LIGHTGRAY;
+            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, color);
         }
     }
 
@@ -882,7 +893,8 @@ public:
         DrawGrid(g_grid_steps, g_grid_step_size);
         for(const auto& part : parts)
         {
-            draw(part->get_shapes());
+            const bool highlight = part->get_x_id() == look.x && part->get_y_id() == look.y;
+            draw(part->get_shapes(), highlight);
         }
         EndMode3D();
     }
