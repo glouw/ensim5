@@ -11,7 +11,6 @@
 #include <raylib.h>
 #include <raymath.h>
 #include <sstream>
-#include <thread>
 #include <vector>
 
 static constexpr int g_fps = 60;
@@ -19,18 +18,15 @@ static constexpr int g_panic_fps = g_fps / 10;
 static constexpr int g_audio_bit_depth = 32;
 static constexpr int g_audio_channels = 1;
 static constexpr float g_margin_p = 8.0f;
-static constexpr size_t g_xres_p = 1920;
-static constexpr size_t g_yres_p = 1080;
+static constexpr size_t g_xres_p = 2560;
+static constexpr size_t g_yres_p = 1440;
 static constexpr float g_xmid_p = g_xres_p / 2.0f;
 static constexpr const char* g_name = "ensim5";
 static constexpr float g_sidebar_width_p = g_xres_p / 3;
-static constexpr size_t g_producer_block_size = 200;
 static constexpr size_t g_mesh_slices = 6;
 static constexpr float g_font_size = 1.0f;
 static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
 static constexpr size_t g_stream_buffer_size = 4096;
-static constexpr size_t g_producer_queue_size = 4096;
-static constexpr size_t g_history_size = 512;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr float g_grid_steps = 16.0f;
 static constexpr float g_grid_step_size = 0.15f;
@@ -38,163 +34,6 @@ static constexpr float g_grid_pipe_radius_m = g_grid_step_size / 8.0f;
 static constexpr size_t g_signal_samples = g_sidebar_width_p;
 static constexpr size_t g_signal_default_samples = -1;
 static constexpr float g_hud_gauge_width_p = 192.0f;
-
-template<typename T, size_t N>
-class ring
-{
-    std::array<T, N> self = {};
-    size_t head = 0;
-    size_t tail = 0;
-    size_t elems = 0;
-
-public:
-    void clear()
-    {
-        head = tail = elems = 0;
-    }
-
-    size_t size() const
-    {
-        return elems;
-    }
-
-    size_t capacity() const
-    {
-        return N;
-    }
-
-    void push_back(const T& value)
-    {
-        self[tail++] = value;
-        tail %= N;
-        if(elems == N)
-        {
-            head++;
-            head %= N;
-        }
-        else
-        {
-            elems++;
-        }
-    }
-
-    bool empty() const
-    {
-        return elems == 0;
-    }
-
-    void pop_front()
-    {
-        if(empty())
-        {
-            throw std::runtime_error("ring empty!");
-        }
-        head++;
-        head %= N;
-        elems--;
-    }
-
-    size_t index(const size_t i) const
-    {
-        return (head + i) % N;
-    }
-
-    T& operator[](const size_t i)
-    {
-        return self[index(i)];
-    }
-
-    const T& operator[](const size_t i) const
-    {
-        return self[index(i)];
-    }
-};
-
-class producer
-{
-    ensim::engine* engine = nullptr;
-    ring<float, g_producer_queue_size> queue = {};
-    ring<size_t, g_history_size> history = {};
-    ring<size_t, g_history_size> snapshot = {};
-    std::mutex engine_mutex = {};
-    std::mutex queue_mutex = {};
-    std::mutex history_mutex = {};
-    std::atomic<bool> done = false;
-    std::thread thread = std::thread(&producer::run, this);
-    std::vector<float> ready = {};
-
-public:
-    std::vector<float>& consume(const size_t samples)
-    {
-        std::lock_guard lock1(queue_mutex);
-        if(samples > queue.size())
-        {
-            throw std::runtime_error("producer underrun");
-        }
-        ready.clear();
-        for(size_t i = 0; i < samples; i++)
-        {
-            ready.push_back(queue[0]);
-            queue.pop_front();
-        }
-        std::lock_guard lock2(history_mutex);
-        history.push_back(queue.size());
-        return ready;
-    }
-
-    bool produce()
-    {
-        std::lock_guard lock(queue_mutex);
-        if(queue.size() + g_producer_block_size < queue.capacity())
-        {
-            std::lock_guard lock(engine_mutex);
-            if(engine)
-            {
-                engine->run(g_producer_block_size);
-                const std::vector<float>& slice = engine->get_audio_signal();
-                for(float value : slice)
-                {
-                    queue.push_back(value);
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
-    void run()
-    {
-        while(not done)
-        {
-            if(not produce())
-            {
-                const auto delay = std::chrono::microseconds(50);
-                std::this_thread::sleep_for(delay);
-            }
-        }
-    }
-
-    void set(ensim::engine* other)
-    {
-        std::lock_guard lock(engine_mutex);
-        engine = other;
-    }
-
-    void stop()
-    {
-        done = true;
-        thread.join();
-    }
-
-    const auto& get_history()
-    {
-        std::lock_guard lock1(history_mutex);
-        snapshot = history;
-        return snapshot;
-    }
-};
-
-producer g_producer = {};
 
 class audio
 {
@@ -422,23 +261,14 @@ const T& lingen(const size_t size)
 }
 
 template<typename T>
-std::unique_ptr<plot<T>> make_plot(
-    const std::string& title,
-    const signal<T> y,
-    const size_t samples,
-    const size_t signals = 1)
+std::unique_ptr<plot<T>> make_plot(const std::string& title, const signal<T> y, const size_t samples, const size_t signals = 1)
 {
     const auto x = [y](const size_t signal)-> auto& { return lingen<T>(y(signal).size()); };
     return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
 
 template<typename T>
-std::unique_ptr<plot<T>> make_plot(
-    const std::string& title,
-    const signal<T> x,
-    const signal<T> y,
-    const size_t samples,
-    const size_t signals = 1)
+std::unique_ptr<plot<T>> make_plot(const std::string& title, const signal<T> x, const signal<T> y, const size_t samples, const size_t signals = 1)
 {
     return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
@@ -449,20 +279,10 @@ class widgets
     ensim::engine* engine = {};
 
 public:
-    auto begin()
-    {
-        return self.begin();
-    }
-
-    const auto begin() const
-    {
-        return self.begin();
-    }
-
-    const auto end() const
-    {
-        return self.end();
-    }
+          auto begin()       { return self.begin(); }
+    const auto begin() const { return self.begin(); }
+          auto end()         { return self.end();   }
+    const auto end()   const { return self.end();   }
 
     void set(ensim::engine* engine)
     {
@@ -576,10 +396,10 @@ public:
             )
         );
         left.push_back(
-            make_plot<ring<size_t, g_history_size>>(
+            make_plot<std::vector<size_t>>(
                 "producer audio queue size",
                 [](auto)-> auto& {
-                    return g_producer.get_history();
+                    return ensim::get_buffer_size_history();
                 },
                 g_signal_default_samples
             )
@@ -759,25 +579,10 @@ class parts
     ensim::engine* engine = nullptr;
 
 public:
-    auto begin()
-    {
-        return self.begin();
-    }
-
-    const auto begin() const
-    {
-        return self.begin();
-    }
-
-    auto end()
-    {
-        return self.end();
-    }
-
-    const auto end() const
-    {
-        return self.end();
-    }
+          auto begin()       { return self.begin(); }
+    const auto begin() const { return self.begin(); }
+          auto end()         { return self.end();   }
+    const auto end()   const { return self.end();   }
 
     void set(ensim::engine* engine)
     {
@@ -947,100 +752,71 @@ public:
     {
         if(IsKeyPressed(KEY_ZERO))
         {
-            engine->set_throttle_open_ratio(throttle_ratio = 0.00f);
+            engine->set_throttle(throttle_ratio = 0.00f);
             engine->set_injection_off();
         }
         if(IsKeyPressed(KEY_ONE))
         {
-            engine->set_throttle_open_ratio(throttle_ratio = 0.00f);
+            engine->set_throttle(throttle_ratio = 0.00f);
             engine->set_injection_on();
         }
         if(IsKeyPressed(KEY_TWO))
         {
-            engine->set_throttle_open_ratio(throttle_ratio = 0.33f);
+            engine->set_throttle(throttle_ratio = 0.33f);
             engine->set_injection_on();
         }
         if(IsKeyPressed(KEY_THREE))
         {
-            engine->set_throttle_open_ratio(throttle_ratio = 0.66f);
+            engine->set_throttle(throttle_ratio = 0.66f);
             engine->set_injection_on();
         }
         if(IsKeyPressed(KEY_FOUR))
         {
-            engine->set_throttle_open_ratio(throttle_ratio = 0.99f);
+            engine->set_throttle(throttle_ratio = 0.99f);
             engine->set_injection_on();
         }
         if(IsKeyPressed(KEY_PERIOD))
         {
-            engine->set_throttle_open_ratio(0.0);
+            engine->set_throttle(0.0f);
             engine->disengage_clutch();
-            engine->set_injection_off();
             engine->increment_gear();
-        }
-        if(IsKeyPressed(KEY_COMMA))
-        {
-            engine->set_throttle_open_ratio(0.0);
-            engine->disengage_clutch();
-            engine->set_injection_off();
-            engine->decrement_gear();
         }
         if(IsKeyReleased(KEY_PERIOD))
         {
-            engine->set_throttle_open_ratio(throttle_ratio);
-            engine->set_injection_on();
+            engine->set_throttle(throttle_ratio);
             engine->engage_clutch();
+        }
+        if(IsKeyPressed(KEY_COMMA))
+        {
+            engine->set_throttle(0.99f);
+            engine->disengage_clutch();
+            engine->decrement_gear();
         }
         if(IsKeyReleased(KEY_COMMA))
         {
-            engine->set_throttle_open_ratio(throttle_ratio);
-            engine->set_injection_on();
+            engine->set_throttle(throttle_ratio);
             engine->engage_clutch();
         }
-        if(IsKeyDown(KEY_Q))
+        if(IsKeyPressed(KEY_SPACE))
         {
-            look.distance += 0.05f;
+            engine->engage_load_brake();
         }
-        if(IsKeyDown(KEY_E))
+        if(IsKeyReleased(KEY_SPACE))
         {
-            look.distance -= 0.05f;
+            engine->disengage_load_brake();
         }
-        if(IsKeyDown(KEY_H))
-        {
-            look.yaw_r -= 0.1f;
-        }
-        if(IsKeyDown(KEY_L))
-        {
-            look.yaw_r += 0.1f;
-        }
-        if(IsKeyDown(KEY_J))
-        {
-            look.pitch_r -= 0.1f;
-        }
-        if(IsKeyDown(KEY_K))
-        {
-            look.pitch_r += 0.1f;
-        }
+        if(IsKeyDown(KEY_Q)) look.distance += 0.05f;
+        if(IsKeyDown(KEY_E)) look.distance -= 0.05f;
+        if(IsKeyDown(KEY_H)) look.yaw_r -= 0.1f;
+        if(IsKeyDown(KEY_L)) look.yaw_r += 0.1f;
+        if(IsKeyDown(KEY_J)) look.pitch_r -= 0.1f;
+        if(IsKeyDown(KEY_K)) look.pitch_r += 0.1f;
         int dx = 0;
         int dy = 0;
-        if(IsKeyPressed(KEY_W))
-        {
-            dy = -1;
-        }
-        else
-        if(IsKeyPressed(KEY_S))
-        {
-            dy = 1;
-        }
-        else
-        if(IsKeyPressed(KEY_A))
-        {
-            dx = -1;
-        }
-        else
-        if(IsKeyPressed(KEY_D))
-        {
-            dx = 1;
-        }
+        if(IsKeyPressed(KEY_W)) dy = -1;
+        if(IsKeyPressed(KEY_S)) dy = +1;
+        if(IsKeyPressed(KEY_A)) dx = -1;
+        if(IsKeyPressed(KEY_D)) dx = +1;
         const int dirs = 4;
         const int dir = std::round(look.yaw_r / (std::numbers::pi_v<float> / 2.0f));
         const int id = ((dir % dirs) + dirs) % dirs;
@@ -1048,10 +824,10 @@ public:
         int my = 0;
         switch(id)
         {
-            case 0: mx =  dx; my =  dy; break;
-            case 1: mx =  dy; my = -dx; break;
-            case 2: mx = -dx; my = -dy; break;
-            case 3: mx = -dy; my =  dx; break;
+        case 0: mx =  dx; my = +dy; break;
+        case 1: mx =  dy; my = -dx; break;
+        case 2: mx = -dx; my = -dy; break;
+        case 3: mx = -dy; my = +dx; break;
         }
         look.x += mx;
         look.y += my;
@@ -1082,7 +858,7 @@ public:
     void set(ensim::engine* engine)
     {
         this->engine = engine;
-        look.x = engine->get_width() / 2;
+        look.x = 0;
         look.y = engine->get_piston_y();
     }
 
@@ -1092,31 +868,31 @@ public:
     }
 };
 
-static void set(window& window, widgets& widgets, producer& producer, parts& parts, ensim::engine* engine)
+static void set(window& window, widgets& widgets, parts& parts, ensim::engine* engine)
 {
     window.set(engine);
     widgets.set(engine);
-    producer.set(engine);
+    ensim::attach(engine);
     parts.set(engine);
 }
 
 static void audio_callback(void* const data, const unsigned frames)
 {
     float* const buffer = static_cast<float* const>(data);
-    const std::vector<float>& block = g_producer.consume(frames);
+    const std::vector<float>& block = ensim::consume(frames);
     std::copy(block.begin(), block.end(), buffer);
 };
 
 int main()
 {
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::inline8);
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i8_2400cc);
     window window;
     widgets widgets;
     audio audio(audio_callback);
     parts parts;
-    set(window, widgets, g_producer, parts, engine.get());
+    set(window, widgets, parts, engine.get());
     window.loop(widgets, parts);
-    g_producer.stop();
+    ensim::kill();
 }
 
 // TODO
