@@ -23,10 +23,12 @@ namespace ensim
         virtual constexpr size_t get_throttle_y() const = 0;
         virtual constexpr size_t get_bytes() const = 0;
         virtual constexpr size_t get_signal_count() const = 0;
+        virtual constexpr size_t get_max_gear() const = 0;
         virtual std::string_view get_signal_name(const size_t index) const = 0;
         virtual double get_load_angular_velocity_r_per_s() const = 0;
         virtual double get_engine_angular_velocity_r_per_s() const = 0;
         virtual double get_limiter_angular_velocity_r_per_s() const = 0;
+        virtual double get_load_max_angular_velocity_r_per_s() const = 0;
         virtual double get_port_open_ratio(const size_t x, const size_t y) const = 0;
         virtual double get_chamber_volume_m3(const size_t x, const size_t y) const = 0;
         virtual bool get_panic(const size_t x, const size_t y) const = 0;

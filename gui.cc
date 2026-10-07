@@ -15,6 +15,7 @@
 #include <vector>
 
 static constexpr int g_fps = 60;
+static constexpr int g_panic_fps = g_fps / 10;
 static constexpr int g_audio_bit_depth = 32;
 static constexpr int g_audio_channels = 1;
 static constexpr float g_margin_p = 8.0f;
@@ -22,7 +23,7 @@ static constexpr size_t g_xres_p = 1920;
 static constexpr size_t g_yres_p = 1080;
 static constexpr float g_xmid_p = g_xres_p / 2.0f;
 static constexpr const char* g_name = "ensim5";
-static constexpr float g_sidebar_width_p = g_xres_p / 5;
+static constexpr float g_sidebar_width_p = g_xres_p / 3;
 static constexpr size_t g_producer_block_size = 200;
 static constexpr size_t g_mesh_slices = 6;
 static constexpr float g_font_size = 1.0f;
@@ -33,6 +34,7 @@ static constexpr size_t g_history_size = 512;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr float g_grid_steps = 16.0f;
 static constexpr float g_grid_step_size = 0.15f;
+static constexpr float g_grid_pipe_radius_m = g_grid_step_size / 8.0f;
 static constexpr size_t g_signal_samples = g_sidebar_width_p;
 static constexpr size_t g_signal_default_samples = -1;
 static constexpr float g_hud_gauge_width_p = 192.0f;
@@ -477,13 +479,13 @@ public:
         );
         std::unique_ptr<widget> load_angular_velocity = std::make_unique<tachometer>(
             [this]()-> auto { return engine->get_load_angular_velocity_r_per_s(); },
-            [this]()-> auto { return 300.0; },
+            [this]()-> auto { return engine->get_load_max_angular_velocity_r_per_s(); },
             10
         );
         std::unique_ptr<widget> gear = std::make_unique<tachometer>(
             [this]()-> auto { return engine->get_gear(); },
-            [this]()-> auto { return 8.0; },
-            8
+            [this]()-> auto { return engine->get_max_gear(); },
+            engine->get_max_gear()
         );
         const float margin_p = 4.0 * g_margin_p;
         const float w_p = g_hud_gauge_width_p;
@@ -550,15 +552,6 @@ public:
             )
         );
         left.push_back(
-            make_plot<ring<size_t, g_history_size>>(
-                "producer audio queue size",
-                [](auto)-> auto& {
-                    return g_producer.get_history();
-                },
-                g_signal_default_samples
-            )
-        );
-        left.push_back(
             make_plot<std::vector<double>>(
                 "pressure-volume (pascals-m3) graph",
                 [this](auto)-> auto& {
@@ -580,6 +573,15 @@ public:
                     return engine->get_static_temperature_signal_k();
                 },
                 g_signal_samples
+            )
+        );
+        left.push_back(
+            make_plot<ring<size_t, g_history_size>>(
+                "producer audio queue size",
+                [](auto)-> auto& {
+                    return g_producer.get_history();
+                },
+                g_signal_default_samples
             )
         );
         float y_p = 0.0f;
@@ -618,6 +620,8 @@ protected:
     float z = 0.0;
     size_t x_id = 0;
     size_t y_id = 0;
+    bool panicking = false;
+    size_t panicking_cycles = 0;
 
     part(const float x, const float z):
         x(x * g_grid_step_size),
@@ -628,24 +632,39 @@ protected:
         }
 
 public:
-    size_t get_x_id() { return x_id; };
-    size_t get_y_id() { return y_id; };
+    size_t get_x_id() const
+    {
+        return x_id;
+    };
+
+    size_t get_y_id() const
+    {
+        return y_id;
+    };
+
+    void panic()
+    {
+        panicking ^= panicking_cycles++ % g_panic_fps == 0;
+    }
+
+    bool is_panicking() const
+    {
+        return panicking;
+    }
+
     virtual std::span<const shape> get_shapes() const = 0;
     virtual void update() = 0;
     virtual ~part() = default;
 };
 
-class chamber : public part
+class vertical_pipe : public part
 {
-    float radius_m = g_grid_step_size / 4.0f;
+    static constexpr float radius_m = g_grid_pipe_radius_m;
     float height_m = 0.0f;
     std::array<shape, 1> shapes = {};
 
 public:
-    chamber(
-        const float x,
-        const float z,
-        const float volume_m3)
+    vertical_pipe(const float x, const float z, const float volume_m3)
         : part(x, z)
         , height_m(volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m))
         {
@@ -803,7 +822,7 @@ public:
             }
             else
             {
-                self.push_back(std::make_unique<chamber>(xx, zz, engine->get_chamber_volume_m3(x, y)));
+                self.push_back(std::make_unique<vertical_pipe>(xx, zz, engine->get_chamber_volume_m3(x, y)));
             }
         }
     }
@@ -813,6 +832,12 @@ public:
         for(const auto& part : self)
         {
             part->update();
+            const size_t x = part->get_x_id();
+            const size_t y = part->get_y_id();
+            if(engine->get_panic(x, y))
+            {
+                part->panic();
+            }
         }
     }
 };
@@ -878,11 +903,20 @@ public:
         }
     }
 
-    void draw(const std::span<const shape> shapes, const bool highlight)
+    void draw(const part& part)
     {
-        for(const auto& shape : shapes)
+        const size_t x = part.get_x_id();
+        const size_t y = part.get_y_id();
+        const bool is_highlighted = x == look.x and y == look.y;
+        const bool is_panicking = part.is_panicking();
+        const bool is_throttle_row = engine->get_throttle_y() == y;
+        const bool is_audio_row = engine->get_audio_y() == y;
+        for(const auto& shape : part.get_shapes())
         {
-            const Color color = highlight ? RED : LIGHTGRAY;
+            const Color color = (is_highlighted or is_panicking) ? RED
+                : is_throttle_row ? DARKBLUE
+                : is_audio_row ? DARKGREEN
+                : LIGHTGRAY;
             DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, color);
         }
     }
@@ -893,8 +927,7 @@ public:
         DrawGrid(g_grid_steps, g_grid_step_size);
         for(const auto& part : parts)
         {
-            const bool highlight = part->get_x_id() == look.x && part->get_y_id() == look.y;
-            draw(part->get_shapes(), highlight);
+            draw(*part.get());
         }
         EndMode3D();
     }
@@ -941,22 +974,26 @@ public:
         {
             engine->set_throttle_open_ratio(0.0);
             engine->disengage_clutch();
+            engine->set_injection_off();
             engine->increment_gear();
         }
         if(IsKeyPressed(KEY_COMMA))
         {
             engine->set_throttle_open_ratio(0.0);
             engine->disengage_clutch();
+            engine->set_injection_off();
             engine->decrement_gear();
         }
         if(IsKeyReleased(KEY_PERIOD))
         {
             engine->set_throttle_open_ratio(throttle_ratio);
+            engine->set_injection_on();
             engine->engage_clutch();
         }
         if(IsKeyReleased(KEY_COMMA))
         {
             engine->set_throttle_open_ratio(throttle_ratio);
+            engine->set_injection_on();
             engine->engage_clutch();
         }
         if(IsKeyDown(KEY_Q))
@@ -1026,13 +1063,18 @@ public:
         engine->set_logger(look.x, look.y);
     }
 
+    void handle_part_updates(parts& parts)
+    {
+        parts.update();
+    }
+
     void loop(const widgets& widgets, parts& parts)
     {
         while(not done())
         {
             handle_input();
             handle_look();
-            parts.update();
+            handle_part_updates(parts);
             draw(widgets, parts);
         }
     }
