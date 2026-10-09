@@ -18,22 +18,23 @@ static constexpr int g_panic_fps = g_fps / 10;
 static constexpr int g_audio_bit_depth = 32;
 static constexpr int g_audio_channels = 1;
 static constexpr float g_margin_p = 8.0f;
-static constexpr size_t g_xres_p = 2560;
-static constexpr size_t g_yres_p = 1440;
+static constexpr size_t g_xres_p = 1920;
+static constexpr size_t g_yres_p = 1080;
 static constexpr float g_xmid_p = g_xres_p / 2.0f;
 static constexpr const char* g_name = "ensim5";
 static constexpr float g_sidebar_width_p = g_xres_p / 3;
-static constexpr size_t g_mesh_slices = 6;
+static constexpr size_t g_mesh_slices = 10;
 static constexpr float g_font_size = 1.0f;
 static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
 static constexpr size_t g_stream_buffer_size = 4096;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr float g_grid_steps = 16.0f;
-static constexpr float g_grid_step_size = 0.15f;
-static constexpr float g_grid_pipe_radius_m = g_grid_step_size / 8.0f;
+static constexpr float g_grid_step_size = 0.125f;
+static constexpr float g_grid_pipe_radius_m = 0.02f;
 static constexpr size_t g_signal_samples = g_sidebar_width_p;
 static constexpr size_t g_signal_default_samples = -1;
 static constexpr float g_hud_gauge_width_p = 192.0f;
+static constexpr float g_rot90_r = 90.0f * DEG2RAD;
 
 class audio
 {
@@ -263,7 +264,9 @@ const T& lingen(const size_t size)
 template<typename T>
 std::unique_ptr<plot<T>> make_plot(const std::string& title, const signal<T> y, const size_t samples, const size_t signals = 1)
 {
-    const auto x = [y](const size_t signal)-> auto& { return lingen<T>(y(signal).size()); };
+    const auto x = [y](const size_t signal)-> auto& {
+        return lingen<T>(y(signal).size());
+    };
     return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
 
@@ -307,7 +310,7 @@ public:
             [this]()-> auto { return engine->get_max_gear(); },
             engine->get_max_gear()
         );
-        const float margin_p = 4.0 * g_margin_p;
+        const float margin_p = 4.0f * g_margin_p;
         const float w_p = g_hud_gauge_width_p;
         engine_angular_velocity->place(
             g_xmid_p - margin_p - w_p,
@@ -321,9 +324,9 @@ public:
             w_p,
             w_p
         );
-        const float gear_w_p = g_hud_gauge_width_p / 1.75;
+        const float gear_w_p = g_hud_gauge_width_p / 1.75f;
         gear->place(
-            g_xmid_p - gear_w_p / 2.0,
+            g_xmid_p - gear_w_p / 2.0f,
             g_yres_p - gear_w_p,
             gear_w_p,
             gear_w_p
@@ -442,12 +445,14 @@ protected:
     size_t y_id = 0;
     bool panicking = false;
     size_t panicking_cycles = 0;
+    Vector3 origin = {};
 
     part(const float x, const float z):
         x(x * g_grid_step_size),
         z(z * g_grid_step_size),
         x_id(x),
-        y_id(z)
+        y_id(z),
+        origin(this->x, 0, this->z)
         {
         }
 
@@ -477,29 +482,97 @@ public:
     virtual ~part() = default;
 };
 
-class vertical_pipe : public part
+static float calc_cylinder_height_m(const double volume_m3, const double radius_m)
 {
-    static constexpr float radius_m = g_grid_pipe_radius_m;
+    return volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m);
+}
+
+class vertical_pipe: public part
+{
     float height_m = 0.0f;
     std::array<shape, 1> shapes = {};
 
 public:
     vertical_pipe(const float x, const float z, const float volume_m3)
         : part(x, z)
-        , height_m(volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m))
+        , height_m(calc_cylinder_height_m(volume_m3, g_grid_pipe_radius_m))
         {
-            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
+            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(g_grid_pipe_radius_m, height_m, g_mesh_slices));
             shapes[0].color = DARKBLUE;
         }
 
     void update() override
     {
-        shapes[0].position = { x, 0.0f, z };
+        shapes[0].position = origin;
     }
 
     std::span<const shape> get_shapes() const override
     {
         return shapes;
+    }
+};
+
+class disk: public part
+{
+protected:
+    static constexpr float density_kg_per_m3 = 7600.0f;
+    std::array<shape, 1> shapes = {};
+    std::function<float()> get_theta_r = {};
+
+public:
+    disk(const float x,
+         const float z,
+         const float mass_kg,
+         const float radius_m,
+         const std::function<float()> get_theta_r)
+        : part(x, z)
+        , get_theta_r(get_theta_r)
+        {
+            const double height_m = calc_cylinder_height_m(mass_kg / density_kg_per_m3, radius_m);
+            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
+            shapes[0].color = DARKBLUE;
+            shapes[0].model.transform = MatrixMultiply(MatrixRotateX(g_rot90_r), MatrixRotateY(g_rot90_r));
+        }
+
+    void update() override
+    {
+        shapes[0].position = origin;
+        shapes[0].rotation = { 1.0f, 0.0f, 0.0f };
+        shapes[0].theta_degrees = RAD2DEG * get_theta_r();
+    }
+
+    std::span<const shape> get_shapes() const override
+    {
+        return shapes;
+    }
+};
+
+class pop_disk: public disk
+{
+    std::function<bool()> pop = {};
+
+public:
+    pop_disk(
+        const float x,
+        const float z,
+        const float mass_kg,
+        const float radius_m,
+        const std::function<float()> get_theta_r,
+        const std::function<bool()> pop)
+        : disk(x, z, mass_kg, radius_m, get_theta_r)
+        , pop(pop)
+        {
+        }
+
+    void update() override
+    {
+        disk::update();
+        Vector3 position = origin;
+        if(pop())
+        {
+            position.x -= 0.05;
+        }
+        shapes[0].position = position;
     }
 };
 
@@ -537,15 +610,12 @@ public:
         shapes[0].model = LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices));
         shapes[1].model = LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m));
         shapes[2].model = LoadModelFromMesh(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m));
-
         shapes[0].color = DARKBLUE;
         shapes[1].color = DARKBLUE;
         shapes[2].color = DARKBLUE;
-
-        const float rot90_r = 90.0f * DEG2RAD;
-        shapes[0].model.transform = MatrixRotateY(rot90_r);
-        shapes[1].model.transform = MatrixMultiply(MatrixRotateY(rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
-        shapes[2].model.transform = MatrixRotateY(rot90_r);
+        shapes[0].model.transform = MatrixRotateY(g_rot90_r);
+        shapes[1].model.transform = MatrixMultiply(MatrixRotateY(g_rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
+        shapes[2].model.transform = MatrixRotateY(g_rot90_r);
     }
 
     void update() override
@@ -614,13 +684,13 @@ public:
                     engine->get_piston_head_height_m(x),
                     engine->get_piston_connecting_rod_length_m(x),
                     engine->get_piston_crank_diameter_m(x),
-                    [this, x]()-> float {
+                    [this, x]()-> auto {
                         return this->engine->get_piston_pin_y_m(x);
                     },
-                    [this, x]()-> float {
+                    [this, x]()-> auto {
                         return this->engine->get_piston_pin_phi_r(x);
                     },
-                    [this, x]()-> float {
+                    [this, x]()-> auto {
                         return this->engine->get_piston_crank_theta_r(x);
                     }
                 ));
@@ -630,6 +700,35 @@ public:
                 self.push_back(std::make_unique<vertical_pipe>(xx, zz, engine->get_chamber_volume_m3(x, y)));
             }
         }
+        const size_t flywheel_x = w;
+        const size_t flywheel_y = engine->get_piston_y();
+        const size_t load_x = flywheel_x + 1;
+        const size_t load_y = flywheel_y;
+        self.push_back(
+            std::make_unique<pop_disk>(
+                flywheel_x,
+                flywheel_y,
+                engine->get_flywheel_mass_kg(),
+                engine->get_flywheel_radius_m(),
+                [this]()-> auto {
+                    return this->engine->get_flywheel_theta_r();
+                },
+                [this]()-> auto {
+                    return this->engine->get_clutch_disengaged();
+                }
+            )
+        );
+        self.push_back(
+            std::make_unique<disk>(
+                load_x,
+                load_y,
+                engine->get_load_mass_kg(),
+                engine->get_load_radius_m(),
+                [this]()-> auto {
+                    return this->engine->get_load_theta_r();
+                }
+            )
+        );
     }
 
     void update()
@@ -654,6 +753,7 @@ struct look
     float x = 0.0f;
     float y = 0.0f;
     float distance = 2.0f;
+    float min_distance = 0.1f;
     const float max_pitch_r = std::numbers::pi_v<float> / 2.01f;
     const float min_pitch_r = 0.0f;
 
@@ -668,6 +768,7 @@ struct look
     void update()
     {
         pitch_r = std::clamp(pitch_r, min_pitch_r, max_pitch_r);
+        distance = std::max(distance, min_distance);
         const float xx = x * g_grid_step_size;
         const float yy = 0.0f;
         const float zz = y * g_grid_step_size;
@@ -858,7 +959,7 @@ public:
     void set(ensim::engine* engine)
     {
         this->engine = engine;
-        look.x = 0;
+        look.x = engine->get_width() - 1;;
         look.y = engine->get_piston_y();
     }
 
@@ -897,3 +998,4 @@ int main()
 
 // TODO
 // * add semicircle for counter balance mass
+// * add flywheel
