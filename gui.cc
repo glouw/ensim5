@@ -17,6 +17,7 @@ static constexpr int g_fps = 60;
 static constexpr int g_panic_fps = g_fps / 10;
 static constexpr int g_audio_bit_depth = 32;
 static constexpr int g_audio_channels = 1;
+static constexpr size_t g_tachometer_ticks = 10;
 static constexpr float g_margin_p = 8.0f;
 static constexpr size_t g_xres_p = 1920;
 static constexpr size_t g_yres_p = 1080;
@@ -140,7 +141,7 @@ public:
             const int width_p = MeasureText(text.c_str(), 1);
             DrawText(
                 text.c_str(),
-                tick_text.x - width_p / 2.0,
+                tick_text.x - width_p / 2.0f,
                 tick_text.y - 5.0f, // TODO: Get font height somehow
                 g_font_size,
                 WHITE
@@ -155,7 +156,7 @@ public:
 };
 
 template<typename T>
-class plot : public widget
+class plot: public widget
 {
     std::string title = {};
     signal<T> x = {};
@@ -169,7 +170,9 @@ public:
         , x(x)
         , y(y)
         , samples(samples)
-        , signals(signals) {}
+        , signals(signals)
+        {
+        }
 
     struct range
     {
@@ -327,18 +330,30 @@ public:
     void regen_hud()
     {
         std::unique_ptr<widget> engine_angular_velocity = std::make_unique<tachometer>(
-            [this]()-> auto { return engine->get_engine_angular_velocity_r_per_s(); },
-            [this]()-> auto { return engine->get_limiter_angular_velocity_r_per_s(); },
-            10
+            [this]()-> auto {
+                return engine->get_engine_angular_velocity_r_per_s();
+            },
+            [this]()-> auto {
+                return engine->get_limiter_angular_velocity_r_per_s();
+            },
+            g_tachometer_ticks
         );
         std::unique_ptr<widget> load_angular_velocity = std::make_unique<tachometer>(
-            [this]()-> auto { return engine->get_load_angular_velocity_r_per_s(); },
-            [this]()-> auto { return engine->get_load_max_angular_velocity_r_per_s(); },
-            10
+            [this]()-> auto {
+                return engine->get_load_angular_velocity_r_per_s();
+            },
+            [this]()-> auto {
+                return engine->get_load_max_angular_velocity_r_per_s();
+            },
+            g_tachometer_ticks
         );
         std::unique_ptr<widget> gear = std::make_unique<tachometer>(
-            [this]()-> auto { return engine->get_gear(); },
-            [this]()-> auto { return engine->get_max_gear(); },
+            [this]()-> auto {
+                return engine->get_gear();
+            },
+            [this]()-> auto {
+                return engine->get_max_gear();
+            },
             engine->get_max_gear()
         );
         const float margin_p = 4.0f * g_margin_p;
@@ -376,7 +391,9 @@ public:
             right.push_back(
                 make_plot<std::vector<double>>(
                     std::string(engine->get_signal_name(i)),
-                    [this, i](auto)-> auto& { return engine->get_signal(i); },
+                    [this, i](auto)-> auto& {
+                        return engine->get_signal(i);
+                    },
                     g_signal_samples
                 )
             );
@@ -384,7 +401,7 @@ public:
         float y_p = 0.0f;
         const float x_p = g_xres_p - g_sidebar_width_p;
         const float h_p = g_yres_p / size;
-        for(auto& widget : right)
+        for(auto& widget: right)
         {
             widget->place(x_p, y_p, g_sidebar_width_p, h_p);
             y_p += h_p;
@@ -441,7 +458,7 @@ public:
         float y_p = 0.0f;
         const float x_p = 0.0f;
         const float h_p = g_yres_p / left.size();
-        for(auto& widget : left)
+        for(auto& widget: left)
         {
             widget->place(x_p, y_p, g_sidebar_width_p, h_p);
             y_p += h_p;
@@ -464,15 +481,15 @@ struct shape
     Color color = {};
     Vector3 rotation = {};
     Vector3 position = {};
-    double theta_degrees = {};
+    float theta_degrees = {};
 };
 
-static float calc_cylinder_height_m(const double volume_m3, const double radius_m)
+static float calc_cylinder_height_m(const float volume_m3, const float radius_m)
 {
     return volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m);
 }
 
-static float calc_circle_radius_m(const double area_m2)
+static float calc_circle_radius_m(const float area_m2)
 {
     return std::sqrt(area_m2 / std::numbers::pi_v<float>);
 }
@@ -543,7 +560,7 @@ public:
 
     ~port() override
     {
-        for(const auto& shape : shapes)
+        for(const auto& shape: shapes)
         {
             UnloadModel(shape.model);
         }
@@ -553,13 +570,14 @@ public:
 class chamber: public part
 {
     std::array<shape, 1> shapes = {};
-    sample<bool> get_panic;
+    sample<bool> get_panic = {};
 
 public:
-    chamber(const float x,
-            const float z,
-            const float volume_m3,
-            const sample<bool> get_panic)
+    chamber(
+        const float x,
+        const float z,
+        const float volume_m3,
+        const sample<bool> get_panic)
         : part(x, z)
         , get_panic(get_panic)
         {
@@ -586,7 +604,7 @@ public:
 
     ~chamber() override
     {
-        for(const auto& shape : shapes)
+        for(const auto& shape: shapes)
         {
             UnloadModel(shape.model);
         }
@@ -601,15 +619,16 @@ protected:
     sample<float> get_theta_r = {};
 
 public:
-    disk(const float x,
-         const float z,
-         const float mass_kg,
-         const float radius_m,
-         const sample<float> get_theta_r)
+    disk(
+        const float x,
+        const float z,
+        const float mass_kg,
+        const float radius_m,
+        const sample<float> get_theta_r)
         : part(x, z)
         , get_theta_r(get_theta_r)
         {
-            const double height_m = calc_cylinder_height_m(mass_kg / density_kg_per_m3, radius_m);
+            const float height_m = calc_cylinder_height_m(mass_kg / density_kg_per_m3, radius_m);
             shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
             shapes[0].model.transform = MatrixMultiply(MatrixRotateX(g_rot90_r), MatrixRotateY(g_rot90_r));
         }
@@ -629,7 +648,7 @@ public:
 
     ~disk() override
     {
-        for(const auto& shape : shapes)
+        for(const auto& shape: shapes)
         {
             UnloadModel(shape.model);
         }
@@ -732,7 +751,7 @@ public:
 
     ~piston() override
     {
-        for(const auto& shape : shapes)
+        for(const auto& shape: shapes)
         {
             UnloadModel(shape.model);
         }
@@ -859,7 +878,7 @@ public:
 
     void update()
     {
-        for(const auto& part : self)
+        for(const auto& part: self)
         {
             part->update();
         }
@@ -923,7 +942,7 @@ public:
 
     void draw(const widgets& widgets)
     {
-        for(const auto& widget : widgets)
+        for(const auto& widget: widgets)
         {
             widget->draw();
         }
@@ -931,7 +950,7 @@ public:
 
     void draw(const part& part)
     {
-        for(const auto& shape : part.get_shapes())
+        for(const auto& shape: part.get_shapes())
         {
             DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
         }
@@ -941,7 +960,7 @@ public:
     {
         BeginMode3D(look.camera);
         DrawGrid(g_grid_steps, g_grid_step_size);
-        for(const auto& part : parts)
+        for(const auto& part: parts)
         {
             draw(*part.get());
         }

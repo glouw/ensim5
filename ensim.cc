@@ -2154,17 +2154,18 @@ namespace ensim
             this->clutch.damping_coefficient_n_m_s = 5.0;
             this->convolution.set_impulse(&g_impulse3[0]);
             this->lumped_parasitic_torque_n_m = 0.2;
-            this->limiter.max_angular_velocity_r_per_s = 900.0;
+            this->limiter.max_angular_velocity_r_per_s = 800.0;
             this->limiter.limit_time_s = 0.025;
             this->load.mass_kg = 100.0;
             this->load.radius_m = 0.15;
             this->load.rod_friction_n_m_s_per_r = 0.05;
             this->load.brake_friction_n_m_s_per_r = 1.0;
-            this->load.max_angular_velocity_r_per_s = 800.0;
-            this->load.angular_velocity_r_per_s = this->flywheel.angular_velocity_r_per_s = 200.0;
-            this->flywheel.mass_kg = 1.55;
+            this->load.max_angular_velocity_r_per_s = 900.0;
+            this->load.angular_velocity_r_per_s = 200.0;
+            this->flywheel.angular_velocity_r_per_s = 200.0;
+            this->flywheel.mass_kg = 1.45;
             this->flywheel.radius_m = 0.079;
-            this->crankshaft.mass_kg = 7.2;
+            this->crankshaft.mass_kg = 8.4;
             this->crankshaft.radius_m = 0.047;
             this->pistons.friction_n_m_s2_per_r2.fill(0.00004);
             this->pistons.diameter_m.fill(0.0960);
@@ -2183,7 +2184,7 @@ namespace ensim
             flows[0].chamber_nozzle_flow_area_m2 = {
                 0.00200,
                 0.00150,
-                0.00150, /* T */
+                0.00030, /* T */
                 0.00081,
                 0.00105,
                 0.00150, /* A */
@@ -2201,10 +2202,9 @@ namespace ensim
                 0.0004,
                 9999.9,
             };
-            this->throttle.mapping.table = { 0.001, 0.01, 0.10, 1.00 };
+            this->throttle.mapping.table = { 0.005, 0.05, 0.30, 1.00 };
             pipes[0].piston_connect_m = { 0.0 };
-            pipes[0].mic_position_m = 0.4;
-            pipes[0].length_m = 0.4;
+            pipes[0].length_m = pipes[0].mic_position_m = 0.4;
             this->dc.set_cutoff_frequency(5.0);
             this->gain.ratio = 0.0001;
         }
@@ -2224,10 +2224,11 @@ namespace ensim
             this->load.radius_m = 0.2;
             this->load.rod_friction_n_m_s_per_r = 0.1;
             this->load.brake_friction_n_m_s_per_r = 1.5;
-            this->load.max_angular_velocity_r_per_s = 2500.0;
+            this->load.max_angular_velocity_r_per_s = 3000.0;
             this->flywheel.mass_kg = 10.5;
             this->flywheel.radius_m = 0.15;
-            this->flywheel.angular_velocity_r_per_s = this->load.angular_velocity_r_per_s = 100.0;
+            this->flywheel.angular_velocity_r_per_s = 100.0;
+            this->load.angular_velocity_r_per_s = 100.0;
             this->crankshaft.mass_kg = 20.0;
             this->crankshaft.radius_m = 0.10;
             this->pistons.diameter_m.fill(0.098);
@@ -2276,7 +2277,7 @@ namespace ensim
             pipes[1].piston_connect_m = { 0.0, 0.05, 0.1, 0.15 };
             for(auto& pipe : this->pipes)
             {
-                pipe.mic_position_m = pipe.length_m = 0.6;
+                pipe.length_m = pipe.mic_position_m = 0.6;
             }
             this->dc.set_cutoff_frequency(5.0);
             this->gain.ratio = 0.0001;
@@ -2491,3 +2492,4 @@ namespace ensim
 
 // TODO:
 // * move producer here
+// * make limiter have low / upper deadzones, not time limiting
