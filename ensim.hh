@@ -29,6 +29,7 @@ namespace ensim
         virtual double get_engine_angular_velocity_r_per_s() const = 0;
         virtual double get_limiter_angular_velocity_r_per_s() const = 0;
         virtual double get_load_max_angular_velocity_r_per_s() const = 0;
+        virtual double get_port_flow_area_m2(const size_t x, const size_t y) const = 0;
         virtual double get_port_open_ratio(const size_t x, const size_t y) const = 0;
         virtual double get_chamber_volume_m3(const size_t x, const size_t y) const = 0;
         virtual bool get_panic(const size_t x, const size_t y) const = 0;

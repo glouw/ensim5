@@ -30,7 +30,7 @@ static constexpr size_t g_stream_buffer_size = 4096;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
 static constexpr float g_grid_steps = 16.0f;
 static constexpr float g_grid_step_size = 0.125f;
-static constexpr float g_grid_pipe_radius_m = 0.02f;
+static constexpr float g_grid_box_side_m = g_grid_step_size / 2.0f;
 static constexpr size_t g_signal_samples = g_sidebar_width_p;
 static constexpr size_t g_signal_default_samples = -1;
 static constexpr float g_hud_gauge_width_p = 192.0f;
@@ -78,11 +78,11 @@ public:
 template<typename T>
 using sample = std::function<T()>;
 
-class tachometer : public widget
+template<typename T>
+using signal = std::function<const T&(size_t)>;
+
+class tachometer: public widget
 {
-    sample<float> value = {};
-    sample<float> max = {};
-    size_t ticks = 0;
     static constexpr float start_r = 3.0f * std::numbers::pi_v<float> / 4.0f;
     static constexpr float sweep_r = 3.0f * std::numbers::pi_v<float> / 2.0f;
     static constexpr float inner_radius_ratio = 0.82f;
@@ -92,6 +92,9 @@ class tachometer : public widget
     static constexpr float tick_line_width_p = 2.0f;
     static constexpr float needle_thickness = 3.0f;
     static constexpr float gauge_thickness = 5.0f;
+    sample<float> value = {};
+    sample<float> max = {};
+    size_t ticks = 0;
 
 public:
     tachometer(const sample<float> value, const sample<float> max, const size_t ticks)
@@ -150,9 +153,6 @@ public:
         DrawCircle(mid.x, mid.y, gauge_thickness, WHITE);
     }
 };
-
-template<typename T>
-using signal = std::function<const T&(size_t)>;
 
 template<typename T>
 class plot : public widget
@@ -249,7 +249,14 @@ public:
     }
 };
 
-template<typename T>
+template <typename T>
+concept Growable = requires(T self, const size_t i)
+{
+    self.clear();
+    self.push_back(i);
+};
+
+template<Growable T>
 const T& lingen(const size_t size)
 {
     static T linear;
@@ -262,7 +269,11 @@ const T& lingen(const size_t size)
 }
 
 template<typename T>
-std::unique_ptr<plot<T>> make_plot(const std::string& title, const signal<T> y, const size_t samples, const size_t signals = 1)
+std::unique_ptr<plot<T>> make_plot(
+    const std::string& title,
+    const signal<T> y,
+    const size_t samples,
+    const size_t signals = 1)
 {
     const auto x = [y](const size_t signal)-> auto& {
         return lingen<T>(y(signal).size());
@@ -271,7 +282,12 @@ std::unique_ptr<plot<T>> make_plot(const std::string& title, const signal<T> y, 
 }
 
 template<typename T>
-std::unique_ptr<plot<T>> make_plot(const std::string& title, const signal<T> x, const signal<T> y, const size_t samples, const size_t signals = 1)
+std::unique_ptr<plot<T>> make_plot(
+    const std::string& title,
+    const signal<T> x,
+    const signal<T> y,
+    const size_t samples,
+    const size_t signals = 1)
 {
     return std::make_unique<plot<T>>(title, x, y, samples, signals);
 }
@@ -282,10 +298,25 @@ class widgets
     ensim::engine* engine = {};
 
 public:
-          auto begin()       { return self.begin(); }
-    const auto begin() const { return self.begin(); }
-          auto end()         { return self.end();   }
-    const auto end()   const { return self.end();   }
+    auto begin()
+    {
+        return self.begin();
+    }
+
+    const auto begin() const
+    {
+        return self.begin();
+    }
+
+    auto end()
+    {
+        return self.end();
+    }
+
+    const auto end() const
+    {
+        return self.end();
+    }
 
     void set(ensim::engine* engine)
     {
@@ -436,6 +467,16 @@ struct shape
     double theta_degrees = {};
 };
 
+static float calc_cylinder_height_m(const double volume_m3, const double radius_m)
+{
+    return volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m);
+}
+
+static float calc_circle_radius_m(const double area_m2)
+{
+    return std::sqrt(area_m2 / std::numbers::pi_v<float>);
+}
+
 class part
 {
 protected:
@@ -444,7 +485,7 @@ protected:
     size_t x_id = 0;
     size_t y_id = 0;
     bool panicking = false;
-    size_t panicking_cycles = 0;
+    size_t panicks = 0;
     Vector3 origin = {};
 
     part(const float x, const float z):
@@ -456,59 +497,99 @@ protected:
         {
         }
 
-public:
-    size_t get_x_id() const
-    {
-        return x_id;
-    };
-
-    size_t get_y_id() const
-    {
-        return y_id;
-    };
-
     void panic()
     {
-        panicking ^= panicking_cycles++ % g_panic_fps == 0;
+        panicking ^= panicks ++ % g_panic_fps == 0;
     }
 
-    bool is_panicking() const
-    {
-        return panicking;
-    }
-
+public:
     virtual std::span<const shape> get_shapes() const = 0;
     virtual void update() = 0;
     virtual ~part() = default;
 };
 
-static float calc_cylinder_height_m(const double volume_m3, const double radius_m)
+class port: public part
 {
-    return volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m);
-}
-
-class vertical_pipe: public part
-{
-    float height_m = 0.0f;
     std::array<shape, 1> shapes = {};
+    float radius_m = 0.0f;
+    sample<float> get_open_ratio;
 
 public:
-    vertical_pipe(const float x, const float z, const float volume_m3)
+    port(const float x,
+         const float z,
+         const float area_m2,
+         const sample<float> get_open_ratio)
         : part(x, z)
-        , height_m(calc_cylinder_height_m(volume_m3, g_grid_pipe_radius_m))
+        , radius_m(calc_circle_radius_m(area_m2))
+        , get_open_ratio(get_open_ratio)
         {
-            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(g_grid_pipe_radius_m, height_m, g_mesh_slices));
-            shapes[0].color = DARKBLUE;
+            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, 0.0f, g_mesh_slices));
+            shapes[0].model.transform = MatrixRotateX(g_rot90_r);
         }
 
     void update() override
     {
-        shapes[0].position = origin;
+        Vector3 position = origin;
+        position.z += g_grid_step_size / 2.0f;
+        position.y += radius_m;
+        shapes[0].position = position;
+        shapes[0].color = ColorLerp(RED, GREEN, get_open_ratio());
     }
 
     std::span<const shape> get_shapes() const override
     {
         return shapes;
+    }
+
+    ~port() override
+    {
+        for(const auto& shape : shapes)
+        {
+            UnloadModel(shape.model);
+        }
+    }
+};
+
+class chamber: public part
+{
+    std::array<shape, 1> shapes = {};
+    sample<bool> get_panic;
+
+public:
+    chamber(const float x,
+            const float z,
+            const float volume_m3,
+            const sample<bool> get_panic)
+        : part(x, z)
+        , get_panic(get_panic)
+        {
+            const float side_m = g_grid_box_side_m;
+            const float height_m = volume_m3 / (side_m * side_m);
+            shapes[0].model = LoadModelFromMesh(GenMeshCube(side_m, height_m, side_m));
+            shapes[0].model.transform = MatrixTranslate(0.0f, height_m * 0.5f, 0.0f);
+        }
+
+    void update() override
+    {
+        if(get_panic())
+        {
+            panic();
+        }
+        shapes[0].position = origin;
+        shapes[0].color = panicking ? RED : LIGHTGRAY;
+    }
+
+    std::span<const shape> get_shapes() const override
+    {
+        return shapes;
+    }
+
+    ~chamber() override
+    {
+        for(const auto& shape : shapes)
+        {
+            UnloadModel(shape.model);
+        }
     }
 };
 
@@ -517,20 +598,19 @@ class disk: public part
 protected:
     static constexpr float density_kg_per_m3 = 7600.0f;
     std::array<shape, 1> shapes = {};
-    std::function<float()> get_theta_r = {};
+    sample<float> get_theta_r = {};
 
 public:
     disk(const float x,
          const float z,
          const float mass_kg,
          const float radius_m,
-         const std::function<float()> get_theta_r)
+         const sample<float> get_theta_r)
         : part(x, z)
         , get_theta_r(get_theta_r)
         {
             const double height_m = calc_cylinder_height_m(mass_kg / density_kg_per_m3, radius_m);
             shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
-            shapes[0].color = DARKBLUE;
             shapes[0].model.transform = MatrixMultiply(MatrixRotateX(g_rot90_r), MatrixRotateY(g_rot90_r));
         }
 
@@ -539,17 +619,26 @@ public:
         shapes[0].position = origin;
         shapes[0].rotation = { 1.0f, 0.0f, 0.0f };
         shapes[0].theta_degrees = RAD2DEG * get_theta_r();
+        shapes[0].color = LIGHTGRAY;
     }
 
     std::span<const shape> get_shapes() const override
     {
         return shapes;
     }
+
+    ~disk() override
+    {
+        for(const auto& shape : shapes)
+        {
+            UnloadModel(shape.model);
+        }
+    }
 };
 
 class pop_disk: public disk
 {
-    std::function<bool()> pop = {};
+    sample<bool> pop = {};
 
 public:
     pop_disk(
@@ -557,8 +646,8 @@ public:
         const float z,
         const float mass_kg,
         const float radius_m,
-        const std::function<float()> get_theta_r,
-        const std::function<bool()> pop)
+        const sample<float> get_theta_r,
+        const sample<bool> pop)
         : disk(x, z, mass_kg, radius_m, get_theta_r)
         , pop(pop)
         {
@@ -576,7 +665,7 @@ public:
     }
 };
 
-class piston : public part
+class piston: public part
 {
     float head_height_m = 0.0f;
     float conrod_width_m = 0.015f;
@@ -585,9 +674,10 @@ class piston : public part
     float counter_weight_depth_m = 2.0f * conrod_depth_m;
     float counter_weight_width_m = 2.0f * conrod_width_m;
     std::array<shape, 3> shapes = {};
-    std::function<float()> get_pin_y_m = {};
-    std::function<float()> get_pin_phi_r = {};
-    std::function<float()> get_crank_theta_r = {};
+    sample<float> get_pin_y_m = {};
+    sample<float> get_pin_phi_r = {};
+    sample<float> get_crank_theta_r = {};
+    sample<bool> get_panic = {};
 
 public:
     piston(
@@ -597,22 +687,21 @@ public:
         const float head_height_m,
         const float conrod_height_m,
         const float crank_diameter_m,
-        const std::function<float()> get_pin_y_m,
-        const std::function<float()> get_pin_phi_r,
-        const std::function<float()> get_crank_theta_r)
+        const sample<float> get_pin_y_m,
+        const sample<float> get_pin_phi_r,
+        const sample<float> get_crank_theta_r,
+        const sample<bool> get_panic)
         : part(x, z)
         , head_height_m(head_height_m)
         , counter_weight_height_m(1.2f * crank_diameter_m)
         , get_pin_y_m(get_pin_y_m)
         , get_pin_phi_r(get_pin_phi_r)
         , get_crank_theta_r(get_crank_theta_r)
+        , get_panic(get_panic)
     {
         shapes[0].model = LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices));
         shapes[1].model = LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m));
         shapes[2].model = LoadModelFromMesh(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m));
-        shapes[0].color = DARKBLUE;
-        shapes[1].color = DARKBLUE;
-        shapes[2].color = DARKBLUE;
         shapes[0].model.transform = MatrixRotateY(g_rot90_r);
         shapes[1].model.transform = MatrixMultiply(MatrixRotateY(g_rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
         shapes[2].model.transform = MatrixRotateY(g_rot90_r);
@@ -620,6 +709,10 @@ public:
 
     void update() override
     {
+        if(get_panic())
+        {
+            panic();
+        }
         shapes[0].position = { x, get_pin_y_m() - head_height_m / 2.0f, z };
         shapes[1].position = { x, get_pin_y_m(), z };
         shapes[2].position = { x - conrod_depth_m, 0.0f, z };
@@ -627,6 +720,9 @@ public:
         shapes[2].rotation = { 1.0f, 0.0f, 0.0f };
         shapes[1].theta_degrees = RAD2DEG * get_pin_phi_r();
         shapes[2].theta_degrees = RAD2DEG * get_crank_theta_r();
+        shapes[0].color = panicking ? RED : LIGHTGRAY;
+        shapes[1].color = panicking ? RED : LIGHTGRAY;
+        shapes[2].color = panicking ? RED : LIGHTGRAY;
     }
 
     std::span<const shape> get_shapes() const override
@@ -634,7 +730,7 @@ public:
         return shapes;
     }
 
-    ~piston()
+    ~piston() override
     {
         for(const auto& shape : shapes)
         {
@@ -649,10 +745,25 @@ class parts
     ensim::engine* engine = nullptr;
 
 public:
-          auto begin()       { return self.begin(); }
-    const auto begin() const { return self.begin(); }
-          auto end()         { return self.end();   }
-    const auto end()   const { return self.end();   }
+    auto begin()
+    {
+        return self.begin();
+    }
+
+    const auto begin() const
+    {
+        return self.begin();
+    }
+
+    auto end()
+    {
+        return self.end();
+    }
+
+    const auto end() const
+    {
+        return self.end();
+    }
 
     void set(ensim::engine* engine)
     {
@@ -692,13 +803,28 @@ public:
                     },
                     [this, x]()-> auto {
                         return this->engine->get_piston_crank_theta_r(x);
+                    },
+                    [this, x, y]()-> auto {
+                        return this->engine->get_panic(x, y);
                     }
                 ));
             }
             else
             {
-                self.push_back(std::make_unique<vertical_pipe>(xx, zz, engine->get_chamber_volume_m3(x, y)));
+                self.push_back(std::make_unique<chamber>(
+                    xx,
+                    zz,
+                    engine->get_chamber_volume_m3(x, y),
+                    [this, x, y]()-> auto {
+                        return this->engine->get_panic(x, y);
+                    }
+                ));
             }
+            self.push_back(std::make_unique<port>(xx, zz, engine->get_port_flow_area_m2(x, y),
+                [this, x, y]()-> auto {
+                    return this->engine->get_port_open_ratio(x, y);
+                }
+            ));
         }
         const size_t flywheel_x = w;
         const size_t flywheel_y = engine->get_piston_y();
@@ -736,12 +862,6 @@ public:
         for(const auto& part : self)
         {
             part->update();
-            const size_t x = part->get_x_id();
-            const size_t y = part->get_y_id();
-            if(engine->get_panic(x, y))
-            {
-                part->panic();
-            }
         }
     }
 };
@@ -811,19 +931,9 @@ public:
 
     void draw(const part& part)
     {
-        const size_t x = part.get_x_id();
-        const size_t y = part.get_y_id();
-        const bool is_highlighted = x == look.x and y == look.y;
-        const bool is_panicking = part.is_panicking();
-        const bool is_throttle_row = engine->get_throttle_y() == y;
-        const bool is_audio_row = engine->get_audio_y() == y;
         for(const auto& shape : part.get_shapes())
         {
-            const Color color = (is_highlighted or is_panicking) ? RED
-                : is_throttle_row ? DARKBLUE
-                : is_audio_row ? DARKGREEN
-                : LIGHTGRAY;
-            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, color);
+            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
         }
     }
 
@@ -986,7 +1096,7 @@ static void audio_callback(void* const data, const unsigned frames)
 
 int main()
 {
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i8_2400cc);
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::trx450r);
     window window;
     widgets widgets;
     audio audio(audio_callback);
