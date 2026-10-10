@@ -102,8 +102,8 @@ public:
         : value(value)
         , max(max)
         , ticks(ticks)
-    {
-    }
+        {
+        }
 
     Vector2 to_polar(const float x, const float y, const float angle_r, const float radius_p) const
     {
@@ -475,9 +475,31 @@ public:
     }
 };
 
-struct shape
+struct figure
 {
     Model model = {};
+
+    figure() = default;
+    figure(const figure&) = delete;
+    figure& operator=(const figure&) = delete;
+    figure& operator=(figure&&) = delete;
+    figure(figure&&) = delete;
+
+    void load(const Mesh& mesh)
+    {
+        UnloadModel(model);
+        model = LoadModelFromMesh(mesh);
+    }
+
+    ~figure()
+    {
+        UnloadModel(model);
+    }
+};
+
+struct shape
+{
+    figure figure = {};
     Color color = {};
     Vector3 rotation = {};
     Vector3 position = {};
@@ -505,12 +527,12 @@ protected:
     size_t panicks = 0;
     Vector3 origin = {};
 
-    part(const float x, const float z):
-        x(x * g_grid_step_size),
-        z(z * g_grid_step_size),
-        x_id(x),
-        y_id(z),
-        origin(this->x, 0, this->z)
+    part(const float x, const float z)
+        : x(x * g_grid_step_size)
+        , z(z * g_grid_step_size)
+        , x_id(x)
+        , y_id(z)
+        , origin(this->x, 0, this->z)
         {
         }
 
@@ -540,8 +562,8 @@ public:
         , radius_m(calc_circle_radius_m(area_m2))
         , get_open_ratio(get_open_ratio)
         {
-            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, 0.0f, g_mesh_slices));
-            shapes[0].model.transform = MatrixRotateX(g_rot90_r);
+            shapes[0].figure.load(GenMeshCylinder(radius_m, 0.0f, g_mesh_slices));
+            shapes[0].figure.model.transform = MatrixRotateX(g_rot90_r);
         }
 
     void update() override
@@ -556,14 +578,6 @@ public:
     std::span<const shape> get_shapes() const override
     {
         return shapes;
-    }
-
-    ~port() override
-    {
-        for(const auto& shape: shapes)
-        {
-            UnloadModel(shape.model);
-        }
     }
 };
 
@@ -583,8 +597,8 @@ public:
         {
             const float side_m = g_grid_box_side_m;
             const float height_m = volume_m3 / (side_m * side_m);
-            shapes[0].model = LoadModelFromMesh(GenMeshCube(side_m, height_m, side_m));
-            shapes[0].model.transform = MatrixTranslate(0.0f, height_m * 0.5f, 0.0f);
+            shapes[0].figure.load(GenMeshCube(side_m, height_m, side_m));
+            shapes[0].figure.model.transform = MatrixTranslate(0.0f, height_m * 0.5f, 0.0f);
         }
 
     void update() override
@@ -600,14 +614,6 @@ public:
     std::span<const shape> get_shapes() const override
     {
         return shapes;
-    }
-
-    ~chamber() override
-    {
-        for(const auto& shape: shapes)
-        {
-            UnloadModel(shape.model);
-        }
     }
 };
 
@@ -629,8 +635,8 @@ public:
         , get_theta_r(get_theta_r)
         {
             const float height_m = calc_cylinder_height_m(mass_kg / density_kg_per_m3, radius_m);
-            shapes[0].model = LoadModelFromMesh(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
-            shapes[0].model.transform = MatrixMultiply(MatrixRotateX(g_rot90_r), MatrixRotateY(g_rot90_r));
+            shapes[0].figure.load(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
+            shapes[0].figure.model.transform = MatrixMultiply(MatrixRotateX(g_rot90_r), MatrixRotateY(g_rot90_r));
         }
 
     void update() override
@@ -644,14 +650,6 @@ public:
     std::span<const shape> get_shapes() const override
     {
         return shapes;
-    }
-
-    ~disk() override
-    {
-        for(const auto& shape: shapes)
-        {
-            UnloadModel(shape.model);
-        }
     }
 };
 
@@ -717,14 +715,14 @@ public:
         , get_pin_phi_r(get_pin_phi_r)
         , get_crank_theta_r(get_crank_theta_r)
         , get_panic(get_panic)
-    {
-        shapes[0].model = LoadModelFromMesh(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices));
-        shapes[1].model = LoadModelFromMesh(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m));
-        shapes[2].model = LoadModelFromMesh(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m));
-        shapes[0].model.transform = MatrixRotateY(g_rot90_r);
-        shapes[1].model.transform = MatrixMultiply(MatrixRotateY(g_rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
-        shapes[2].model.transform = MatrixRotateY(g_rot90_r);
-    }
+        {
+            shapes[0].figure.load(GenMeshCylinder(head_radius_m, head_height_m, g_mesh_slices));
+            shapes[1].figure.load(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m));
+            shapes[2].figure.load(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m));
+            shapes[0].figure.model.transform = MatrixRotateY(g_rot90_r);
+            shapes[1].figure.model.transform = MatrixMultiply(MatrixRotateY(g_rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
+            shapes[2].figure.model.transform = MatrixRotateY(g_rot90_r);
+        }
 
     void update() override
     {
@@ -747,14 +745,6 @@ public:
     std::span<const shape> get_shapes() const override
     {
         return shapes;
-    }
-
-    ~piston() override
-    {
-        for(const auto& shape: shapes)
-        {
-            UnloadModel(shape.model);
-        }
     }
 };
 
@@ -952,7 +942,7 @@ public:
     {
         for(const auto& shape: part.get_shapes())
         {
-            DrawModelWiresEx(shape.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
+            DrawModelWiresEx(shape.figure.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
         }
     }
 

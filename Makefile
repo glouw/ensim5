@@ -10,6 +10,10 @@ ifeq ($(SAN),2)
 CC += -fsanitize=undefined,address
 endif
 
+ifeq ($(SAN),3)
+CC += -fsanitize=address
+endif
+
 all: gui
 
 ensim.o: ensim.cc ensim.hh Makefile
