@@ -35,7 +35,8 @@ namespace ensim
     static constexpr float g_dt_s_f = g_dt_s;
     static constexpr size_t g_producer_block_size = 200;
     static constexpr size_t g_producer_queue_size = 4096;
-    static constexpr size_t g_producer_history_size = 1024;
+    static constexpr size_t g_producer_history_size = 4096;
+    static constexpr int g_producer_poll_us = 200;
 
     using std::sin, std::cos, std::fmax, std::fmin, std::log, std::sqrt, std::trunc, std::exp, std::fabs;
 
@@ -1793,12 +1794,12 @@ namespace ensim
                     {
                         std::swap(diags.front[i], diags.back[i]);
                     }
-                    for(auto& line : diags.back)
+                    for(auto& line: diags.back)
                     {
                         line.clear();
                     }
                     size_t i = 0;
-                    for(auto& pipe : pipes)
+                    for(auto& pipe: pipes)
                     {
                         const auto& signal = pipe.static_pressure_pa;
                         pipe_static_pressures_pa[i++] = { signal.begin(), signal.end() };
@@ -1813,7 +1814,7 @@ namespace ensim
                      * addng more samples to back will distort diags oscilloscope trigger.
                      */
 
-                    for(auto& line : diags.back)
+                    for(auto& line: diags.back)
                     {
                         line.clear();
                     }
@@ -1834,7 +1835,7 @@ namespace ensim
                 pipes[i].in_static_temperature_k[j] = flows[x].nozzle_static_temperature_k[AUDIO_Y];
                 pipes[i].in_static_density_kg_per_m3[j] = flows[x].nozzle_static_density_kg_per_m3[AUDIO_Y];
             }
-            for(auto& pipe : pipes)
+            for(auto& pipe: pipes)
             {
                 pipe.update();
             }
@@ -1932,7 +1933,7 @@ namespace ensim
         float calc_audio_sample()
         {
             float x = 0.0f;
-            for(auto& pipe : pipes)
+            for(auto& pipe: pipes)
             {
                 x += pipe.calc_audio_sample();
             }
@@ -2187,7 +2188,7 @@ namespace ensim
                 this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r - 0.5;
                 theta0_r += g_otto_cycle_r / get_width();
             }
-            for(auto& flow : this->flows)
+            for(auto& flow: this->flows)
             {
                 flow.chamber_nozzle_open_ratio.fill(1.0);
                 flow.chamber_nozzle_flow_area_m2 = {
@@ -2212,7 +2213,7 @@ namespace ensim
             this->throttle.mapping.table = { 0.001, 0.01, 0.05, 0.20 };
             pipes[0].piston_connect_m = { 0.0, 0.05, 0.1, 0.15 };
             pipes[1].piston_connect_m = { 0.0, 0.05, 0.1, 0.15 };
-            for(auto& pipe : this->pipes)
+            for(auto& pipe: this->pipes)
             {
                 pipe.length_m = pipe.mic_position_m = 0.6;
             }
@@ -2284,13 +2285,12 @@ namespace ensim
 
         void pop_front()
         {
-            if(empty())
+            if(not empty())
             {
-                throw std::runtime_error("ring empty!");
+                head++;
+                head %= N;
+                elems--;
             }
-            head++;
-            head %= N;
-            elems--;
         }
 
         size_t index(const size_t i) const
@@ -2331,10 +2331,6 @@ namespace ensim
         std::vector<float>& consume(const size_t samples)
         {
             std::lock_guard lock1(queue_mutex);
-            if(samples > queue.size())
-            {
-                throw std::runtime_error("Producer underrun!");
-            }
             ready.clear();
             for(size_t i = 0; i < samples; i++)
             {
@@ -2346,21 +2342,27 @@ namespace ensim
             return ready;
         }
 
-        bool produce()
+        bool must_produce()
         {
             std::lock_guard lock(queue_mutex);
-            if(queue.size() + g_producer_block_size < queue.capacity())
+            return queue.size() + g_producer_block_size < queue.capacity();
+        }
+
+        bool produce()
+        {
+            if(must_produce())
             {
-                std::lock_guard lock(engine_mutex);
+                std::lock_guard lock1(engine_mutex);
                 if(engine)
                 {
                     engine->run(g_producer_block_size);
                     const std::vector<float>& slice = engine->get_audio_signal();
-                    for(float value : slice)
+                    std::lock_guard lock2(queue_mutex);
+                    for(float value: slice)
                     {
                         queue.push_back(value);
                     }
-                    std::lock_guard lock2(history_mutex);
+                    std::lock_guard lock3(history_mutex);
                     history.push_back(queue.size());
                     return true;
                 }
@@ -2374,7 +2376,7 @@ namespace ensim
             {
                 if(not produce())
                 {
-                    const auto delay = std::chrono::microseconds(100);
+                    const auto delay = std::chrono::microseconds(g_producer_poll_us);
                     std::this_thread::sleep_for(delay);
                 }
             }

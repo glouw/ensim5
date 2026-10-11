@@ -8,10 +8,11 @@
 #include <atomic>
 #include <mutex>
 #include <numeric>
-#include <raylib.h>
-#include <raymath.h>
 #include <sstream>
 #include <vector>
+
+#include <raylib.h>
+#include <raymath.h>
 
 static constexpr int g_fps = 60;
 static constexpr int g_panic_fps = g_fps / 10;
@@ -29,34 +30,13 @@ static constexpr float g_font_size = 1.0f;
 static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
 static constexpr size_t g_stream_buffer_size = 4096;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
-static constexpr float g_grid_steps = 16.0f;
+static constexpr float g_grid_steps = 32.0f;
 static constexpr float g_grid_step_size = 0.125f;
 static constexpr float g_grid_box_side_m = g_grid_step_size / 2.0f;
 static constexpr size_t g_signal_samples = g_sidebar_width_p;
 static constexpr size_t g_signal_default_samples = -1;
 static constexpr float g_hud_gauge_width_p = 192.0f;
 static constexpr float g_rot90_r = 90.0f * DEG2RAD;
-
-class audio
-{
-    AudioStream stream = {};
-
-public:
-    audio(const AudioCallback audio_callback)
-    {
-        InitAudioDevice();
-        SetAudioStreamBufferSizeDefault(g_stream_buffer_size);
-        stream = LoadAudioStream(ensim::g_sample_rate_hz, g_audio_bit_depth, g_audio_channels);
-        SetAudioStreamCallback(stream, audio_callback);
-        PlayAudioStream(stream);
-    }
-
-    ~audio()
-    {
-        UnloadAudioStream(stream);
-        CloseAudioDevice();
-    }
-};
 
 class widget
 {
@@ -499,7 +479,7 @@ struct figure
 
 struct shape
 {
-    figure figure = {};
+    struct figure figure = {};
     Color color = {};
     Vector3 rotation = {};
     Vector3 position = {};
@@ -598,7 +578,7 @@ public:
             const float side_m = g_grid_box_side_m;
             const float height_m = volume_m3 / (side_m * side_m);
             shapes[0].figure.load(GenMeshCube(side_m, height_m, side_m));
-            shapes[0].figure.model.transform = MatrixTranslate(0.0f, height_m * 0.5f, 0.0f);
+            shapes[0].figure.model.transform = MatrixTranslate(0.0f, 0.5f * height_m, 0.0f);
         }
 
     void update() override
@@ -608,7 +588,7 @@ public:
             panic();
         }
         shapes[0].position = origin;
-        shapes[0].color = panicking ? RED : LIGHTGRAY;
+        shapes[0].color = panicking ? RED : WHITE;
     }
 
     std::span<const shape> get_shapes() const override
@@ -636,7 +616,7 @@ public:
         {
             const float height_m = calc_cylinder_height_m(mass_kg / density_kg_per_m3, radius_m);
             shapes[0].figure.load(GenMeshCylinder(radius_m, height_m, g_mesh_slices));
-            shapes[0].figure.model.transform = MatrixMultiply(MatrixRotateX(g_rot90_r), MatrixRotateY(g_rot90_r));
+            shapes[0].figure.model.transform = MatrixRotateX(g_rot90_r) * MatrixRotateY(g_rot90_r);
         }
 
     void update() override
@@ -644,7 +624,7 @@ public:
         shapes[0].position = origin;
         shapes[0].rotation = { 1.0f, 0.0f, 0.0f };
         shapes[0].theta_degrees = RAD2DEG * get_theta_r();
-        shapes[0].color = LIGHTGRAY;
+        shapes[0].color = WHITE;
     }
 
     std::span<const shape> get_shapes() const override
@@ -720,7 +700,7 @@ public:
             shapes[1].figure.load(GenMeshCube(conrod_width_m, conrod_height_m, conrod_depth_m));
             shapes[2].figure.load(GenMeshCube(counter_weight_width_m, counter_weight_height_m, counter_weight_depth_m));
             shapes[0].figure.model.transform = MatrixRotateY(g_rot90_r);
-            shapes[1].figure.model.transform = MatrixMultiply(MatrixRotateY(g_rot90_r), MatrixTranslate(0.0f, -conrod_height_m * 0.5f, 0.0f));
+            shapes[1].figure.model.transform = MatrixRotateY(g_rot90_r) * MatrixTranslate(0.0f, -0.5f * conrod_height_m, 0.0f);
             shapes[2].figure.model.transform = MatrixRotateY(g_rot90_r);
         }
 
@@ -737,9 +717,9 @@ public:
         shapes[2].rotation = { 1.0f, 0.0f, 0.0f };
         shapes[1].theta_degrees = RAD2DEG * get_pin_phi_r();
         shapes[2].theta_degrees = RAD2DEG * get_crank_theta_r();
-        shapes[0].color = panicking ? RED : LIGHTGRAY;
-        shapes[1].color = panicking ? RED : LIGHTGRAY;
-        shapes[2].color = panicking ? RED : LIGHTGRAY;
+        shapes[0].color = panicking ? RED : WHITE;
+        shapes[1].color = panicking ? RED : WHITE;
+        shapes[2].color = panicking ? RED : WHITE;
     }
 
     std::span<const shape> get_shapes() const override
@@ -815,8 +795,7 @@ public:
                     },
                     [this, x, y]()-> auto {
                         return this->engine->get_panic(x, y);
-                    }
-                ));
+                    }));
             }
             else
             {
@@ -826,44 +805,40 @@ public:
                     engine->get_chamber_volume_m3(x, y),
                     [this, x, y]()-> auto {
                         return this->engine->get_panic(x, y);
-                    }
-                ));
+                    }));
             }
-            self.push_back(std::make_unique<port>(xx, zz, engine->get_port_flow_area_m2(x, y),
+            self.push_back(std::make_unique<port>(
+                xx,
+                zz,
+                engine->get_port_flow_area_m2(x, y),
                 [this, x, y]()-> auto {
                     return this->engine->get_port_open_ratio(x, y);
-                }
-            ));
+                }));
         }
         const size_t flywheel_x = w;
         const size_t flywheel_y = engine->get_piston_y();
         const size_t load_x = flywheel_x + 1;
         const size_t load_y = flywheel_y;
-        self.push_back(
-            std::make_unique<pop_disk>(
-                flywheel_x,
-                flywheel_y,
-                engine->get_flywheel_mass_kg(),
-                engine->get_flywheel_radius_m(),
-                [this]()-> auto {
-                    return this->engine->get_flywheel_theta_r();
-                },
-                [this]()-> auto {
-                    return this->engine->get_clutch_disengaged();
-                }
-            )
-        );
-        self.push_back(
-            std::make_unique<disk>(
-                load_x,
-                load_y,
-                engine->get_load_mass_kg(),
-                engine->get_load_radius_m(),
-                [this]()-> auto {
-                    return this->engine->get_load_theta_r();
-                }
-            )
-        );
+        self.push_back(std::make_unique<pop_disk>(
+            flywheel_x,
+            flywheel_y,
+            engine->get_flywheel_mass_kg(),
+            engine->get_flywheel_radius_m(),
+            [this]()-> auto {
+                return this->engine->get_flywheel_theta_r();
+            },
+            [this]()-> auto {
+                return this->engine->get_clutch_disengaged();
+            }
+        ));
+        self.push_back(std::make_unique<disk>(
+            load_x,
+            load_y,
+            engine->get_load_mass_kg(),
+            engine->get_load_radius_m(),
+            [this]()-> auto {
+                return this->engine->get_load_theta_r();
+            }));
     }
 
     void update()
@@ -913,7 +888,7 @@ struct look
 class window
 {
     ensim::engine* engine = {};
-    look look = {};
+    struct look look = {};
     float throttle_ratio = 0.0f;
 
 public:
@@ -1075,9 +1050,9 @@ public:
         }
     }
 
-    void set(ensim::engine* engine)
+    void set(ensim::engine* other)
     {
-        this->engine = engine;
+        engine = other;
         look.x = engine->get_width() - 1;;
         look.y = engine->get_piston_y();
     }
@@ -1096,19 +1071,40 @@ static void set(window& window, widgets& widgets, parts& parts, ensim::engine* e
     parts.set(engine);
 }
 
-static void audio_callback(void* const data, const unsigned frames)
+class audio
 {
-    float* const buffer = static_cast<float* const>(data);
-    const std::vector<float>& block = ensim::consume(frames);
-    std::copy(block.begin(), block.end(), buffer);
+    AudioStream stream = {};
+
+    static void callback(void* const data, const unsigned frames)
+    {
+        float* const buffer = static_cast<float*>(data);
+        const std::vector<float>& block = ensim::consume(frames);
+        std::copy(block.begin(), block.end(), buffer);
+    };
+
+public:
+    audio()
+    {
+        InitAudioDevice();
+        SetAudioStreamBufferSizeDefault(g_stream_buffer_size);
+        stream = LoadAudioStream(ensim::g_sample_rate_hz, g_audio_bit_depth, g_audio_channels);
+        SetAudioStreamCallback(stream, callback);
+        PlayAudioStream(stream);
+    }
+
+    ~audio()
+    {
+        UnloadAudioStream(stream);
+        CloseAudioDevice();
+    }
 };
 
 int main()
 {
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::trx450r);
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i8_2400cc);
     window window;
     widgets widgets;
-    audio audio(audio_callback);
+    audio audio;
     parts parts;
     set(window, widgets, parts, engine.get());
     window.loop(widgets, parts);
