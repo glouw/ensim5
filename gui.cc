@@ -435,6 +435,15 @@ public:
                 g_signal_default_samples
             )
         );
+        left.push_back(
+            make_plot<std::vector<float>>(
+                "room impulse response",
+                [this](auto)-> auto& {
+                    return engine->get_impulse_signal();
+                },
+                g_signal_default_samples
+            )
+        );
         float y_p = 0.0f;
         const float x_p = 0.0f;
         const float h_p = g_yres_p / left.size();
@@ -635,6 +644,7 @@ public:
 
 class pop_disk: public disk
 {
+    static constexpr float pop_by = 0.25f * g_grid_step_size;
     sample<bool> pop = {};
 
 public:
@@ -656,7 +666,7 @@ public:
         Vector3 position = origin;
         if(pop())
         {
-            position.x -= 0.05;
+            position.x -= pop_by;
         }
         shapes[0].position = position;
     }
@@ -829,8 +839,7 @@ public:
             },
             [this]()-> auto {
                 return this->engine->get_clutch_disengaged();
-            }
-        ));
+            }));
         self.push_back(std::make_unique<disk>(
             load_x,
             load_y,
@@ -852,14 +861,14 @@ public:
 
 struct look
 {
+    static constexpr float max_pitch_r = std::numbers::pi_v<float> / 2.1f;
+    static constexpr float min_pitch_r = 0.0f;
+    static constexpr float min_distance = 0.1f;
     float yaw_r = std::numbers::pi_v<float> / 4.0f;
     float pitch_r = atan(sqrt(0.5f));
     float x = 0.0f;
     float y = 0.0f;
     float distance = 2.0f;
-    float min_distance = 0.1f;
-    const float max_pitch_r = std::numbers::pi_v<float> / 2.01f;
-    const float min_pitch_r = 0.0f;
 
     Camera3D camera = {
         .position = {},
@@ -1063,14 +1072,6 @@ public:
     }
 };
 
-static void set(window& window, widgets& widgets, parts& parts, ensim::engine* engine)
-{
-    window.set(engine);
-    widgets.set(engine);
-    ensim::attach(engine);
-    parts.set(engine);
-}
-
 class audio
 {
     AudioStream stream = {};
@@ -1098,6 +1099,14 @@ public:
         CloseAudioDevice();
     }
 };
+
+static void set(window& window, widgets& widgets, parts& parts, ensim::engine* engine)
+{
+    window.set(engine);
+    widgets.set(engine);
+    ensim::attach(engine);
+    parts.set(engine);
+}
 
 int main()
 {

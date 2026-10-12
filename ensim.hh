@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <vector>
 #include <string_view>
 
@@ -57,6 +58,7 @@ namespace ensim
         virtual const std::vector<double>& get_volume_signal_m3() const = 0;
         virtual const std::vector<float>& get_audio_signal() const = 0;
         virtual const std::vector<float>& get_pipe_pressure_signal(const size_t pipe) const = 0;
+        virtual const std::vector<float>& get_impulse_signal() const = 0;
         virtual void set_throttle(const double open_ratio) = 0;
         virtual void set_injection_on() = 0;
         virtual void set_injection_off() = 0;
