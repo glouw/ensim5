@@ -33,8 +33,8 @@ static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROW
 static constexpr float g_grid_steps = 32.0f;
 static constexpr float g_grid_step_size = 0.125f;
 static constexpr float g_grid_box_side_m = g_grid_step_size / 2.0f;
+static constexpr float g_grid_pipe_radius_m = 0.01f;
 static constexpr size_t g_signal_samples = g_sidebar_width_p;
-static constexpr size_t g_signal_default_samples = -1;
 static constexpr float g_hud_gauge_width_p = 192.0f;
 static constexpr float g_rot90_r = 90.0f * DEG2RAD;
 
@@ -143,14 +143,16 @@ class plot: public widget
     signal<T> y = {};
     size_t samples = {};
     size_t signals = {};
+    bool clip_check = false;
 
 public:
-    plot(const std::string& title, const signal<T> x, const signal<T> y, const size_t samples, const size_t signals)
+    plot(const std::string& title, const signal<T> x, const signal<T> y, const size_t samples, const size_t signals, const bool clip_check)
         : title(title)
         , x(x)
         , y(y)
         , samples(samples)
         , signals(signals)
+        , clip_check(clip_check)
         {
         }
 
@@ -227,7 +229,8 @@ public:
                 << "\nrng: " << std::fixed << std::setprecision(precision) << range.ymax - range.ymin
                 << "\ndiv: " << std::fixed << std::setprecision(precision) << div
                 << "\nsamples: " << width;
-            DrawText(metrics.str().data(), x_p, y_p, g_font_size, WHITE);
+            const bool clipping = range.ymax >= 1.0 or range.ymin <= -1.0;
+            DrawText(metrics.str().data(), x_p, y_p, g_font_size, clip_check and clipping ? RED : WHITE);
         }
     }
 };
@@ -256,12 +259,13 @@ std::unique_ptr<plot<T>> make_plot(
     const std::string& title,
     const signal<T> y,
     const size_t samples,
-    const size_t signals = 1)
+    const size_t signals,
+    const bool clip_check)
 {
     const auto x = [y](const size_t signal)-> auto& {
         return lingen<T>(y(signal).size());
     };
-    return std::make_unique<plot<T>>(title, x, y, samples, signals);
+    return std::make_unique<plot<T>>(title, x, y, samples, signals, clip_check);
 }
 
 template<typename T>
@@ -270,9 +274,10 @@ std::unique_ptr<plot<T>> make_plot(
     const signal<T> x,
     const signal<T> y,
     const size_t samples,
-    const size_t signals = 1)
+    const size_t signals,
+    const bool clip_check)
 {
-    return std::make_unique<plot<T>>(title, x, y, samples, signals);
+    return std::make_unique<plot<T>>(title, x, y, samples, signals, clip_check);
 }
 
 class widgets
@@ -374,7 +379,9 @@ public:
                     [this, i](auto)-> auto& {
                         return engine->get_signal(i);
                     },
-                    g_signal_samples
+                    g_signal_samples,
+                    1,
+                    false
                 )
             );
         }
@@ -398,8 +405,7 @@ public:
                 [this](auto signal)-> auto& {
                     return engine->get_pipe_pressure_signal(signal);
                 },
-                g_signal_default_samples,
-                engine->get_pipe_count()
+                -1, engine->get_pipe_count(), false
             )
         );
         left.push_back(
@@ -411,7 +417,7 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_static_pressure_signal_pa();
                 },
-                g_signal_samples
+                g_signal_samples, 1, false
             )
         );
         left.push_back(
@@ -423,7 +429,16 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_static_temperature_signal_k();
                 },
-                g_signal_samples
+                g_signal_samples, 1, false
+            )
+        );
+        left.push_back(
+            make_plot<std::vector<float>>(
+                "audio signal",
+                [this](auto)-> auto& {
+                    return engine->get_audio_signal();
+                },
+                -1, 1, true
             )
         );
         left.push_back(
@@ -432,7 +447,7 @@ public:
                 [](auto)-> auto& {
                     return ensim::get_buffer_size_history();
                 },
-                g_signal_default_samples
+                -1, 1, false
             )
         );
         left.push_back(
@@ -441,7 +456,7 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_impulse_signal();
                 },
-                g_signal_default_samples
+                -1, 1, false
             )
         );
         float y_p = 0.0f;
@@ -531,6 +546,8 @@ protected:
     }
 
 public:
+    size_t get_x_id() const { return x_id; }
+    size_t get_y_id() const { return y_id; }
     virtual std::span<const shape> get_shapes() const = 0;
     virtual void update() = 0;
     virtual ~part() = default;
@@ -738,6 +755,70 @@ public:
     }
 };
 
+class pipe: public part
+{
+    static constexpr size_t capacity = 1024;
+    std::array<shape, capacity> shapes = {};
+    float y = 0;
+    size_t cells = 0;
+    signal<std::vector<float>> get_pipe_pressure = {};
+    float min_pressure_pa = 0.0f;
+    float max_pressure_pa = 0.0f;
+
+public:
+    pipe(
+        const float x,
+        const float y,
+        const float z,
+        const float length_m,
+        const size_t cells,
+        const signal<std::vector<float>> get_pipe_pressure,
+        const float min_pressure_pa,
+        const float max_pressure_pa)
+        : part(x, z)
+        , y(y)
+        , cells(cells)
+        , get_pipe_pressure(get_pipe_pressure)
+        , min_pressure_pa(min_pressure_pa)
+        , max_pressure_pa(max_pressure_pa)
+        {
+            const float yy = y * g_grid_step_size;
+            const float cell_height_m = length_m / cells;
+            for(size_t i = 0; i < cells; i++)
+            {
+                shapes[i].figure.load(GenMeshCylinder(g_grid_pipe_radius_m, cell_height_m, g_mesh_slices));
+                shapes[i].figure.model.transform = MatrixRotateZ(g_rot90_r) * MatrixTranslate(i * cell_height_m, yy, 0.0f);
+            }
+        }
+
+    void update() override
+    {
+        const size_t y_id = y;
+        const std::vector<float>& pipe_pressure = get_pipe_pressure(y_id);
+        if(pipe_pressure.size() == cells)
+        {
+            size_t cell = 0;
+            for(auto& shape: shapes)
+            {
+                const float cell_pressure_pa = pipe_pressure[cell];
+                const float ratio = (cell_pressure_pa - min_pressure_pa) / (max_pressure_pa - min_pressure_pa);
+                const Color color = g_plot_signal_colors[y_id];
+                const float clamp = std::clamp(ratio, -1.0f, 1.0f);
+                shape.color = ColorLerp(WHITE, color, clamp);
+                shape.position = origin;
+                cell++;
+            }
+        }
+    }
+
+    std::span<const shape> get_shapes() const override
+    {
+        const std::span<const shape> full = shapes;
+        const std::span<const shape> less = full.first(cells);
+        return less;
+    }
+};
+
 class parts
 {
     std::vector<std::unique_ptr<part>> self = {};
@@ -826,12 +907,14 @@ public:
                 }));
         }
         const size_t flywheel_x = w;
-        const size_t flywheel_y = engine->get_piston_y();
+        const size_t flywheel_z = engine->get_piston_y();
         const size_t load_x = flywheel_x + 1;
-        const size_t load_y = flywheel_y;
+        const size_t load_z = flywheel_z;
+        const size_t pipe_x = w;
+        const size_t pipe_z = h;
         self.push_back(std::make_unique<pop_disk>(
             flywheel_x,
-            flywheel_y,
+            flywheel_z,
             engine->get_flywheel_mass_kg(),
             engine->get_flywheel_radius_m(),
             [this]()-> auto {
@@ -842,12 +925,27 @@ public:
             }));
         self.push_back(std::make_unique<disk>(
             load_x,
-            load_y,
+            load_z,
             engine->get_load_mass_kg(),
             engine->get_load_radius_m(),
             [this]()-> auto {
                 return this->engine->get_load_theta_r();
             }));
+        for(size_t y = 0; y < engine->get_pipe_count(); y++)
+        {
+            self.push_back(std::make_unique<pipe>(
+                0.0f,
+                y,
+                pipe_z,
+                engine->get_pipe_length_m(y),
+                engine->get_pipe_cells(),
+                [this](auto signal)-> const std::vector<float>& {
+                    return this->engine->get_pipe_pressure_signal(signal);
+                },
+                120000.0f,
+                150000.0f
+            ));
+        }
     }
 
     void update()
@@ -907,6 +1005,7 @@ public:
         InitWindow(g_xres_p, g_yres_p, g_name);
         SetTargetFPS(g_fps);
         HideCursor();
+        SetTraceLogLevel(LOG_WARNING);
     }
 
     ~window()
@@ -924,9 +1023,12 @@ public:
 
     void draw(const part& part)
     {
-        for(const auto& shape: part.get_shapes())
+        const auto shapes = part.get_shapes();
+        for(const auto& shape: shapes)
         {
-            DrawModelWiresEx(shape.figure.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, shape.color);
+            const bool selected = part.get_x_id() == look.x and part.get_y_id() == look.y;
+            const Color color = selected ? BLUE : shape.color;
+            DrawModelWiresEx(shape.figure.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, color);
         }
     }
 

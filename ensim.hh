@@ -19,6 +19,8 @@ namespace ensim
         virtual size_t get_source_y() const = 0;
         virtual size_t get_sink_y() const = 0;
         virtual size_t get_pipe_count() const = 0;
+        virtual size_t get_pipe_cells() const = 0;
+        virtual double get_pipe_length_m(const size_t pipe) const = 0;
         virtual size_t get_piston_y() const = 0;
         virtual size_t get_audio_y() const = 0;
         virtual size_t get_throttle_y() const = 0;
