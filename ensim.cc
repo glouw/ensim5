@@ -31,7 +31,7 @@ namespace ensim
     static constexpr double g_specific_gas_constant_j_per_kg_k = g_universal_gas_constant_j_per_mol_k / g_molar_mass_kg_per_mol;
     static constexpr double g_energy_octane_j_per_kg = 47.9e6;
     static constexpr double g_stoich_air_fuel_ratio = 14.7;
-    static constexpr double g_air_sound_speed_m_per_s = 343.0;
+    static constexpr double g_air_sound_speed_m_per_s = 343.0; // FIX
     static constexpr float g_pi_r_f = g_pi_r;
     static constexpr float g_gamma_f = g_gamma;
     static constexpr float g_dt_s_f = g_dt_s;
@@ -1581,24 +1581,23 @@ namespace ensim
     {
         static constexpr float dc_cutoff_hz = 100.0f;
 
-        vec3 dim = { 3.1, 3.0, 3.1 };
-        vec3 imp = { 0.3, 0.8, 0.3 };
-        vec3 mic = { 0.2, 0.0, 0.2 };
-        double beta = 0.98;
-        int order = 16;
-        size_t size = 4096;
-
+        vec3 dim = {};
+        vec3 imp = {};
+        vec3 mic = {};
+        double beta = 0.0f;
+        int order = 0;
+        size_t size = 0;
         std::vector<float> impulse = {};
         dc_filter filter = {};
 
         room()
         {
-            impulse.resize(size);
             filter.set_cutoff_frequency(dc_cutoff_hz);
         }
 
         void generate()
         {
+            impulse.resize(size);
             std::fill(impulse.begin(), impulse.end(), 0.0f);
             const int bound = order / 2 + 1;
             for(int ix = -bound; ix <= bound; ix++)
@@ -1634,24 +1633,20 @@ namespace ensim
                 }
                 impulse[delay] += pow(beta, n) / d;
             }
-            float l1 = 0.0f;
-            for(float s : impulse)
+            float max = 0.0f;
+            for(float s: impulse)
             {
-                l1 += abs(s);
+                max = std::max(max, s);
             }
-            if(l1 > 0.0f)
+            for(float& s: impulse)
             {
-                for(float& s : impulse)
-                {
-                    s /= l1;
-                }
+                s /= max;
             }
-            for(float& s : impulse)
+            for(float& s: impulse)
             {
                 s = filter.filter(s);
             }
         }
-
     };
 
     struct convolution_filter
@@ -1734,8 +1729,6 @@ namespace ensim
             std::array<std::atomic<double>, W> pistons_pin_phi_r = {};
             std::array<std::atomic<double>, W> pistons_top_dead_center_m = {};
             std::array<std::atomic<double>, W> pistons_crank_theta_r = {};
-            std::atomic<std::span<const float>> impulse_signal = {};
-            std::array<std::atomic<float>, W> pipe_length_m = {};
         }
         out;
     };
@@ -2081,10 +2074,6 @@ namespace ensim
                 mailbox.out.pistons_top_dead_center_m[x] = pistons.connecting_rod_length_m[x] + pistons.crank_throw_length_m[x] + pistons.head_compression_height_m[x];
             }
             mailbox.out.swap_drops += swap_drops;
-            for(size_t p = 0; p < PIPE_COUNT; p++)
-            {
-                mailbox.out.pipe_length_m[p] = pipes[p].length_m;
-            }
         }
 
         void run(size_t steps) override
@@ -2117,65 +2106,68 @@ namespace ensim
             post_mail(swap_drops);
         }
 
-        void                       set_logger                           (const size_t x, const size_t y)       override { mailbox.in.log_x = x; mailbox.in.log_y = y;                }
-        void                       set_swap_lock_on                     ()                                     override { swap_mutex.lock();                                         }
-        void                       set_swap_lock_off                    ()                                     override { swap_mutex.unlock();                                       }
-        void                       set_throttle                         (const double open_ratio)              override { mailbox.in.throttle_open_ratio = open_ratio;               }
-        void                       set_injection_on                     ()                                     override { mailbox.in.injector_enabled = true;                        }
-        void                       set_injection_off                    ()                                     override { mailbox.in.injector_enabled = false;                       }
-        void                       engage_clutch                        ()                                     override { mailbox.in.clutch_engaged = true;                          }
-        void                       disengage_clutch                     ()                                     override { mailbox.in.clutch_engaged = false;                         }
-        void                       engage_load_brake                    ()                                     override { mailbox.in.load_brake_engaged = true;                      }
-        void                       disengage_load_brake                 ()                                     override { mailbox.in.load_brake_engaged = false;                     }
-        void                       increment_gear                       ()                                     override { if(mailbox.in.gear < gearbox.last_gear) mailbox.in.gear++; }
-        void                       decrement_gear                       ()                                     override { if(mailbox.in.gear != 0) mailbox.in.gear--;                }
-        size_t                     get_width                            ()                               const override { return W;                                                  }
-        size_t                     get_height                           ()                               const override { return H;                                                  }
-        size_t                     get_source_y                         ()                               const override { return 0;                                                  }
-        size_t                     get_sink_y                           ()                               const override { return H - 1;                                              }
-        size_t                     get_pipe_count                       ()                               const override { return PIPE_COUNT;                                         }
-        size_t                     get_pipe_cells                       ()                               const override { return PIPE_CELLS;                                         }
-        double                     get_pipe_length_m                    (const size_t pipe)              const override { return mailbox.out.pipe_length_m[pipe];                    }
-        size_t                     get_piston_y                         ()                               const override { return PISTON_Y;                                           }
-        size_t                     get_audio_y                          ()                               const override { return AUDIO_Y;                                            }
-        size_t                     get_throttle_y                       ()                               const override { return THROTTLE_Y;                                         }
-        size_t                     get_bytes                            ()                               const override { return sizeof *this;                                       }
-        size_t                     get_signal_count                     ()                               const override { return std::size(g_signal_names);                          }
-        size_t                     get_max_gear                         ()                               const override { return GEAR_COUNT - 1;                                     }
-        size_t                     get_gear                             ()                               const override { return mailbox.in.gear;                                    }
-        double                     get_load_angular_velocity_r_per_s    ()                               const override { return mailbox.out.load_angular_velocity_r_per_s;          }
-        double                     get_engine_angular_velocity_r_per_s  ()                               const override { return mailbox.out.engine_angular_velocity_r_per_s;        }
-        size_t                     get_swap_drops                       ()                               const override { return mailbox.out.swap_drops;                             }
-        double                     get_port_flow_area_m2                (const size_t x, const size_t y) const override { return mailbox.out.port_flow_area_m2[y][x];                }
-        double                     get_port_open_ratio                  (const size_t x, const size_t y) const override { return mailbox.out.port_open_ratios[y][x];                 }
-        bool                       get_panic                            (const size_t x, const size_t y) const override { return mailbox.out.panics[y][x];                           }
-        double                     get_chamber_volume_m3                (const size_t x, const size_t y) const override { return mailbox.out.chamber_volume_m3[y][x];                }
-        double                     get_piston_head_radius_m             (const size_t x)                 const override { return mailbox.out.pistons_head_radius_m[x];               }
-        double                     get_piston_head_height_m             (const size_t x)                 const override { return mailbox.out.pistons_head_height_m[x];               }
-        double                     get_piston_pin_y_m                   (const size_t x)                 const override { return mailbox.out.pistons_pin_y_m[x];                     }
-        double                     get_piston_connecting_rod_length_m   (const size_t x)                 const override { return mailbox.out.pistons_connecting_rod_length_m[x];     }
-        double                     get_piston_crank_diameter_m          (const size_t x)                 const override { return mailbox.out.pistons_crank_diameter_m[x];            }
-        double                     get_piston_top_dead_center           (const size_t x)                 const override { return mailbox.out.pistons_top_dead_center_m[x];           }
-        double                     get_piston_pin_phi_r                 (const size_t x)                 const override { return mailbox.out.pistons_pin_phi_r[x];                   }
-        double                     get_piston_crank_theta_r             (const size_t x)                 const override { return mailbox.out.pistons_crank_theta_r[x];               }
-        double                     get_flywheel_mass_kg                 ()                               const override { return mailbox.out.flywheel_mass_kg;                       }
-        double                     get_flywheel_radius_m                ()                               const override { return mailbox.out.flywheel_radius_m;                      }
-        double                     get_flywheel_theta_r                 ()                               const override { return mailbox.out.flywheel_theta_r;                       }
-        double                     get_load_mass_kg                     ()                               const override { return mailbox.out.load_mass_kg;                           }
-        double                     get_load_radius_m                    ()                               const override { return mailbox.out.load_radius_m;                          }
-        double                     get_load_theta_r                     ()                               const override { return mailbox.out.load_theta_r;                           }
-        double                     get_load_max_angular_velocity_r_per_s()                               const override { return mailbox.out.load_max_angular_velocity_r_per_s;      }
-        double                     get_limiter_angular_velocity_r_per_s ()                               const override { return mailbox.out.limiter_angular_velocity_r_per_s;       }
-        bool                       get_clutch_engaged                   ()                               const override { return mailbox.out.clutch_engaged;                         }
-        bool                       get_clutch_disengaged                ()                               const override { return mailbox.out.clutch_disengaged;                      }
-        std::string_view           get_signal_name                      (const size_t index)             const override { return g_signal_names[index];                              }
-        const std::vector<double>& get_signal                           (const size_t index)             const override { return diags.front[index];                                 }
-        const std::vector<double>& get_static_temperature_signal_k      ()                               const override { return get_signal(g_chamber_static_temperature_k);         }
-        const std::vector<double>& get_static_pressure_signal_pa        ()                               const override { return get_signal(g_chamber_static_pressure_pa);           }
-        const std::vector<double>& get_volume_signal_m3                 ()                               const override { return get_signal(g_chamber_volume_m3);                    }
-        const std::vector<float>&  get_audio_signal                     ()                               const override { return audio_signal;                                       }
-        const std::vector<float>&  get_pipe_pressure_signal             (const size_t pipe)              const override { return pipe_static_pressures_pa[pipe];                     }
-        const std::vector<float>&  get_impulse_signal                   ()                               const override { return convolution.impulse;                                }
+        void                          set_logger                           (const size_t x, const size_t y)       override { mailbox.in.log_x = x; mailbox.in.log_y = y;                }
+        void                          set_swap_lock_on                     ()                                     override { swap_mutex.lock();                                         }
+        void                          set_swap_lock_off                    ()                                     override { swap_mutex.unlock();                                       }
+        void                          set_throttle                         (const double open_ratio)              override { mailbox.in.throttle_open_ratio = open_ratio;               }
+        void                          set_injection_on                     ()                                     override { mailbox.in.injector_enabled = true;                        }
+        void                          set_injection_off                    ()                                     override { mailbox.in.injector_enabled = false;                       }
+        void                          engage_clutch                        ()                                     override { mailbox.in.clutch_engaged = true;                          }
+        void                          disengage_clutch                     ()                                     override { mailbox.in.clutch_engaged = false;                         }
+        void                          engage_load_brake                    ()                                     override { mailbox.in.load_brake_engaged = true;                      }
+        void                          disengage_load_brake                 ()                                     override { mailbox.in.load_brake_engaged = false;                     }
+        void                          increment_gear                       ()                                     override { if(mailbox.in.gear < gearbox.last_gear) mailbox.in.gear++; }
+        void                          decrement_gear                       ()                                     override { if(mailbox.in.gear != 0) mailbox.in.gear--;                }
+        size_t                        get_width                            ()                               const override { return W;                                                  }
+        size_t                        get_height                           ()                               const override { return H;                                                  }
+        size_t                        get_source_y                         ()                               const override { return 0;                                                  }
+        size_t                        get_sink_y                           ()                               const override { return H - 1;                                              }
+        size_t                        get_pipe_count                       ()                               const override { return PIPE_COUNT;                                         }
+        size_t                        get_pipe_cells                       ()                               const override { return PIPE_CELLS;                                         }
+        float                         get_pipe_length_m                    (const size_t pipe)              const override { return pipes[pipe].length_m;                               }
+        size_t                        get_piston_y                         ()                               const override { return PISTON_Y;                                           }
+        size_t                        get_audio_y                          ()                               const override { return AUDIO_Y;                                            }
+        size_t                        get_throttle_y                       ()                               const override { return THROTTLE_Y;                                         }
+        size_t                        get_bytes                            ()                               const override { return sizeof *this;                                       }
+        size_t                        get_signal_count                     ()                               const override { return std::size(g_signal_names);                          }
+        size_t                        get_max_gear                         ()                               const override { return GEAR_COUNT - 1;                                     }
+        size_t                        get_gear                             ()                               const override { return mailbox.in.gear;                                    }
+        double                        get_load_angular_velocity_r_per_s    ()                               const override { return mailbox.out.load_angular_velocity_r_per_s;          }
+        double                        get_engine_angular_velocity_r_per_s  ()                               const override { return mailbox.out.engine_angular_velocity_r_per_s;        }
+        size_t                        get_swap_drops                       ()                               const override { return mailbox.out.swap_drops;                             }
+        double                        get_port_flow_area_m2                (const size_t x, const size_t y) const override { return mailbox.out.port_flow_area_m2[y][x];                }
+        double                        get_port_open_ratio                  (const size_t x, const size_t y) const override { return mailbox.out.port_open_ratios[y][x];                 }
+        bool                          get_panic                            (const size_t x, const size_t y) const override { return mailbox.out.panics[y][x];                           }
+        double                        get_chamber_volume_m3                (const size_t x, const size_t y) const override { return mailbox.out.chamber_volume_m3[y][x];                }
+        double                        get_piston_head_radius_m             (const size_t x)                 const override { return mailbox.out.pistons_head_radius_m[x];               }
+        double                        get_piston_head_height_m             (const size_t x)                 const override { return mailbox.out.pistons_head_height_m[x];               }
+        double                        get_piston_pin_y_m                   (const size_t x)                 const override { return mailbox.out.pistons_pin_y_m[x];                     }
+        double                        get_piston_connecting_rod_length_m   (const size_t x)                 const override { return mailbox.out.pistons_connecting_rod_length_m[x];     }
+        double                        get_piston_crank_diameter_m          (const size_t x)                 const override { return mailbox.out.pistons_crank_diameter_m[x];            }
+        double                        get_piston_top_dead_center           (const size_t x)                 const override { return mailbox.out.pistons_top_dead_center_m[x];           }
+        double                        get_piston_pin_phi_r                 (const size_t x)                 const override { return mailbox.out.pistons_pin_phi_r[x];                   }
+        double                        get_piston_crank_theta_r             (const size_t x)                 const override { return mailbox.out.pistons_crank_theta_r[x];               }
+        double                        get_flywheel_mass_kg                 ()                               const override { return mailbox.out.flywheel_mass_kg;                       }
+        double                        get_flywheel_radius_m                ()                               const override { return mailbox.out.flywheel_radius_m;                      }
+        double                        get_flywheel_theta_r                 ()                               const override { return mailbox.out.flywheel_theta_r;                       }
+        double                        get_load_mass_kg                     ()                               const override { return mailbox.out.load_mass_kg;                           }
+        double                        get_load_radius_m                    ()                               const override { return mailbox.out.load_radius_m;                          }
+        double                        get_load_theta_r                     ()                               const override { return mailbox.out.load_theta_r;                           }
+        double                        get_load_max_angular_velocity_r_per_s()                               const override { return mailbox.out.load_max_angular_velocity_r_per_s;      }
+        double                        get_limiter_angular_velocity_r_per_s ()                               const override { return mailbox.out.limiter_angular_velocity_r_per_s;       }
+        bool                          get_clutch_engaged                   ()                               const override { return mailbox.out.clutch_engaged;                         }
+        bool                          get_clutch_disengaged                ()                               const override { return mailbox.out.clutch_disengaged;                      }
+        std::string_view              get_signal_name                      (const size_t index)             const override { return g_signal_names[index];                              }
+        const std::vector<double>&    get_signal                           (const size_t index)             const override { return diags.front[index];                                 }
+        const std::vector<double>&    get_static_temperature_signal_k      ()                               const override { return get_signal(g_chamber_static_temperature_k);         }
+        const std::vector<double>&    get_static_pressure_signal_pa        ()                               const override { return get_signal(g_chamber_static_pressure_pa);           }
+        const std::vector<double>&    get_volume_signal_m3                 ()                               const override { return get_signal(g_chamber_volume_m3);                    }
+        const std::vector<float>&     get_audio_signal                     ()                               const override { return audio_signal;                                       }
+        const std::vector<float>&     get_pipe_pressure_signal             (const size_t pipe)              const override { return pipe_static_pressures_pa[pipe];                     }
+        const std::vector<float>&     get_impulse_signal                   ()                               const override { return convolution.impulse;                                }
+        std::tuple<float,float,float> get_room_dimensions_m                ()                               const override { return { room.dim.x, room.dim.y, room.dim.z };             }
+        std::tuple<float,float,float> get_mic_position                     ()                               const override { return { room.mic.x, room.mic.y, room.mic.z };             }
+        std::tuple<float,float,float> get_impulse_position                 ()                               const override { return { room.imp.x, room.imp.y, room.imp.z };             }
     };
 
     struct trx450r: implements_engine<1, 9, 2, 4, 5, 200, 20, 1, 4, 6, inline_pistons, cams, sparkplugs>
@@ -2241,10 +2233,16 @@ namespace ensim
         }
     };
 
-    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 150, 10, 2, 4, 9, inline_pistons, cams, sparkplugs>
+    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 128, 5, 2, 4, 9, inline_pistons, cams, sparkplugs>
     {
         i8_2400cc()
         {
+            this->room.dim = { 1.59, 1.51, 1.58 };
+            this->room.imp = { 0.51, 0.52, 0.51 };
+            this->room.mic = { 0.91, 0.94, 0.92 };
+            this->room.beta = 0.95;
+            this->room.order = 20;
+            this->room.size = 4096;
             this->gearbox.ratios = { 0.0, 3.20, 2.35, 1.85, 1.50, 1.25, 1.08, 0.94, 0.84 };
             this->clutch.damping_coefficient_n_m_s = 4.0;
             this->lumped_parasitic_torque_n_m = 0.0;
@@ -2303,14 +2301,14 @@ namespace ensim
             this->flows[6].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000628, 0.0000, 0.000942, 0.0005, 0.0005, 9999.0 };
             this->flows[7].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000565, 0.0000, 0.001005, 0.0005, 0.0005, 9999.0 };
             this->throttle.mapping.table = { 0.001, 0.01, 0.05, 0.20 };
-            pipes[0].piston_connect_m = { 0.0, 0.05, 0.1, 0.15 };
-            pipes[1].piston_connect_m = { 0.0, 0.05, 0.1, 0.15 };
+            pipes[0].piston_connect_m = { 0.0, 0.2, 0.1, 0.3, };
+            pipes[1].piston_connect_m = { 0.0, 0.2, 0.1, 0.3, };
             for(auto& pipe: this->pipes)
             {
                 pipe.length_m = pipe.mic_position_m = 0.6;
             }
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.001;
+            this->gain.ratio = 0.00001;
         }
     };
 
@@ -2523,4 +2521,3 @@ namespace ensim
 
 // TODO:
 // * make limiter have low / upper deadzones, not time limiting
-

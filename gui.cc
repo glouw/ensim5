@@ -16,26 +16,14 @@
 
 static constexpr int g_fps = 60;
 static constexpr int g_panic_fps = g_fps / 10;
-static constexpr int g_audio_bit_depth = 32;
-static constexpr int g_audio_channels = 1;
-static constexpr size_t g_tachometer_ticks = 10;
 static constexpr float g_margin_p = 8.0f;
 static constexpr size_t g_xres_p = 1920;
 static constexpr size_t g_yres_p = 1080;
 static constexpr float g_xmid_p = g_xres_p / 2.0f;
-static constexpr const char* g_name = "ensim5";
-static constexpr float g_sidebar_width_p = g_xres_p / 3;
 static constexpr size_t g_mesh_slices = 10;
 static constexpr float g_font_size = 1.0f;
-static constexpr Vector3 g_render_scale = { 1.0f, 1.0f, 1.0f };
-static constexpr size_t g_stream_buffer_size = 4096;
 static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
-static constexpr float g_grid_steps = 32.0f;
 static constexpr float g_grid_step_size = 0.125f;
-static constexpr float g_grid_box_side_m = g_grid_step_size / 2.0f;
-static constexpr float g_grid_pipe_radius_m = 0.01f;
-static constexpr size_t g_signal_samples = g_sidebar_width_p;
-static constexpr float g_hud_gauge_width_p = 192.0f;
 static constexpr float g_rot90_r = 90.0f * DEG2RAD;
 
 class widget
@@ -282,6 +270,10 @@ std::unique_ptr<plot<T>> make_plot(
 
 class widgets
 {
+    static constexpr float hud_gauge_width_p = 192.0f;
+    static constexpr float sidebar_width_p = g_xres_p / 3;
+    static constexpr size_t signal_samples = sidebar_width_p;
+    static constexpr size_t tachometer_ticks = 10;
     std::vector<std::unique_ptr<widget>> self = {};
     ensim::engine* engine = {};
 
@@ -321,7 +313,7 @@ public:
             [this]()-> auto {
                 return engine->get_limiter_angular_velocity_r_per_s();
             },
-            g_tachometer_ticks
+            tachometer_ticks
         );
         std::unique_ptr<widget> load_angular_velocity = std::make_unique<tachometer>(
             [this]()-> auto {
@@ -330,7 +322,7 @@ public:
             [this]()-> auto {
                 return engine->get_load_max_angular_velocity_r_per_s();
             },
-            g_tachometer_ticks
+            tachometer_ticks
         );
         std::unique_ptr<widget> gear = std::make_unique<tachometer>(
             [this]()-> auto {
@@ -342,7 +334,7 @@ public:
             engine->get_max_gear()
         );
         const float margin_p = 4.0f * g_margin_p;
-        const float w_p = g_hud_gauge_width_p;
+        const float w_p = hud_gauge_width_p;
         engine_angular_velocity->place(
             g_xmid_p - margin_p - w_p,
             g_yres_p - w_p,
@@ -355,7 +347,7 @@ public:
             w_p,
             w_p
         );
-        const float gear_w_p = g_hud_gauge_width_p / 1.75f;
+        const float gear_w_p = hud_gauge_width_p / 1.75f;
         gear->place(
             g_xmid_p - gear_w_p / 2.0f,
             g_yres_p - gear_w_p,
@@ -379,18 +371,18 @@ public:
                     [this, i](auto)-> auto& {
                         return engine->get_signal(i);
                     },
-                    g_signal_samples,
+                    signal_samples,
                     1,
                     false
                 )
             );
         }
         float y_p = 0.0f;
-        const float x_p = g_xres_p - g_sidebar_width_p;
+        const float x_p = g_xres_p - sidebar_width_p;
         const float h_p = g_yres_p / size;
         for(auto& widget: right)
         {
-            widget->place(x_p, y_p, g_sidebar_width_p, h_p);
+            widget->place(x_p, y_p, sidebar_width_p, h_p);
             y_p += h_p;
             self.push_back(std::move(widget));
         }
@@ -417,7 +409,7 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_static_pressure_signal_pa();
                 },
-                g_signal_samples, 1, false
+                signal_samples, 1, false
             )
         );
         left.push_back(
@@ -429,7 +421,7 @@ public:
                 [this](auto)-> auto& {
                     return engine->get_static_temperature_signal_k();
                 },
-                g_signal_samples, 1, false
+                signal_samples, 1, false
             )
         );
         left.push_back(
@@ -464,7 +456,7 @@ public:
         const float h_p = g_yres_p / left.size();
         for(auto& widget: left)
         {
-            widget->place(x_p, y_p, g_sidebar_width_p, h_p);
+            widget->place(x_p, y_p, sidebar_width_p, h_p);
             y_p += h_p;
             self.push_back(std::move(widget));
         }
@@ -589,6 +581,7 @@ public:
 
 class chamber: public part
 {
+    static constexpr float side_m = g_grid_step_size / 2.0f;
     std::array<shape, 1> shapes = {};
     sample<bool> get_panic = {};
 
@@ -601,7 +594,6 @@ public:
         : part(x, z)
         , get_panic(get_panic)
         {
-            const float side_m = g_grid_box_side_m;
             const float height_m = volume_m3 / (side_m * side_m);
             shapes[0].figure.load(GenMeshCube(side_m, height_m, side_m));
             shapes[0].figure.model.transform = MatrixTranslate(0.0f, 0.5f * height_m, 0.0f);
@@ -757,6 +749,7 @@ public:
 
 class pipe: public part
 {
+    static constexpr float radius_m = 0.02f;
     static constexpr size_t capacity = 1024;
     std::array<shape, capacity> shapes = {};
     float y = 0;
@@ -786,7 +779,7 @@ public:
             const float cell_height_m = length_m / cells;
             for(size_t i = 0; i < cells; i++)
             {
-                shapes[i].figure.load(GenMeshCylinder(g_grid_pipe_radius_m, cell_height_m, g_mesh_slices));
+                shapes[i].figure.load(GenMeshCylinder(radius_m, cell_height_m, g_mesh_slices));
                 shapes[i].figure.model.transform = MatrixRotateZ(g_rot90_r) * MatrixTranslate(i * cell_height_m, yy, 0.0f);
             }
         }
@@ -816,6 +809,57 @@ public:
         const std::span<const shape> full = shapes;
         const std::span<const shape> less = full.first(cells);
         return less;
+    }
+};
+
+class room: public part
+{
+    static constexpr float sphere_radius_m = 0.05;
+    std::array<shape, 3> shapes = {};
+    std::tuple<float,float,float> mic_position;
+    std::tuple<float,float,float> impulse_position;
+
+public:
+    room(
+        const float x,
+        const float z,
+        const std::tuple<float,float,float> dimensions,
+        const std::tuple<float,float,float> mic_position,
+        const std::tuple<float,float,float> impulse_position)
+        : part(x, z)
+        , mic_position(mic_position)
+        , impulse_position(impulse_position)
+        {
+            {
+                const auto [width_m, height_m, length_m] = dimensions;
+                shapes[0].figure.load(GenMeshCube(width_m, height_m, length_m));
+                shapes[0].figure.model.transform = MatrixTranslate(0.5 * width_m, 0.5 * height_m, 0.5 * length_m);
+            }{
+                shapes[1].figure.load(GenMeshSphere(sphere_radius_m, g_mesh_slices, g_mesh_slices));
+            }{
+                shapes[2].figure.load(GenMeshSphere(sphere_radius_m, g_mesh_slices, g_mesh_slices));
+            }
+        }
+
+    void update() override
+    {
+        {
+            shapes[0].position = origin;
+            shapes[0].color = YELLOW;
+        }{
+            const auto [x_m, y_m, z_m] = mic_position;
+            shapes[1].position = origin + Vector3(x_m, y_m, z_m);
+            shapes[1].color = RED;
+        }{
+            const auto [x_m, y_m, z_m] = impulse_position;
+            shapes[2].position = origin + Vector3(x_m, y_m, z_m);
+            shapes[2].color = BLUE;
+        }
+    }
+
+    std::span<const shape> get_shapes() const override
+    {
+        return shapes;
     }
 };
 
@@ -856,12 +900,7 @@ public:
         {
             const float xx = x;
             const float zz = y;
-            if(y == engine->get_source_y())
-            {
-                // Do not draw
-            }
-            else
-            if(y == engine->get_sink_y())
+            if(y == engine->get_source_y() or y == engine->get_sink_y())
             {
                 // Do not draw
             }
@@ -906,12 +945,12 @@ public:
                     return this->engine->get_port_open_ratio(x, y);
                 }));
         }
-        const size_t flywheel_x = w;
-        const size_t flywheel_z = engine->get_piston_y();
-        const size_t load_x = flywheel_x + 1;
-        const size_t load_z = flywheel_z;
-        const size_t pipe_x = w;
-        const size_t pipe_z = h;
+        const float flywheel_x = w;
+        const float flywheel_z = engine->get_piston_y();
+        const float load_x = flywheel_x + 1;
+        const float load_z = flywheel_z;
+        const float pipe_x = w;
+        const float pipe_z = h;
         self.push_back(std::make_unique<pop_disk>(
             flywheel_x,
             flywheel_z,
@@ -942,10 +981,19 @@ public:
                 [this](auto signal)-> const std::vector<float>& {
                     return this->engine->get_pipe_pressure_signal(signal);
                 },
-                120000.0f,
+                120000.0f, // TODO: PER engine
                 150000.0f
             ));
         }
+        const float room_x = w;
+        const float room_z = h + 2;
+        self.push_back(std::make_unique<room>(
+            0,
+            room_z,
+            engine->get_room_dimensions_m(),
+            engine->get_mic_position(),
+            engine->get_impulse_position()
+            ));
     }
 
     void update()
@@ -994,6 +1042,9 @@ struct look
 
 class window
 {
+    static constexpr float grid_steps = 60.0f;
+    static constexpr Vector3 render_scale = { 1.0f, 1.0f, 1.0f };
+    static constexpr const char* name = "ensim5";
     ensim::engine* engine = {};
     struct look look = {};
     float throttle_ratio = 0.0f;
@@ -1002,7 +1053,7 @@ public:
     window()
     {
         SetConfigFlags(FLAG_FULLSCREEN_MODE | FLAG_VSYNC_HINT);
-        InitWindow(g_xres_p, g_yres_p, g_name);
+        InitWindow(g_xres_p, g_yres_p, name);
         SetTargetFPS(g_fps);
         HideCursor();
         SetTraceLogLevel(LOG_WARNING);
@@ -1028,14 +1079,14 @@ public:
         {
             const bool selected = part.get_x_id() == look.x and part.get_y_id() == look.y;
             const Color color = selected ? BLUE : shape.color;
-            DrawModelWiresEx(shape.figure.model, shape.position, shape.rotation, shape.theta_degrees, g_render_scale, color);
+            DrawModelWiresEx(shape.figure.model, shape.position, shape.rotation, shape.theta_degrees, render_scale, color);
         }
     }
 
     void draw(const parts& parts)
     {
         BeginMode3D(look.camera);
-        DrawGrid(g_grid_steps, g_grid_step_size);
+        DrawGrid(grid_steps, g_grid_step_size);
         for(const auto& part: parts)
         {
             draw(*part.get());
@@ -1176,6 +1227,9 @@ public:
 
 class audio
 {
+    static constexpr int bit_depth = 32;
+    static constexpr int channels = 1;
+    static constexpr size_t buffer_size = 4096;
     AudioStream stream = {};
 
     static void callback(void* const data, const unsigned frames)
@@ -1189,8 +1243,8 @@ public:
     audio()
     {
         InitAudioDevice();
-        SetAudioStreamBufferSizeDefault(g_stream_buffer_size);
-        stream = LoadAudioStream(ensim::g_sample_rate_hz, g_audio_bit_depth, g_audio_channels);
+        SetAudioStreamBufferSizeDefault(buffer_size);
+        stream = LoadAudioStream(ensim::g_sample_rate_hz, bit_depth, channels);
         SetAudioStreamCallback(stream, callback);
         PlayAudioStream(stream);
     }

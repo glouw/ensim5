@@ -4,13 +4,14 @@
 #include <memory>
 #include <span>
 #include <vector>
+#include <tuple>
 #include <string_view>
 
 namespace ensim
 {
     static constexpr size_t g_sample_rate_hz = 48000;
 
-    struct engine /* Thread-safe */
+    struct engine // All member functions are thread safe
     {
         virtual void run(size_t steps) = 0;
         virtual void reset() = 0;
@@ -20,7 +21,7 @@ namespace ensim
         virtual size_t get_sink_y() const = 0;
         virtual size_t get_pipe_count() const = 0;
         virtual size_t get_pipe_cells() const = 0;
-        virtual double get_pipe_length_m(const size_t pipe) const = 0;
+        virtual float get_pipe_length_m(const size_t pipe) const = 0;
         virtual size_t get_piston_y() const = 0;
         virtual size_t get_audio_y() const = 0;
         virtual size_t get_throttle_y() const = 0;
@@ -53,7 +54,10 @@ namespace ensim
         virtual double get_load_radius_m() const = 0;
         virtual double get_load_theta_r() const = 0;
         virtual bool get_clutch_engaged() const = 0;
-        virtual bool get_clutch_disengaged() const = 0;
+        virtual bool get_clutch_disengaged() const = 0; 
+        virtual std::tuple<float,float,float> get_room_dimensions_m() const = 0;
+        virtual std::tuple<float,float,float> get_mic_position() const = 0;
+        virtual std::tuple<float,float,float> get_impulse_position() const = 0;
         virtual const std::vector<double>& get_signal(const size_t index) const = 0;
         virtual const std::vector<double>& get_static_temperature_signal_k() const = 0;
         virtual const std::vector<double>& get_static_pressure_signal_pa() const = 0;
