@@ -22,16 +22,13 @@ namespace ensim
     static constexpr double g_otto_exhaust_cycle_r = 3.0 * g_pi_r;
     static constexpr double g_ambient_temperature_k = 300.0;
     static constexpr double g_ambient_pressure_pa = 132'800.0;
-    static constexpr double g_ambient_density_kg_per_m3 = 1.225;
-    static constexpr double g_gamma = 3.0 / 2.0;
-    static constexpr double g_universal_gas_constant_j_per_mol_k = 8.3144598;
-    static constexpr double g_cv_j_per_mol_k = g_universal_gas_constant_j_per_mol_k / (g_gamma - 1.0);
-    static constexpr double g_molar_mass_kg_per_mol = 0.023;
-    static constexpr double g_cv_j_per_kg_k = g_cv_j_per_mol_k / g_molar_mass_kg_per_mol;
-    static constexpr double g_specific_gas_constant_j_per_kg_k = g_universal_gas_constant_j_per_mol_k / g_molar_mass_kg_per_mol;
+    static constexpr double g_ambient_density_kg_per_m3 = 1.22453421;
+    static constexpr double g_ambient_speed_of_sound_m_per_s = 403.328774;
+    static constexpr double g_gamma = 1.5;
+    static constexpr double g_cv_j_per_kg_k = 722.996;
+    static constexpr double g_specific_gas_constant_j_per_kg_k = 361.498;
     static constexpr double g_energy_octane_j_per_kg = 47.9e6;
     static constexpr double g_stoich_air_fuel_ratio = 14.7;
-    static constexpr double g_air_sound_speed_m_per_s = 343.0; // FIX
     static constexpr float g_pi_r_f = g_pi_r;
     static constexpr float g_gamma_f = g_gamma;
     static constexpr float g_dt_s_f = g_dt_s;
@@ -163,7 +160,7 @@ namespace ensim
                  * Term
                  */
 
-                static_assert(g_gamma == 3.0 / 2.0);
+                static_assert(g_gamma == 1.5);
                 const double Y = cuberoot(Pt / Ps);
                 const double M = direction * sqrt(X * (Y - 1.0));
                 const double A = chamber_nozzle_real_flow_area_m2[i];
@@ -261,7 +258,7 @@ namespace ensim
                  * Term
                  */
 
-                static_assert(g_gamma == 3.0 / 2.0);
+                static_assert(g_gamma == 1.5);
                 const double C = 1.0 + 0.5 * (g_gamma - 1.0) * M * M;
                 nozzle_static_density_kg_per_m3[i] = pt / (C * C);
             }
@@ -358,7 +355,7 @@ namespace ensim
                  *
                  */
 
-                static_assert(g_gamma == 3.0 / 2.0);
+                static_assert(g_gamma == 1.5);
                 chamber_static_temperature_k[i] = Ts1 * sqrt(dv);
             }
         }
@@ -420,7 +417,7 @@ namespace ensim
                  *
                  */
 
-                static_assert(g_gamma == 3.0 / 2.0);
+                static_assert(g_gamma == 1.5);
                 chamber_static_temperature_k[i] *= sqrt(m0 / mi);
                 chamber_static_temperature_k[j] *= sqrt(m1 / mj);
                 chamber_mass_kg[i] = m0;
@@ -648,8 +645,6 @@ namespace ensim
     struct cams
     {
         std::array<double, W> engage_theta_r = {};
-        std::array<double, W> temp_ramp_theta_r = {};
-        std::array<double, W> temp_open_ratio = {};
         std::array<double, W> ramp_theta_r = {};
         std::array<double, W> open_ratio = {};
         double flywheel_theta_r = 0.0;
@@ -675,7 +670,7 @@ namespace ensim
                     theta1_r += g_otto_cycle_r;
                 }
                 const double open_r = theta1_r - theta0_r;
-                const double t = open_r / temp_ramp_theta_r[i];
+                const double t = open_r / ramp_theta_r[i];
                 const double a = t * t * t * t;
                 const double b = t * a;
                 const double c = t * b;
@@ -684,32 +679,65 @@ namespace ensim
                 const double B = 84.0 * b;
                 const double C = 70.0 * c;
                 const double D = 20.0 * d;
-                const double R = clamper(A - B + C - D, 0.0, 1.0);
-                temp_open_ratio[i] = theta1_r < theta0_r ? 0.0 : R;
-            }
-        }
-
-        fn virtual void set_ramp_thetas()
-        {
-            for(size_t i = 0; i < W; i++)
-            {
-                temp_ramp_theta_r[i] = ramp_theta_r[i];
-            }
-        }
-
-        fn virtual void set_open_ratios()
-        {
-            for(size_t i = 0; i < W; i++)
-            {
-                open_ratio[i] = temp_open_ratio[i];
+                const double O = A - B + C - D;
+                const double R = clamper(O, 0.0, 1.0);
+                open_ratio[i] = theta1_r < theta0_r ? 0.0 : R;
             }
         }
 
         void update()
         {
-            set_ramp_thetas();
             calc_open_ratios();
-            set_open_ratios();
+        }
+    };
+
+    template<size_t W>
+    struct vtec_cams: cams<W>
+    {
+        double engage_angular_velocity_r_per_s = 0.0;
+        double ramp_boost_ratio = 0.0;
+        double gain_boost_ratio = 0.0;
+
+        auto boost_ramp()
+        {
+            const double w0 = engage_angular_velocity_r_per_s;
+            const double w1 = this->flywheel_angular_velocity_r_per_s;
+            const auto backup = this->ramp_theta_r;
+            for(auto& x : this->ramp_theta_r)
+            {
+                if(w1 > w0)
+                {
+                    x *= ramp_boost_ratio;
+                }
+            }
+            return backup;
+        }
+
+        void boost_gain()
+        {
+            const double w0 = engage_angular_velocity_r_per_s;
+            const double w1 = this->flywheel_angular_velocity_r_per_s;
+            for(auto& x : this->open_ratio)
+            {
+                if(w1 > w0)
+                {
+                    x *= gain_boost_ratio;
+                    x = clamper(x, 0.0, 1.0);
+                }
+            }
+        }
+
+        void just_kicked_in_yo()
+        {
+            const auto backup = boost_ramp();
+            cams<W>::calc_open_ratios();
+            boost_gain();
+            this->ramp_theta_r = backup;
+        }
+
+        void update()
+        {
+            just_kicked_in_yo();
         }
     };
 
@@ -752,9 +780,11 @@ namespace ensim
 
         void update()
         {
+            const double w0 = max_angular_velocity_r_per_s;
+            const double w1 = flywheel_angular_velocity_r_per_s;
             if(not limiting)
             {
-                if(flywheel_angular_velocity_r_per_s > max_angular_velocity_r_per_s)
+                if(w1 > w0)
                 {
                     limiting = true;
                 }
@@ -1191,7 +1221,6 @@ namespace ensim
             reset();
         }
 
-        std::array<float, WW> in_nozzle_real_flow_area_m2 = {};
         std::array<float, WW> in_velocity_m_per_s = {};
         std::array<float, WW> in_static_density_kg_per_m3 = {};
         std::array<float, WW> in_static_temperature_k = {};
@@ -1234,7 +1263,7 @@ namespace ensim
          *                2        y - 1        2
          */
 
-        fn float calc_specific_energy_density_from_static_temperature(const float r, const float u, const float Ts)
+        fn float calc_rEs_from_Ts(const float r, const float u, const float Ts)
         {
             const float ru = r * u;
             const float Rs = g_specific_gas_constant_j_per_kg_k;
@@ -1249,7 +1278,7 @@ namespace ensim
          *        y - 1      2
          */
 
-        fn float calc_specific_energy_density_from_static_pressure(const float r, const float u, const float Ps)
+        fn float calc_rEs_from_Ps(const float r, const float u, const float Ps)
         {
             const float rEs = Ps / (g_gamma_f - 1.0f) + 0.5f * r * u * u;
             return rEs;
@@ -1261,7 +1290,7 @@ namespace ensim
          *                            2
          */
 
-        fn float calc_static_pressure_from_specific_energy(const float r, const float u, const float Es)
+        fn float calc_Ps_from_Es(const float r, const float u, const float Es)
         {
             const float Ps = (g_gamma_f - 1.0f) * r * (Es - 0.5f * u * u);
             return Ps;
@@ -1274,7 +1303,7 @@ namespace ensim
             const float Ts = g_ambient_temperature_k;
             U_r[i] = r;
             U_ru[i] = r * u;
-            U_rEs[i] = calc_specific_energy_density_from_static_temperature(r, u, Ts);
+            U_rEs[i] = calc_rEs_from_Ts(r, u, Ts);
         }
 
         fn void reset()
@@ -1324,7 +1353,7 @@ namespace ensim
                 U_r[Z] = r;
                 U_ru[Z] = ru;
                 const float Ps = g_ambient_pressure_pa;
-                U_rEs[Z] = calc_specific_energy_density_from_static_pressure(r, u, Ps);
+                U_rEs[Z] = calc_rEs_from_Ps(r, u, Ps);
             }
         }
 
@@ -1340,16 +1369,15 @@ namespace ensim
         {
             for(size_t i = 0; i < WW; i++)
             {
-                const float A = in_nozzle_real_flow_area_m2[i];
                 const float r = in_static_density_kg_per_m3[i];
                 const float u = in_velocity_m_per_s[i];
                 const float Ts = in_static_temperature_k[i];
                 const float ratio = piston_connect_m[i] / length_m;
                 const size_t j = ratio * (L - 1);
-                const bool can_inject = A > 0.0f;
+                const bool can_inject = u != 0.0f;
                 U_r[j] = can_inject ? r : U_r[j];
                 U_ru[j] = can_inject ? r * u : U_ru[j];
-                U_rEs[j] = can_inject ? calc_specific_energy_density_from_static_temperature(r, u, Ts) : U_rEs[j];
+                U_rEs[j] = can_inject ? calc_rEs_from_Ts(r, u, Ts) : U_rEs[j];
             }
         }
 
@@ -1366,7 +1394,7 @@ namespace ensim
                 const float rEs = U_rEs[i];
                 const float u = ru / r;
                 const float Es = rEs / r;
-                const float Ps = calc_static_pressure_from_specific_energy(r, u, Es);
+                const float Ps = calc_Ps_from_Es(r, u, Es);
                 F_r[i] = ru;
                 F_ru[i] = ru * u + Ps;
                 F_rEs[i] = u * (rEs + Ps);
@@ -1406,7 +1434,7 @@ namespace ensim
             const float rEs = U_rEs[i];
             const float u = ru / r;
             const float Es = rEs / r;
-            const float Ps = calc_static_pressure_from_specific_energy(r, u, Es);
+            const float Ps = calc_Ps_from_Es(r, u, Es);
             return Ps;
         }
 
@@ -1580,13 +1608,12 @@ namespace ensim
     struct room
     {
         static constexpr float dc_cutoff_hz = 100.0f;
-
         vec3 dim = {};
         vec3 imp = {};
         vec3 mic = {};
         double beta = 0.0f;
         int order = 0;
-        size_t size = 0;
+        size_t impulse_size = 0;
         std::vector<float> impulse = {};
         dc_filter filter = {};
 
@@ -1597,7 +1624,7 @@ namespace ensim
 
         void generate()
         {
-            impulse.resize(size);
+            impulse.resize(impulse_size);
             std::fill(impulse.begin(), impulse.end(), 0.0f);
             const int bound = order / 2 + 1;
             for(int ix = -bound; ix <= bound; ix++)
@@ -1626,8 +1653,8 @@ namespace ensim
                 {
                     continue;
                 }
-                const size_t delay = llround(d / g_air_sound_speed_m_per_s * g_sample_rate_hz);
-                if(delay < 0 || delay >= size)
+                const size_t delay = llround(d / g_ambient_speed_of_sound_m_per_s * g_sample_rate_hz);
+                if(delay < 0 || delay >= impulse_size)
                 {
                     continue;
                 }
@@ -1770,9 +1797,9 @@ namespace ensim
         size_t PIPE_COUNT,
         size_t THROTTLE_STEPS,
         size_t GEAR_COUNT,
-        template<size_t> typename PISTONS,
-        template<size_t> typename CAMS,
-        template<size_t> typename SPARKPLUGS>
+        template<size_t> class PISTONS,
+        template<size_t> class CAMS,
+        template<size_t> class SPARKPLUGS>
     struct implements_engine: engine
     {
         static constexpr size_t WW = W / PIPE_COUNT;
@@ -1914,7 +1941,6 @@ namespace ensim
             {
                 const size_t i = x / WW;
                 const size_t j = x % WW;
-                pipes[i].in_nozzle_real_flow_area_m2[j] = flows[x].chamber_nozzle_real_flow_area_m2[AUDIO_Y];
                 pipes[i].in_velocity_m_per_s[j] = flows[x].nozzle_velocity_m_per_s[AUDIO_Y];
                 pipes[i].in_static_temperature_k[j] = flows[x].nozzle_static_temperature_k[AUDIO_Y];
                 pipes[i].in_static_density_kg_per_m3[j] = flows[x].nozzle_static_density_kg_per_m3[AUDIO_Y];
@@ -2174,6 +2200,12 @@ namespace ensim
     {
         trx450r()
         {
+            this->room.dim = { 8.19, 3.11, 8.08 };
+            this->room.imp = { 3.85, 0.25, 3.85 };
+            this->room.mic = { 4.21, 1.04, 4.22 };
+            this->room.beta = 0.95;
+            this->room.order = 64;
+            this->room.impulse_size = 8192;
             this->gearbox.ratios = { 0.0, 2.3, 1.8, 1.4, 1.2, 0.95 };
             this->clutch.damping_coefficient_n_m_s = 5.0;
             this->lumped_parasitic_torque_n_m = 0.2;
@@ -2229,20 +2261,20 @@ namespace ensim
             pipes[0].piston_connect_m = { 0.0 };
             pipes[0].length_m = pipes[0].mic_position_m = 0.4;
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.0005;
+            this->gain.ratio = 0.00001;
         }
     };
 
-    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 128, 5, 2, 4, 9, inline_pistons, cams, sparkplugs>
+    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 128, 7, 2, 4, 9, inline_pistons, vtec_cams, sparkplugs>
     {
         i8_2400cc()
         {
-            this->room.dim = { 1.59, 1.51, 1.58 };
-            this->room.imp = { 0.51, 0.52, 0.51 };
-            this->room.mic = { 0.91, 0.94, 0.92 };
+            this->room.dim = { 5.59, 3.51, 5.58 };
+            this->room.imp = { 2.51, 0.32, 2.51 };
+            this->room.mic = { 3.21, 0.64, 3.42 };
             this->room.beta = 0.95;
-            this->room.order = 20;
-            this->room.size = 4096;
+            this->room.order = 24;
+            this->room.impulse_size = 4096;
             this->gearbox.ratios = { 0.0, 3.20, 2.35, 1.85, 1.50, 1.25, 1.08, 0.94, 0.84 };
             this->clutch.damping_coefficient_n_m_s = 4.0;
             this->lumped_parasitic_torque_n_m = 0.0;
@@ -2273,6 +2305,12 @@ namespace ensim
             for(size_t i = 0; i < get_width(); i++)
             {
                 this->pistons.theta0_r[i] = theta0_r;
+                this->inlet_cam.engage_angular_velocity_r_per_s = 1'300.0;
+                this->inlet_cam.ramp_boost_ratio = 1.0;
+                this->inlet_cam.gain_boost_ratio = 1.2;
+                this->outlet_cam.engage_angular_velocity_r_per_s = 1'300.0;
+                this->outlet_cam.ramp_boost_ratio = 1.2;
+                this->outlet_cam.gain_boost_ratio = 1.2;
                 this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - 0.8;
                 this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - 0.4;
                 this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r - 0.5;
@@ -2286,29 +2324,29 @@ namespace ensim
                     0.00300,
                     0.00100,
                     0.00250,
-                    0.00220,
+                    0.00190,
                     0.00300,
                     0.00350,
                     0.00350,
                 };
             }
-            this->flows[0].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.001005, 0.0000, 0.000565, 0.0005, 0.0005, 9999.0 };
-            this->flows[1].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000942, 0.0000, 0.000628, 0.0005, 0.0005, 9999.0 };
-            this->flows[2].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000880, 0.0000, 0.000691, 0.0005, 0.0005, 9999.0 };
-            this->flows[3].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000817, 0.0000, 0.000754, 0.0005, 0.0005, 9999.0 };
-            this->flows[4].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000754, 0.0000, 0.000817, 0.0005, 0.0005, 9999.0 };
-            this->flows[5].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000691, 0.0000, 0.000880, 0.0005, 0.0005, 9999.0 };
-            this->flows[6].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000628, 0.0000, 0.000942, 0.0005, 0.0005, 9999.0 };
-            this->flows[7].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000565, 0.0000, 0.001005, 0.0005, 0.0005, 9999.0 };
+            this->flows[0].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.001105, 0.0000, 0.000665, 0.0005, 0.0005, 9999.0 };
+            this->flows[1].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.001042, 0.0000, 0.000728, 0.0005, 0.0005, 9999.0 };
+            this->flows[2].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000980, 0.0000, 0.000891, 0.0005, 0.0005, 9999.0 };
+            this->flows[3].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000917, 0.0000, 0.000954, 0.0005, 0.0005, 9999.0 };
+            this->flows[4].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000854, 0.0000, 0.001017, 0.0005, 0.0005, 9999.0 };
+            this->flows[5].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000791, 0.0000, 0.001180, 0.0005, 0.0005, 9999.0 };
+            this->flows[6].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000628, 0.0000, 0.001242, 0.0005, 0.0005, 9999.0 };
+            this->flows[7].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000565, 0.0000, 0.001305, 0.0005, 0.0005, 9999.0 };
             this->throttle.mapping.table = { 0.001, 0.01, 0.05, 0.20 };
-            pipes[0].piston_connect_m = { 0.0, 0.2, 0.1, 0.3, };
-            pipes[1].piston_connect_m = { 0.0, 0.2, 0.1, 0.3, };
+            pipes[0].piston_connect_m = { 0.00, 0.34, 0.09, 0.22, };
+            pipes[1].piston_connect_m = { 0.12, 0.19, 0.02, 0.31, };
             for(auto& pipe: this->pipes)
             {
-                pipe.length_m = pipe.mic_position_m = 0.6;
+                pipe.length_m = pipe.mic_position_m = 0.59;
             }
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.00001;
+            this->gain.ratio = 0.00003;
         }
     };
 

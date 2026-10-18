@@ -749,7 +749,7 @@ public:
 
 class pipe: public part
 {
-    static constexpr float radius_m = 0.02f;
+    static constexpr float radius_m = 0.025f;
     static constexpr size_t capacity = 1024;
     std::array<shape, capacity> shapes = {};
     float y = 0;
@@ -981,8 +981,8 @@ public:
                 [this](auto signal)-> const std::vector<float>& {
                     return this->engine->get_pipe_pressure_signal(signal);
                 },
-                120000.0f, // TODO: PER engine
-                150000.0f
+                 80000.0f, // TODO: PER engine
+                140000.0f
             ));
         }
         const float room_x = w;
