@@ -17,8 +17,8 @@
 static constexpr int g_fps = 60;
 static constexpr int g_panic_fps = g_fps / 10;
 static constexpr float g_margin_p = 8.0f;
-static constexpr size_t g_xres_p = 1920;
-static constexpr size_t g_yres_p = 1080;
+static constexpr size_t g_xres_p = 1600;
+static constexpr size_t g_yres_p = 900;
 static constexpr float g_xmid_p = g_xres_p / 2.0f;
 static constexpr size_t g_mesh_slices = 10;
 static constexpr float g_font_size = 1.0f;
@@ -949,7 +949,6 @@ public:
         const float flywheel_z = engine->get_piston_y();
         const float load_x = flywheel_x + 1;
         const float load_z = flywheel_z;
-        const float pipe_x = w;
         const float pipe_z = h;
         self.push_back(std::make_unique<pop_disk>(
             flywheel_x,
@@ -1052,7 +1051,7 @@ class window
 public:
     window()
     {
-        SetConfigFlags(FLAG_FULLSCREEN_MODE | FLAG_VSYNC_HINT);
+        SetConfigFlags(FLAG_VSYNC_HINT);
         InitWindow(g_xres_p, g_yres_p, name);
         SetTargetFPS(g_fps);
         HideCursor();

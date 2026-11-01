@@ -1611,7 +1611,7 @@ namespace ensim
         vec3 dim = {};
         vec3 imp = {};
         vec3 mic = {};
-        double beta = 0.0f;
+        double beta = 0.0;
         int order = 0;
         size_t impulse_size = 0;
         std::vector<float> impulse = {};
