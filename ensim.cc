@@ -2265,16 +2265,16 @@ namespace ensim
         }
     };
 
-    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 128, 7, 2, 4, 9, inline_pistons, vtec_cams, sparkplugs>
+    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 128, 7, 2, 4, 9, inline_pistons, cams, sparkplugs>
     {
         i8_2400cc()
         {
-            this->room.dim = { 5.59, 3.51, 5.58 };
-            this->room.imp = { 2.51, 0.32, 2.51 };
-            this->room.mic = { 3.21, 0.64, 3.42 };
+            this->room.dim = { 5.59, 4.51, 6.58 };
+            this->room.imp = { 3.51, 0.12, 3.31 };
+            this->room.mic = { 4.21, 0.74, 4.42 };
             this->room.beta = 0.95;
-            this->room.order = 24;
-            this->room.impulse_size = 4096;
+            this->room.order = 256;
+            this->room.impulse_size = 16384;
             this->gearbox.ratios = { 0.0, 3.20, 2.35, 1.85, 1.50, 1.25, 1.08, 0.94, 0.84 };
             this->clutch.damping_coefficient_n_m_s = 4.0;
             this->lumped_parasitic_torque_n_m = 0.0;
@@ -2305,12 +2305,6 @@ namespace ensim
             for(size_t i = 0; i < get_width(); i++)
             {
                 this->pistons.theta0_r[i] = theta0_r;
-                this->inlet_cam.engage_angular_velocity_r_per_s = 1'300.0;
-                this->inlet_cam.ramp_boost_ratio = 1.0;
-                this->inlet_cam.gain_boost_ratio = 1.2;
-                this->outlet_cam.engage_angular_velocity_r_per_s = 1'300.0;
-                this->outlet_cam.ramp_boost_ratio = 1.2;
-                this->outlet_cam.gain_boost_ratio = 1.2;
                 this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - 0.8;
                 this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - 0.4;
                 this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r - 0.5;
@@ -2339,14 +2333,14 @@ namespace ensim
             this->flows[6].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000628, 0.0000, 0.001242, 0.0005, 0.0005, 9999.0 };
             this->flows[7].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000565, 0.0000, 0.001305, 0.0005, 0.0005, 9999.0 };
             this->throttle.mapping.table = { 0.001, 0.01, 0.05, 0.20 };
-            pipes[0].piston_connect_m = { 0.00, 0.34, 0.09, 0.22, };
-            pipes[1].piston_connect_m = { 0.12, 0.19, 0.02, 0.31, };
+            pipes[0].piston_connect_m = { 0.00, 0.21, 0.11, 0.28, };
+            pipes[1].piston_connect_m = { 0.00, 0.23, 0.18, 0.33, };
             for(auto& pipe: this->pipes)
             {
-                pipe.length_m = pipe.mic_position_m = 0.59;
+                pipe.length_m = pipe.mic_position_m = 0.69;
             }
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.00003;
+            this->gain.ratio = 0.00002;
         }
     };
 
