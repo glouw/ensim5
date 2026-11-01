@@ -984,7 +984,6 @@ public:
                 140000.0f
             ));
         }
-        const float room_x = w;
         const float room_z = h + 2;
         self.push_back(std::make_unique<room>(
             0,
