@@ -787,6 +787,7 @@ namespace ensim
                 if(w1 > w0)
                 {
                     limiting = true;
+                    cycles = 0;
                 }
             }
             if(limiting)
@@ -795,7 +796,6 @@ namespace ensim
                 if(time_s > limit_time_s)
                 {
                     limiting = false;
-                    cycles = 0;
                 }
                 cycles++;
             }
@@ -1214,7 +1214,8 @@ namespace ensim
         static constexpr size_t M = L - 1;
         std::array<float, WW> piston_connect_m = {};
         float length_m = 0.0f;
-        float mic_position_m = 0.0f;
+        float mic_position0_m = 0.0f;
+        float mic_position1_m = 0.0f;
 
         pipe()
         {
@@ -1253,7 +1254,6 @@ namespace ensim
         std::array<float, M> Ff_rEs = {};
 
         std::array<float, L> speed_of_sound_m_per_s = {};
-        std::array<float, L> local_speed_of_sound_m_per_s = {};
         std::array<float, L> absolute_speed_of_sound_m_per_s = {};
         std::array<float, L> static_pressure_pa = {};
 
@@ -1328,41 +1328,19 @@ namespace ensim
         {
             const size_t Y = L - 2;
             const size_t Z = L - 1;
-            const float r = U_r[Y];
-            const float ru = U_ru[Y];
-            const float u = ru / r;
-            const float a = local_speed_of_sound_m_per_s[Y];
-            if(fabs(u) >= fabs(a))
-            {
-                /*
-                 * Sonic or Super Sonic exit.
-                 *
-                 */
-
-                U_r[Z] = r;
-                U_ru[Z] = ru;
-                U_rEs[Z] = U_rEs[Y];
-            }
-            else
-            {
-                /*
-                 * Subsonic exit.
-                 *
-                 */
-
-                U_r[Z] = r;
-                U_ru[Z] = ru;
-                const float Ps = g_ambient_pressure_pa;
-                U_rEs[Z] = calc_rEs_from_Ps(r, u, Ps);
-            }
+            const float u = U_ru[Y] / U_r[Y];
+            const float r = u >= 0.0f ? U_r[Y] : g_ambient_density_kg_per_m3;
+            U_r[Z] = r;
+            U_ru[Z] = r * u;
+            U_rEs[Z] = calc_rEs_from_Ps(r, u, g_ambient_pressure_pa);
         }
 
         fn float calc_audio_sample()
         {
-            const size_t Z = L - 1;
-            const size_t x = Z * mic_position_m / length_m;
-            const float pressure = static_pressure_pa[x] + static_pressure_pa[x - 1];
-            return 0.5f * pressure;
+            const size_t Z = L - 2;
+            const size_t x = Z * mic_position0_m / length_m;
+            const size_t y = Z * mic_position1_m / length_m;
+            return 0.1f * static_pressure_pa[x] + static_pressure_pa[y];
         }
 
         fn void inject()
@@ -1473,7 +1451,6 @@ namespace ensim
             for(size_t i = 0; i < S; i++)
             {
                 calc_static_pressures();
-                calc_local_speed_of_sounds();
                 calc_speed_of_sounds();
                 calc_absolute_speed_of_sounds();
                 calc_pipe_open_right();
@@ -1493,20 +1470,11 @@ namespace ensim
             }
         }
 
-        fn void calc_local_speed_of_sounds()
-        {
-            for(size_t i = 0; i < L; i++)
-            {
-                const float a = U_ru[i] / U_r[i];
-                local_speed_of_sound_m_per_s[i] = a;
-            }
-        }
-
         fn void calc_absolute_speed_of_sounds()
         {
             for(size_t i = 0; i < L; i++)
             {
-                const float a = local_speed_of_sound_m_per_s[i];
+                const float a = U_ru[i] / U_r[i];
                 const float c = speed_of_sound_m_per_s[i];
                 absolute_speed_of_sound_m_per_s[i] = fabs(a) + c;
             }
@@ -1582,7 +1550,7 @@ namespace ensim
 
     struct gain_filter
     {
-        float ratio = 1.0f;
+        float ratio = 0.0f;
 
         float filter(const float x)
         {
@@ -1595,6 +1563,22 @@ namespace ensim
         float filter(const float x)
         {
             return clamper(x, -1.0f, 1.0f);
+        }
+    };
+
+    struct fade_in_filter
+    {
+        gain_filter gain;
+        clamp_filter clamp;
+
+        float time_s = 1.0;
+
+        float filter(const float x)
+        {
+            const float step_s = g_dt_s_f / time_s;
+            gain.ratio += step_s;
+            gain.ratio = clamp.filter(gain.ratio);
+            return x * gain.ratio;
         }
     };
 
@@ -1817,6 +1801,7 @@ namespace ensim
         struct dc_filter dc = {};
         struct gain_filter gain = {};
         struct clamp_filter clamp = {};
+        struct fade_in_filter fade_in = {};
         struct room room = {};
         struct convolution_filter convolution = {};
         struct gearbox<GEAR_COUNT> gearbox = {};
@@ -2049,6 +2034,7 @@ namespace ensim
             }
             x = dc.filter(x);
             x = convolution.filter(x);
+            x = fade_in.filter(x);
             x = gain.filter(x);
             x = clamp.filter(x);
             return x;
@@ -2200,17 +2186,17 @@ namespace ensim
     {
         trx450r()
         {
-            this->room.dim = { 8.19, 3.11, 8.08 };
-            this->room.imp = { 3.85, 0.25, 3.85 };
-            this->room.mic = { 4.21, 1.04, 4.22 };
-            this->room.beta = 0.95;
-            this->room.order = 64;
+            this->room.dim = { 9.19, 3.11, 9.08 };
+            this->room.imp = { 3.85, 0.21, 3.85 };
+            this->room.mic = { 3.01, 1.22, 3.12 };
+            this->room.beta = 0.94;
+            this->room.order = 256;
             this->room.impulse_size = 8192;
             this->gearbox.ratios = { 0.0, 2.3, 1.8, 1.4, 1.2, 0.95 };
-            this->clutch.damping_coefficient_n_m_s = 5.0;
+            this->clutch.damping_coefficient_n_m_s = 0.6;
             this->lumped_parasitic_torque_n_m = 0.2;
             this->limiter.max_angular_velocity_r_per_s = 800.0;
-            this->limiter.limit_time_s = 0.025;
+            this->limiter.limit_time_s = 0.05;
             this->load.mass_kg = 100.0;
             this->load.radius_m = 0.15;
             this->load.rod_friction_n_m_s_per_r = 0.05;
@@ -2259,24 +2245,98 @@ namespace ensim
             };
             this->throttle.mapping.table = { 0.005, 0.05, 0.30, 1.00 };
             pipes[0].piston_connect_m = { 0.0 };
-            pipes[0].length_m = pipes[0].mic_position_m = 0.4;
+            pipes[0].length_m = 0.48;
+            pipes[0].mic_position0_m = 0.18;
+            pipes[0].mic_position1_m = 0.18;
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.00001;
+            this->gain.ratio = 0.00003;
         }
     };
 
-    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 128, 7, 2, 4, 9, inline_pistons, cams, sparkplugs>
+    struct i3_1500cc: implements_engine<3, 9, 2, 4, 5, 256, 5, 1, 4, 7, inline_pistons, cams, sparkplugs>
+    {
+        i3_1500cc()
+        {
+            this->room.dim = { 7.59, 2.81,  4.58 };
+            this->room.imp = { 1.51, 0.25,  1.31 };
+            this->room.mic = { 2.81, 0.75,  2.82 };
+            this->room.beta = 0.95;
+            this->room.order = 256;
+            this->room.impulse_size = 2 * 16384;
+            this->gearbox.ratios = { 0.0, 4.0, 2.5, 2.0, 1.5, 1.25, 1.0 };
+            this->clutch.damping_coefficient_n_m_s = 1.8;
+            this->lumped_parasitic_torque_n_m = 9.6;
+            this->limiter.max_angular_velocity_r_per_s = 1200.0;
+            this->limiter.limit_time_s = 0.075;
+            this->load.mass_kg = 500.0;
+            this->load.radius_m = 0.21;
+            this->load.rod_friction_n_m_s_per_r = 0.5;
+            this->load.brake_friction_n_m_s_per_r = 3.2;
+            this->load.max_angular_velocity_r_per_s = 700.0;
+            this->flywheel.mass_kg = 4.5;
+            this->flywheel.radius_m = 0.105;
+            this->flywheel.angular_velocity_r_per_s = 100.0;
+            this->load.angular_velocity_r_per_s = 100.0;
+            this->crankshaft.mass_kg = 12.0;
+            this->crankshaft.radius_m = 0.075;
+            this->pistons.diameter_m.fill(0.0820);
+            this->pistons.crank_throw_length_m.fill(0.0473);
+            this->pistons.connecting_rod_length_m.fill(0.1482);
+            this->pistons.connecting_rod_mass_kg.fill(0.300);
+            this->pistons.head_clearance_height_m.fill(0.008);
+            this->pistons.head_mass_density_kg_per_m3.fill(2700.0);
+            this->pistons.friction_n_m_s2_per_r2.fill(0.000003);
+            this->pistons.head_compression_height_m.fill(0.020);
+            this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.95);
+            this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.90);
+            double theta0_r = 0.0;
+            for(size_t i = 0; i < get_width(); i++)
+            {
+                this->pistons.theta0_r[i] = theta0_r;
+                this->inlet_cam.engage_theta_r[i]  = theta0_r + g_otto_intake_cycle_r - 0.75;
+                this->sparkplugs.engage_theta_r[i] = theta0_r + g_otto_combustion_cycle_r - 0.1;
+                this->outlet_cam.engage_theta_r[i] = theta0_r + g_otto_exhaust_cycle_r - 0.48;
+                theta0_r += g_otto_cycle_r / get_width();
+            }
+            for(auto& flow: this->flows)
+            {
+                flow.chamber_nozzle_open_ratio.fill(1.0);
+                flow.chamber_nozzle_flow_area_m2 = {
+                    0.004,
+                    0.004,
+                    0.004,
+                    0.004,
+                    0.003,
+                    0.004,
+                    0.005,
+                    0.006,
+                };
+            }
+            this->flows[0].chamber_volume_m3 = { 9999.0, 0.001, 0.001, 0.007, 0.0000, 0.001, 0.0008, 0.0008, 9999.0 };
+            this->flows[1].chamber_volume_m3 = { 9999.0, 0.001, 0.001, 0.007, 0.0000, 0.001, 0.0008, 0.0008, 9999.0 };
+            this->flows[2].chamber_volume_m3 = { 9999.0, 0.001, 0.001, 0.007, 0.0000, 0.001, 0.0008, 0.0008, 9999.0 };
+            this->throttle.mapping.table = { 0.0005, 0.008, 0.035, 0.16 };
+            pipes[0].piston_connect_m = { 0.00, 0.41, 0.27 };
+            pipes[0].length_m = 1.6;
+            pipes[0].mic_position0_m = 1.4;
+            pipes[0].mic_position1_m = 1.6;
+            this->dc.set_cutoff_frequency(10.0);
+            this->gain.ratio = 0.00002;
+        }
+    };
+
+    struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 200, 10, 2, 4, 9, inline_pistons, cams, sparkplugs>
     {
         i8_2400cc()
         {
-            this->room.dim = { 5.59, 4.51, 6.58 };
+            this->room.dim = { 5.59, 2.51, 5.58 };
             this->room.imp = { 3.51, 0.12, 3.31 };
             this->room.mic = { 4.21, 0.74, 4.42 };
             this->room.beta = 0.95;
             this->room.order = 256;
             this->room.impulse_size = 16384;
             this->gearbox.ratios = { 0.0, 3.20, 2.35, 1.85, 1.50, 1.25, 1.08, 0.94, 0.84 };
-            this->clutch.damping_coefficient_n_m_s = 4.0;
+            this->clutch.damping_coefficient_n_m_s = 5.0;
             this->lumped_parasitic_torque_n_m = 0.0;
             this->limiter.max_angular_velocity_r_per_s = 1900.0;
             this->limiter.limit_time_s = 0.025;
@@ -2337,10 +2397,12 @@ namespace ensim
             pipes[1].piston_connect_m = { 0.00, 0.23, 0.18, 0.33, };
             for(auto& pipe: this->pipes)
             {
-                pipe.length_m = pipe.mic_position_m = 0.69;
+                pipe.length_m = 0.69;
+                pipe.mic_position0_m = 0.69;
+                pipe.mic_position1_m = 0.69;
             }
             this->dc.set_cutoff_frequency(5.0);
-            this->gain.ratio = 0.00002;
+            this->gain.ratio = 0.0002;
         }
     };
 
@@ -2352,6 +2414,9 @@ namespace ensim
         default:
         case type::trx450r:
             engine = std::make_unique<ensim::trx450r>();
+            break;
+        case type::i3_1500cc:
+            engine = std::make_unique<ensim::i3_1500cc>();
             break;
         case type::i8_2400cc:
             engine = std::make_unique<ensim::i8_2400cc>();

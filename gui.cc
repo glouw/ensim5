@@ -980,7 +980,7 @@ public:
                 [this](auto signal)-> const std::vector<float>& {
                     return this->engine->get_pipe_pressure_signal(signal);
                 },
-                 80000.0f, // TODO: PER engine
+                110000.0f, // TODO: PER engine
                 140000.0f
             ));
         }
@@ -1264,7 +1264,7 @@ static void set(window& window, widgets& widgets, parts& parts, ensim::engine* e
 
 int main()
 {
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i8_2400cc);
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i3_1500cc);
     window window;
     widgets widgets;
     audio audio;

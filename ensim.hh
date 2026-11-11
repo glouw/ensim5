@@ -84,6 +84,7 @@ namespace ensim
     enum class type : size_t
     {
         trx450r,
+        i3_1500cc,
         i8_2400cc,
     };
 
