@@ -20,11 +20,14 @@ ensim.o: ensim.cc ensim.hh Makefile
 	$(CC) -c ensim.cc -Wdouble-promotion
 	objdump -dr -C ensim.o > ensim.asm
 
+producer.o: producer.cc ensim.hh Makefile
+	$(CC) -c producer.cc
+
 gui.o: gui.cc ensim.hh Makefile
 	$(CC) -c gui.cc
 
-gui: gui.o ensim.o Makefile
-	$(CC) gui.o ensim.o -lraylib -o gui
+gui: producer.o gui.o ensim.o Makefile
+	$(CC) producer.o gui.o ensim.o -lraylib -o gui
 
 clean:
-	rm -f ensim.asm gui ensim.o gui.o
+	rm -f ensim.asm gui ensim.o gui.o producer.o

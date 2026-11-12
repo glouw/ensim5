@@ -14,17 +14,19 @@
 #include <raylib.h>
 #include <raymath.h>
 
-static constexpr int g_fps = 60;
-static constexpr int g_panic_fps = g_fps / 10;
-static constexpr float g_margin_p = 8.0f;
-static constexpr size_t g_xres_p = 1600;
-static constexpr size_t g_yres_p = 900;
-static constexpr float g_xmid_p = g_xres_p / 2.0f;
-static constexpr size_t g_mesh_slices = 10;
-static constexpr float g_font_size = 1.0f;
-static constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
-static constexpr float g_grid_step_size = 0.125f;
-static constexpr float g_rot90_r = 90.0f * DEG2RAD;
+namespace gui {
+
+constexpr int g_fps = 60;
+constexpr int g_panic_fps = g_fps / 10;
+constexpr float g_margin_p = 8.0f;
+constexpr size_t g_xres_p = 1600;
+constexpr size_t g_yres_p = 900;
+constexpr float g_xmid_p = g_xres_p / 2.0f;
+constexpr size_t g_mesh_slices = 10;
+constexpr float g_font_size = 1.0f;
+constexpr Color g_plot_signal_colors[] = { RED, BLUE, GREEN, PURPLE, BROWN, YELLOW };
+constexpr float g_grid_step_size = 0.125f;
+constexpr float g_rot90_r = 90.0f * DEG2RAD;
 
 class widget
 {
@@ -502,12 +504,12 @@ struct shape
     float theta_degrees = {};
 };
 
-static float calc_cylinder_height_m(const float volume_m3, const float radius_m)
+float calc_cylinder_height_m(const float volume_m3, const float radius_m)
 {
     return volume_m3 / (std::numbers::pi_v<float> * radius_m * radius_m);
 }
 
-static float calc_circle_radius_m(const float area_m2)
+float calc_circle_radius_m(const float area_m2)
 {
     return std::sqrt(area_m2 / std::numbers::pi_v<float>);
 }
@@ -980,9 +982,9 @@ public:
                 [this](auto signal)-> const std::vector<float>& {
                     return this->engine->get_pipe_pressure_signal(signal);
                 },
-                110000.0f, // TODO: PER engine
+                120000.0f, // TODO: PER engine
                 140000.0f
-            ));
+             ));
         }
         const float room_z = h + 2;
         self.push_back(std::make_unique<room>(
@@ -991,7 +993,7 @@ public:
             engine->get_room_dimensions_m(),
             engine->get_mic_position(),
             engine->get_impulse_position()
-            ));
+        ));
     }
 
     void update()
@@ -1133,12 +1135,14 @@ public:
         if(IsKeyPressed(KEY_PERIOD))
         {
             engine->set_throttle(0.0f);
+            engine->set_injection_off();
             engine->disengage_clutch();
             engine->increment_gear();
         }
         if(IsKeyReleased(KEY_PERIOD))
         {
             engine->set_throttle(throttle_ratio);
+            engine->set_injection_on();
             engine->engage_clutch();
         }
         if(IsKeyPressed(KEY_COMMA))
@@ -1254,21 +1258,22 @@ public:
     }
 };
 
-static void set(window& window, widgets& widgets, parts& parts, ensim::engine* engine)
+void set(window& window, widgets& widgets, parts& parts, ensim::engine* engine)
 {
     window.set(engine);
     widgets.set(engine);
     ensim::attach(engine);
     parts.set(engine);
 }
+}
 
 int main()
 {
     std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i3_1500cc);
-    window window;
-    widgets widgets;
-    audio audio;
-    parts parts;
+    gui::window window;
+    gui::widgets widgets;
+    gui::audio audio;
+    gui::parts parts;
     set(window, widgets, parts, engine.get());
     window.loop(widgets, parts);
     ensim::kill();
