@@ -8,10 +8,10 @@
 
 namespace ensim {
 
-static constexpr size_t g_producer_block_size = 200;
-static constexpr size_t g_producer_queue_size = 4096;
-static constexpr size_t g_producer_history_size = 4096;
-static constexpr int g_producer_poll_us = 200;
+constexpr size_t g_producer_block_size = 200;
+constexpr size_t g_producer_queue_size = 4096;
+constexpr size_t g_producer_history_size = 4096;
+constexpr int g_producer_poll_us = 200;
 
 template<typename T, size_t N>
 class ring

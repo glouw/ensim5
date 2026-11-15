@@ -1208,8 +1208,8 @@ struct pipe
     static constexpr size_t M = L - 1;
     std::array<float, WW> piston_connect_m = {};
     float length_m = 0.0f;
-    float mic_position0_m = 0.0f;
-    float mic_position1_m = 0.0f;
+    float mic_bass_position_m = 0.0f;
+    float mic_bass_gain = 0.0f;
 
     pipe()
     {
@@ -1336,9 +1336,9 @@ struct pipe
     fn float calc_audio_sample()
     {
         const size_t Z = L - 2;
-        const size_t x = Z * mic_position0_m / length_m;
-        const size_t y = Z * mic_position1_m / length_m;
-        return 0.1f * static_pressure_pa[x] + static_pressure_pa[y];
+        const size_t x = Z * mic_bass_position_m;
+        const size_t y = Z;
+        return mic_bass_gain * static_pressure_pa[x] + static_pressure_pa[y];
     }
 
     fn void inject()
@@ -1580,7 +1580,7 @@ struct fade_in_filter
     gain_filter gain;
     clamp_filter clamp;
 
-    float time_s = 1.0;
+    float time_s = 3.0;
 
     float filter(const float x)
     {
@@ -2257,27 +2257,27 @@ struct trx450r: implements_engine<1, 9, 2, 4, 5, 200, 20, 1, 4, 6, inline_piston
         this->throttle.mapping.table = { 0.005, 0.05, 0.30, 1.00 };
         pipes[0].piston_connect_m = { 0.0 };
         pipes[0].length_m = 0.48;
-        pipes[0].mic_position0_m = 0.11;
-        pipes[0].mic_position1_m = 0.33;
+        pipes[0].mic_bass_gain = 0.05;
+        pipes[0].mic_bass_position_m = 0.1;
         this->dc.set_cutoff_frequency(5.0);
-        this->gain.ratio = 0.00001;
+        this->gain.ratio = 0.0001;
     }
 };
 
-struct i3_1500cc: implements_engine<3, 9, 2, 4, 5, 256, 5, 1, 4, 7, inline_pistons, vtec_cams, sparkplugs>
+struct i3_1500cc: implements_engine<3, 9, 2, 4, 5, 256, 10, 1, 4, 7, inline_pistons, vtec_cams, sparkplugs>
 {
     i3_1500cc()
     {
-        this->room.dim = { 7.99, 2.81, 7.98 };
-        this->room.imp = { 6.51, 0.21, 5.31 };
-        this->room.mic = { 5.91, 0.75, 4.92 };
-        this->room.beta = 0.95;
+        this->room.dim = { 4.99, 2.81, 4.98 };
+        this->room.imp = { 2.51, 0.21, 2.31 };
+        this->room.mic = { 2.41, 0.28, 2.22 };
+        this->room.beta = 0.97;
         this->room.order = 256;
         this->room.impulse_size = 16384;
         this->gearbox.ratios = { 0.0, 3.50, 2.45, 1.80, 1.35, 1.00, 0.75 };
         this->clutch.damping_coefficient_n_m_s = 2.4;
-        this->lumped_parasitic_torque_n_m = 0.0;
-        this->limiter.max_angular_velocity_r_per_s = 800.0;
+        this->lumped_parasitic_torque_n_m = 4.0;
+        this->limiter.max_angular_velocity_r_per_s = 1100.0;
         this->limiter.limit_time_s = 0.05;
         this->load.mass_kg = 400.0;
         this->load.radius_m = 0.24;
@@ -2296,15 +2296,15 @@ struct i3_1500cc: implements_engine<3, 9, 2, 4, 5, 256, 5, 1, 4, 7, inline_pisto
         this->pistons.connecting_rod_mass_kg.fill(0.300);
         this->pistons.head_clearance_height_m.fill(0.008);
         this->pistons.head_mass_density_kg_per_m3.fill(2700.0);
-        this->pistons.friction_n_m_s2_per_r2.fill(0.00005);
+        this->pistons.friction_n_m_s2_per_r2.fill(0.00001);
         this->pistons.head_compression_height_m.fill(0.020);
         this->inlet_cam.ramp_theta_r.fill(g_pi_r * 0.95);
         this->inlet_cam.ramp_boost_ratio = 1.0;
-        this->inlet_cam.gain_boost_ratio = 1.5;
+        this->inlet_cam.gain_boost_ratio = 1.3;
         this->inlet_cam.engage_angular_velocity_r_per_s = 800.0;
         this->outlet_cam.ramp_theta_r.fill(g_pi_r * 0.90);
         this->outlet_cam.ramp_boost_ratio = 1.05;
-        this->outlet_cam.gain_boost_ratio = 1.5;
+        this->outlet_cam.gain_boost_ratio = 1.3;
         this->outlet_cam.engage_angular_velocity_r_per_s = 800.0;
         double theta0_r = 0.0;
         for(size_t i = 0; i < get_width(); i++)
@@ -2321,8 +2321,8 @@ struct i3_1500cc: implements_engine<3, 9, 2, 4, 5, 256, 5, 1, 4, 7, inline_pisto
             flow.chamber_nozzle_flow_area_m2 = {
                 0.005,
                 0.004,
-                0.0005,
-                0.003,
+                0.001,
+                0.0035,
                 0.0025,
                 0.004,
                 0.005,
@@ -2333,12 +2333,12 @@ struct i3_1500cc: implements_engine<3, 9, 2, 4, 5, 256, 5, 1, 4, 7, inline_pisto
         flows[1].chamber_volume_m3 = { 9999.0, 0.001, 0.001, 0.001, 0.000, 0.0012, 0.001, 0.001, 9999.0, };
         flows[2].chamber_volume_m3 = { 9999.0, 0.001, 0.001, 0.001, 0.000, 0.0013, 0.001, 0.001, 9999.0, };
         this->throttle.mapping.table = { 0.00001, 0.02, 0.1, 1.0 };
-        pipes[0].piston_connect_m = { 0.00, 0.05, 0.02, };
+        pipes[0].piston_connect_m = { 0.00, 0.21, 0.08, };
         pipes[0].length_m = 1.7;
-        pipes[0].mic_position0_m = 1.61;
-        pipes[0].mic_position1_m = 1.7;
+        pipes[0].mic_bass_gain = 0.05;
+        pipes[0].mic_bass_position_m = 0.25;
         this->dc.set_cutoff_frequency(10.0);
-        this->gain.ratio = 0.00004;
+        this->gain.ratio = 0.0002;
     }
 };
 
@@ -2411,12 +2411,14 @@ struct i8_2400cc: implements_engine<8, 9, 2, 4, 5, 200, 10, 2, 4, 9, inline_pist
         this->flows[7].chamber_volume_m3 = { 9999.0, 0.0005, 0.0005, 0.000565, 0.0000, 0.001305, 0.0005, 0.0005, 9999.0 };
         this->throttle.mapping.table = { 0.001, 0.01, 0.05, 0.20 };
         pipes[0].piston_connect_m = { 0.00, 0.21, 0.11, 0.28, };
+        pipes[0].mic_bass_gain = 0.05;
+        pipes[0].mic_bass_position_m = 0.5;
         pipes[1].piston_connect_m = { 0.00, 0.23, 0.18, 0.33, };
+        pipes[1].mic_bass_gain = 0.05;
+        pipes[1].mic_bass_position_m = 0.5;
         for(auto& pipe: this->pipes)
         {
             pipe.length_m = 0.69;
-            pipe.mic_position0_m = 0.36;
-            pipe.mic_position1_m = 0.69;
         }
         this->dc.set_cutoff_frequency(5.0);
         this->gain.ratio = 0.00005;
