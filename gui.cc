@@ -1269,7 +1269,7 @@ void set(window& window, widgets& widgets, parts& parts, ensim::engine* engine)
 
 int main()
 {
-    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i3_1500cc);
+    std::unique_ptr<ensim::engine> engine = ensim::new_engine(ensim::type::i8_2400cc);
     gui::window window;
     gui::widgets widgets;
     gui::audio audio;

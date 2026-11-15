@@ -26,11 +26,15 @@ Ensure raylib is installed (`pacman -S raylib`) and a c++20 compliant compiler l
 
 `0`: Disables ignition
 
-`Q,E`: Camera pan
+`Q,E`: Camera zoome
 
 `W,A,S,D`: Chamber select
 
+`H,J,K,L`: Camera pan
+
 `<,>`: Gear decrement/increment
+
+`SPACE`: Brake
 
 ### ATTRIBUTION
 
