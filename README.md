@@ -26,7 +26,7 @@ Ensure raylib is installed (`pacman -S raylib`) and a c++20 compliant compiler l
 
 `0`: Disables ignition
 
-`Q,E`: Camera zoome
+`Q,E`: Camera zoom
 
 `W,A,S,D`: Chamber select
 
