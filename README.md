@@ -6,7 +6,7 @@ Ensim5 is a single threaded, branch free, allocation free, real time internal co
 
 [https://www.youtube.com/watch?v=za0bQ6HqPRg](https://www.youtube.com/watch?v=za0bQ6HqPRg)
 
-Ensim5's DPS engine simulates the engine thermofluidic otto-cycle with zero-dimensional isentropic flow
+Ensim5's DSP engine simulates the engine thermofluidic otto-cycle with zero-dimensional isentropic flow
 and one-dimensional pipe computational fluid dynamics. Audio, in the form of a static pressure signal,
 is sampled from one or more pipe cells and fed into a room with precomputed impulse response.
 
